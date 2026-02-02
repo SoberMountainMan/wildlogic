@@ -2134,7 +2134,7 @@ input, select, textarea {
 			}
 
 		.image.avatar {
-			border-radius: 100%;
+			border-radius: 0;
 		}
 
 			.image.avatar:before {
@@ -2143,7 +2143,7 @@ input, select, textarea {
 
 			.image.avatar img {
 				
-				width: 140%;
+				width: 100%;
 			}
 
 /* List */
@@ -2445,7 +2445,7 @@ input, select, textarea {
 		transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out, border-color 0.2s ease-in-out;
 		background-color: transparent;
 		border-radius: 0.35em;
-		border: solid 3px #efefef;
+		border: solid 3px #b8b8b8;
 		color: #787878 !important;
 		cursor: pointer;
 		display: inline-block;
@@ -2472,7 +2472,7 @@ input, select, textarea {
 		input[type="reset"]:active,
 		input[type="button"]:active,
 		.button:active {
-			background-color: rgba(73, 191, 157, 0.1);
+			background-color: rgba(94, 94, 94, 0.1);
 			border-color: #131313;
 			color: #131313 !important;
 		}
@@ -2519,7 +2519,7 @@ input, select, textarea {
 		.button.primary {
 			background-color: #131313;
 			border-color: #131313;
-			color: #ffffff !important;
+			color: #d4d4d4 !important;
 		}
 
 			input[type="submit"].primary:hover,
@@ -2586,7 +2586,7 @@ input, select, textarea {
 		-moz-align-items: -moz-flex-end;
 		-webkit-align-items: -webkit-flex-end;
 		-ms-align-items: -ms-flex-end;
-		align-items: flex-end;
+		align-items: center; /* Changes from flex-end */
 		-moz-justify-content: space-between;
 		-webkit-justify-content: space-between;
 		-ms-justify-content: space-between;
@@ -2602,7 +2602,7 @@ input, select, textarea {
 		left: 0;
 		padding: 8em 4em;
 		position: fixed;
-		text-align: right;
+		text-align: center;  /* Changes from right */
 		top: 0;
 		width: 35%;
 	}
@@ -2639,9 +2639,9 @@ input, select, textarea {
 		}
 
 		#header .image.avatar {
-			margin: 0 0 1em 0;
-			width: 6.25em;
-		}
+    margin: 0 auto 1.5em auto !important;
+    width: 14em !important; /* Increase this value to go even bigger */
+}
 
 /* Footer */
 
