@@ -2574,7 +2574,29 @@ input, select, textarea {
 
 /* Header */
 
-	#header {
+#header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    background-color: #1f1815;
+    background-attachment: scroll;
+    background-image: url("images/overlay.png"), url("../../images/wildlogicbg.jpg");
+    background-position: center, center;
+    background-repeat: repeat, no-repeat;
+    background-size: auto, cover;
+    color: rgba(255, 255, 255, 0.5);
+    height: 100%;
+    left: 0;
+    padding: 8em 4em;
+    position: fixed;
+    text-align: center;
+    top: 0;
+    width: 35%;
+    transition: background-image 0.5s ease-in-out;
+}
+
+/*	#header {
 		display: -moz-flex;
 		display: -webkit-flex;
 		display: -ms-flex;
@@ -2586,7 +2608,7 @@ input, select, textarea {
 		-moz-align-items: -moz-flex-end;
 		-webkit-align-items: -webkit-flex-end;
 		-ms-align-items: -ms-flex-end;
-		align-items: center; /* Changes from flex-end */
+		align-items: center; 
 		-moz-justify-content: space-between;
 		-webkit-justify-content: space-between;
 		-ms-justify-content: space-between;
@@ -2602,19 +2624,12 @@ input, select, textarea {
 		left: 0;
 		padding: 8em 4em;
 		position: fixed;
-		text-align: center;  /* Changes from right */
+		text-align: center;
 		top: 0;
 		width: 35%;
 	}
-
-/* This rule activates only when the WILD switch is flipped */
-body.wild-mode #header {
-    background-image: url("images/overlay.png"), url("../../images/wildlogicbg2.jpg");
-    background-position: center;
-    background-size: cover;
-    /* This creates a smooth transition between the two states */
-    transition: background-image 0.5s ease-in-out; 
-}
+	
+	*/
 
 		#header > * {
 			-moz-flex-shrink: 0;
@@ -3312,4 +3327,10 @@ input:checked + .slider:before { transform: translateX(26px); }
 #header h1 {
     width: 100%;
     text-align: center;
+}
+
+body.wild-mode #header {
+    background-image: url("images/overlay.png"), url("../../images/your-wild-bg.jpg");
+    background-position: center, center;
+    background-size: auto, cover;
 }
