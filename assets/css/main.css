@@ -3330,7 +3330,7 @@ input:checked + .slider:before { transform: translateX(26px); }
 }
 
 body.wild-mode #header {
-    background-image: url("images/overlay.png"), url("../../images/your-wild-bg.jpg");
+    background-image: url("images/overlay.png"), url("../../images/wildlogicbg2.jpg");
     background-position: center, center;
     background-size: auto, cover;
 }
