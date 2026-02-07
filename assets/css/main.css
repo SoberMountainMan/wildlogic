@@ -2607,6 +2607,15 @@ input, select, textarea {
 		width: 35%;
 	}
 
+/* This rule activates only when the WILD switch is flipped */
+body.wild-mode #header {
+    background-image: url("images/overlay.png"), url("../../images/wildlogicbg2.jpg");
+    background-position: center;
+    background-size: cover;
+    /* This creates a smooth transition between the two states */
+    transition: background-image 0.5s ease-in-out; 
+}
+
 		#header > * {
 			-moz-flex-shrink: 0;
 			-webkit-flex-shrink: 0;
