@@ -3359,15 +3359,5 @@ body.wild-mode #header .inner {
     to { opacity: 0.8; }
 }
 
-#header {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between; /* Hard-anchors top and bottom content */
-    align-items: center;
-    
-    position: fixed;
-    top: 0; left: 0;
-    width: 35%; height: 100%;
-    padding: 4em 3em 2.5em 3em; /* Balanced padding for footer breathing room */
-    
+
    
