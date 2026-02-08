@@ -3370,15 +3370,4 @@ body.wild-mode #header .inner {
     width: 35%; height: 100%;
     padding: 4em 3em 2.5em 3em; /* Balanced padding for footer breathing room */
     
-    /* Standardized alignment for both images */
-    background-position: center bottom, center center; 
-    background-size: auto, cover;
-    transition: background-image 1s ease-in-out;
-}
-
-#footer {
-    width: 100%;
-    background: transparent;
-    padding: 0;
-    margin: 0;
-}
+   
