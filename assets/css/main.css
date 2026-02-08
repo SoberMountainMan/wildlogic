@@ -3334,3 +3334,51 @@ body.wild-mode #header {
     background-position: center, center;
     background-size: auto, cover;
 }
+
+/* --- WILD MODE: SUNRISE GLOW --- */
+body.wild-mode #header::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    /* A radial gradient that mimics a rising sun glow from the bottom */
+    background: radial-gradient(circle at 50% 100%, rgba(255, 123, 0, 0.25) 0%, transparent 70%);
+    pointer-events: none; /* Allows clicks to pass through to the toggle */
+    z-index: 1;
+    animation: sunrise-pulse 4s infinite alternate ease-in-out;
+}
+
+/* Make sure the logo and toggle stay above the glow */
+body.wild-mode #header .inner {
+    position: relative;
+    z-index: 2;
+}
+
+/* The Pulse Animation */
+@keyframes sunrise-pulse {
+    from { opacity: 0.4; }
+    to { opacity: 0.8; }
+}
+
+#header {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between; /* Hard-anchors top and bottom content */
+    align-items: center;
+    
+    position: fixed;
+    top: 0; left: 0;
+    width: 35%; height: 100%;
+    padding: 4em 3em 2.5em 3em; /* Balanced padding for footer breathing room */
+    
+    /* Standardized alignment for both images */
+    background-position: center bottom, center center; 
+    background-size: auto, cover;
+    transition: background-image 1s ease-in-out;
+}
+
+#footer {
+    width: 100%;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+}
