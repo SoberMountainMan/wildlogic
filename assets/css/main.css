@@ -3347,63 +3347,6 @@ body.wild-mode #header::after {
     animation: sunrise-pulse 4s infinite alternate ease-in-out;
 }
 
-/* Make sure the logo and toggle stay above the glow */
-body.wild-mode #header .inner {
-    position: relative;
-    z-index: 2;
-}
-
-/* The Pulse Animation */
-@keyframes sunrise-pulse {
-    from { opacity: 0.4; }
-    to { opacity: 0.8; }
-}
-
-/* --- THE FLOATING OVERRIDE --- */
-.floating-switch {
-    position: fixed;
-    top: 30px;
-    left: 30px;
-    z-index: 9999;
-    background: rgba(15, 15, 15, 0.9);
-    padding: 12px 22px;
-    border-radius: 50px;
-    display: flex;
-    align-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-    animation: switch-breathe 4s infinite ease-in-out;
-}
-
-@keyframes switch-breathe {
-    0%, 100% { transform: scale(1); border-color: rgba(255, 255, 255, 0.1); }
-    50% { transform: scale(1.02); border-color: rgba(255, 255, 255, 0.3); }
-}
-
-/* --- THE NEON FLICKER --- */
-body.wild-mode .wild-label {
-    color: #ff4500;
-    text-shadow: 0 0 5px #ff4500, 0 0 10px #ff4500;
-    animation: neon-flicker 1.5s infinite alternate;
-}
-
-@keyframes neon-flicker {
-    0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
-        opacity: 1;
-    }
-    20%, 24%, 55% {
-        opacity: 0.4;
-    }
-}
-
-/* Active State for the Switch */
-body.wild-mode .floating-switch {
-    border-color: rgba(255, 69, 0, 0.6);
-    background: rgba(30, 15, 5, 0.95);
-    box-shadow: 0 0 20px rgba(255, 69, 0, 0.3);
-}
-  
 /* --- THE ROTATING CHASE GLOW --- */
 .glow-wrapper {
     position: relative;
@@ -3411,44 +3354,29 @@ body.wild-mode .floating-switch {
     padding: 4px; /* Space for the glow to breathe */
 }
 
-/* The light that goes "round and round" */
 .glow-wrapper::before {
     content: "";
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
     border-radius: 40px;
-    /* A sharp beam of light that fades out */
     background: conic-gradient(from 0deg, transparent, rgba(255,255,255,0.7), transparent 40%);
     animation: rotate-glow 3s linear infinite;
     z-index: 0;
 }
 
-/* Blur the light to make it look like a glow, not a sharp line */
+/* Blur the light to make it look like a glow */
 .glow-wrapper::after {
     content: "";
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
     border-radius: 40px;
-    background: inherit;
+    background: inherit; /* This will inherit the parent gradient if configured correctly */
     filter: blur(8px);
     z-index: 0;
 }
 
-/* The Animation */
-@keyframes rotate-glow {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-/* Adjust the Switch to sit ABOVE the glow */
-.switch {
-    z-index: 1;
-    margin: 0 !important; /* Reset margins for center alignment */
-}
-
-/* --- WILD MODE ADAPTATION --- */
-/* Change the white chase to a High-Voltage Orange chase */
+/* Speed up and change color in Wild mode */
 body.wild-mode .glow-wrapper::before {
     background: conic-gradient(from 0deg, transparent, #ff4500, transparent 40%);
-    animation: rotate-glow 1.5s linear infinite; /* Speeds up in Wild mode */
+    animation: rotate-glow 1.5s linear infinite;
 }
