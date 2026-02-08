@@ -3403,4 +3403,52 @@ body.wild-mode .floating-switch {
     background: rgba(30, 15, 5, 0.95);
     box-shadow: 0 0 20px rgba(255, 69, 0, 0.3);
 }
-   
+  
+/* --- THE ROTATING CHASE GLOW --- */
+.glow-wrapper {
+    position: relative;
+    display: inline-flex;
+    padding: 4px; /* Space for the glow to breathe */
+}
+
+/* The light that goes "round and round" */
+.glow-wrapper::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border-radius: 40px;
+    /* A sharp beam of light that fades out */
+    background: conic-gradient(from 0deg, transparent, rgba(255,255,255,0.7), transparent 40%);
+    animation: rotate-glow 3s linear infinite;
+    z-index: 0;
+}
+
+/* Blur the light to make it look like a glow, not a sharp line */
+.glow-wrapper::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border-radius: 40px;
+    background: inherit;
+    filter: blur(8px);
+    z-index: 0;
+}
+
+/* The Animation */
+@keyframes rotate-glow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Adjust the Switch to sit ABOVE the glow */
+.switch {
+    z-index: 1;
+    margin: 0 !important; /* Reset margins for center alignment */
+}
+
+/* --- WILD MODE ADAPTATION --- */
+/* Change the white chase to a High-Voltage Orange chase */
+body.wild-mode .glow-wrapper::before {
+    background: conic-gradient(from 0deg, transparent, #ff4500, transparent 40%);
+    animation: rotate-glow 1.5s linear infinite; /* Speeds up in Wild mode */
+}
