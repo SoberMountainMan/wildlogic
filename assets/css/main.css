@@ -3250,6 +3250,7 @@ input, select, textarea {
 .wild-content { display: none; }
 body.wild-mode .logic-content { display: none; }
 body.wild-mode .wild-content { display: block; }
+body.wild-mode #footer .wild-content { display: inline; }
 
 /* Switch Accent Color */
 body.wild-mode .button.primary {
