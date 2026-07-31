@@ -1,0 +1,27 @@
+# Project docs and notes
+*.md
+
+# Python scripts
+*.py
+
+# Data files
+*.json
+*.xlsx
+*.csv
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temp files
+*.tmp
+*.bak
+
+# Output directories
+output/
