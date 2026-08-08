@@ -1,0 +1,332 @@
+<!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <title>WildLogic | Interactive Proposal</title>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+        <meta name="description" content="An interactive WildLogic proposal. Tick the work you want, watch the total move. This page is the demo — built in-house, free, in one day." />
+        <link rel="stylesheet" href="assets/css/main.css" />
+        <style>
+            /* ===== Interactive pricing table (page-local) ===== */
+            .quote-wrap { max-width: 900px; margin: 0 auto; padding: 0 1.5em; }
+            .q-section { margin: 2.5em 0; border: 1px solid rgba(0,0,0,0.12); border-radius: 8px; overflow: hidden; }
+            .q-section > h3 { margin: 0; padding: 0.9em 1.2em; font-size: 1.05em; letter-spacing: 0.06em; text-transform: uppercase; background: rgba(0,0,0,0.045); border-bottom: 1px solid rgba(0,0,0,0.12); }
+            body.wild-mode .q-section > h3 { background: rgba(255,60,0,0.08); }
+            .q-item { display: flex; align-items: flex-start; gap: 0.9em; padding: 1em 1.2em; border-bottom: 1px solid rgba(0,0,0,0.08); }
+            .q-item:last-child { border-bottom: none; }
+            .q-item input[type="checkbox"], .q-item input[type="radio"] { margin-top: 0.35em; width: 1.15em; height: 1.15em; accent-color: #131313; cursor: pointer; flex-shrink: 0; }
+            body.wild-mode .q-item input[type="checkbox"], body.wild-mode .q-item input[type="radio"] { accent-color: #ff3c00; }
+            .q-body { flex: 1; }
+            .q-title { font-weight: 700; font-size: 1.02em; }
+            .q-desc { display: none; margin-top: 0.5em; font-size: 0.88em; opacity: 0.82; }
+            .q-item.open .q-desc { display: block; }
+            .q-expand { font-size: 0.75em; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.55; cursor: pointer; margin-top: 0.35em; user-select: none; }
+            .q-price { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+            .q-price .per { font-weight: 400; font-size: 0.8em; opacity: 0.65; }
+            .q-checked-note { font-size: 0.8em; opacity: 0.6; margin-top: 0.3em; }
+
+            /* Sticky totals bar */
+            .q-totals { position: sticky; bottom: 0; z-index: 50; background: #131313; color: #fff; padding: 1em 1.4em; display: flex; flex-wrap: wrap; gap: 1em 2.5em; align-items: center; justify-content: center; box-shadow: 0 -4px 18px rgba(0,0,0,0.25); }
+            body.wild-mode .q-totals { background: #2a0d00; }
+            .q-totals .t-block { text-align: center; }
+            .q-totals .t-label { font-size: 0.7em; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; }
+            .q-totals .t-value { font-size: 1.5em; font-weight: 700; font-variant-numeric: tabular-nums; }
+            body.wild-mode .q-totals .t-value { color: #ff7a45; }
+            .q-totals .button { margin: 0; }
+
+            /* Modal */
+            .q-modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: center; justify-content: center; padding: 1.5em; }
+            .q-modal-bg.show { display: flex; }
+            .q-modal { background: #fff; color: #222; max-width: 620px; width: 100%; border-radius: 8px; padding: 2em; max-height: 85vh; overflow: auto; }
+            .q-modal h3 { margin-top: 0; }
+            .q-modal pre { white-space: pre-wrap; font-family: inherit; background: rgba(0,0,0,0.05); padding: 1em; border-radius: 6px; font-size: 0.9em; line-height: 1.5; }
+            .q-modal .actions { margin-top: 1.2em; display: flex; gap: 0.8em; flex-wrap: wrap; }
+            .q-demo-badge { display: inline-block; font-size: 0.7em; letter-spacing: 0.14em; text-transform: uppercase; padding: 0.35em 0.9em; border: 1px solid currentColor; border-radius: 99px; opacity: 0.75; margin-bottom: 1em; }
+        </style>
+    </head>
+    <body class="is-preload">
+
+        <header id="header">
+            <div class="inner">
+                <div class="mode-switcher-container">
+                    <span class="mode-label logic-label">LOGIC</span>
+                    <label class="switch">
+                        <input type="checkbox" id="mode-toggle">
+                        <span class="slider round"></span>
+                    </label>
+                    <span class="mode-label wild-label">WILD</span>
+                </div>
+
+                <a href="index.html" class="image avatar"><img src="images/wildlogic_logo_white.png" alt="WildLogic Logo" /></a>
+
+                <h1 class="logic-content">Your Proposal. Ticked by You.</h1>
+                <h1 class="wild-content">Build Your Own Bloody Quote.</h1>
+            </div>
+        </header>
+
+        <div id="main">
+            <section>
+                <div class="quote-wrap">
+                    <span class="q-demo-badge">Sample proposal — live demo</span>
+                    <p class="logic-content">This is how WildLogic quotes: an interactive table instead of a PDF. Tick the work you want, watch the total move, and send the selection back in one click. No discovery-call funnel, no forty-page deck — scope and price, visible, in your hands.</p>
+                    <p class="wild-content">PDFs die in inboxes. This one you can play with. Tick what you want, watch the number move, and send it back when it feels right. The client who builds their own quote doesn't argue with it — they wrote it.</p>
+
+                    <!-- ============ SECTION 1: CORE (radio — pick one) ============ -->
+                    <div class="q-section">
+                        <h3 class="logic-content">1. The Core Engagement — pick one</h3>
+                        <h3 class="wild-content">1. The Main Event — pick one</h3>
+
+                        <label class="q-item">
+                            <input type="radio" name="core" value="Diagnostic Fault Report" data-price="3500" checked>
+                            <div class="q-body">
+                                <span class="q-title logic-content">Diagnostic Fault Report</span>
+                                <span class="q-title wild-content">Put the Meter On It</span>
+                                <div class="q-expand">Details ▾</div>
+                                <p class="q-desc logic-content">A full test of your marketing circuit: where leads enter, where voltage drops, which wire burns budget. Delivered as a written fault report with fixes ranked by return. Credited in full against any rewire work you approve.</p>
+                                <p class="q-desc wild-content">I strap a multimeter to your funnel and find exactly where the money leaks to earth. You get a plain-language fault list, ranked by what's costing you most. Cost comes off if you let me fix it.</p>
+                            </div>
+                            <span class="q-price">R3,500 <span class="per">once-off</span></span>
+                        </label>
+
+                        <label class="q-item">
+                            <input type="radio" name="core" value="Diagnostic + Rewire" data-price="9500">
+                            <div class="q-body">
+                                <span class="q-title logic-content">Diagnostic + Rewire</span>
+                                <span class="q-title wild-content">Find It, Fix It, Wire It</span>
+                                <div class="q-expand">Details ▾</div>
+                                <p class="q-desc logic-content">The fault report plus the build: n8n automations and AI agents that capture, qualify and follow up leads without human intervention. Includes two weeks of monitored handover.</p>
+                                <p class="q-desc wild-content">Find the short, then rewire it for good. Machines catch and chase your leads at 2am. Includes two weeks of me watching it run before I hand you the keys.</p>
+                            </div>
+                            <span class="q-price">R9,500 <span class="per">once-off</span></span>
+                        </label>
+
+                        <label class="q-item">
+                            <input type="radio" name="core" value="Full Autonomous System" data-price="18000">
+                            <div class="q-body">
+                                <span class="q-title logic-content">Full Autonomous System</span>
+                                <span class="q-title wild-content">The Whole Machine</span>
+                                <div class="q-expand">Details ▾</div>
+                                <p class="q-desc logic-content">Diagnostic, rewire, content engine and reporting as one operating system: your marketing runs itself, you get a live dashboard and a monthly one-page summary. The same architecture that runs hogsbackguide.co.za around the clock.</p>
+                                <p class="q-desc wild-content">The lot. Fault found, system wired, content machine running, dashboard on your phone. The same kit I run 24/7 on my own mountain — now it's yours.</p>
+                            </div>
+                            <span class="q-price">R18,000 <span class="per">once-off</span></span>
+                        </label>
+                    </div>
+
+                    <!-- ============ SECTION 2: ADD-ONS (checkboxes — the upsell engine) ============ -->
+                    <div class="q-section">
+                        <h3 class="logic-content">2. Optional Add-Ons — tick what applies</h3>
+                        <h3 class="wild-content">2. Bolt-Ons — tick what you fancy</h3>
+
+                        <label class="q-item">
+                            <input type="checkbox" name="addon" value="Google Business Profile fix &amp; optimise" data-price="2200">
+                            <div class="q-body">
+                                <span class="q-title logic-content">Google Business Profile fix &amp; optimise</span>
+                                <span class="q-title wild-content">Get Off the Wrong Map</span>
+                                <div class="q-expand">Details ▾</div>
+                                <p class="q-desc logic-content">Claim, verify, correct and optimise your Google listing: categories, hours, services, photos and review responses. Most local businesses lose bookings to wrong hours and stale photos before the website even loads.</p>
+                                <p class="q-desc wild-content">Half the guests who tried to find you got lost, found your hours wrong, or saw a photo from 2019. I fix the listing people actually look at.</p>
+                            </div>
+                            <span class="q-price">R2,200 <span class="per">once-off</span></span>
+                        </label>
+
+                        <label class="q-item">
+                            <input type="checkbox" name="addon" value="Website content overhaul (5 pages)" data-price="4800">
+                            <div class="q-body">
+                                <span class="q-title logic-content">Website content overhaul (5 pages)</span>
+                                <span class="q-title wild-content">Un-Beige the Site</span>
+                                <div class="q-expand">Details ▾</div>
+                                <p class="q-desc logic-content">Five pages rewritten for search intent and conversion, with SEO metadata per page. Copy written from your actual offering — no template filler.</p>
+                                <p class="q-desc wild-content">Five pages stripped and rebuilt so Google and actual humans both understand what you sell. Zero lorem ipsum, zero stock-photo lies.</p>
+                            </div>
+                            <span class="q-price">R4,800 <span class="per">once-off</span></span>
+                        </label>
+
+                        <label class="q-item">
+                            <input type="checkbox" name="addon" value="WhatsApp auto-receptionist bot" data-price="7500">
+                            <div class="q-body">
+                                <span class="q-title logic-content">WhatsApp auto-receptionist bot</span>
+                                <span class="q-title wild-content">A Receptionist That Never Sleeps</span>
+                                <div class="q-expand">Details ▾</div>
+                                <p class="q-desc logic-content">An AI WhatsApp assistant trained on your business: answers questions, takes enquiries, hands off real humans when needed. Live in two weeks; the same pattern that answers tourists on Hogsback daily.</p>
+                                <p class="q-desc wild-content">Your WhatsApp gets answered at 9pm on a Sunday, in the guest's language, by a bot that knows your business better than your last temp. Real humans get pulled in when it matters.</p>
+                            </div>
+                            <span class="q-price">R7,500 <span class="per">once-off</span></span>
+                        </label>
+
+                        <label class="q-item">
+                            <input type="checkbox" name="addon" value="Photo SEO package (20 images)" data-price="3200">
+                            <div class="q-body">
+                                <span class="q-title logic-content">Photo SEO package (20 images)</span>
+                                <span class="q-title wild-content">Make the Pictures Work</span>
+                                <div class="q-expand">Details ▾</div>
+                                <p class="q-desc logic-content">Your best 20 photos compressed, renamed, tagged and described so they rank in Google Images — a channel most local businesses ignore entirely.</p>
+                                <p class="q-desc wild-content">Your photos sit there looking pretty while Google can't read a thing about them. Twenty of them, tuned to actually pull guests in from image search.</p>
+                            </div>
+                            <span class="q-price">R3,200 <span class="per">once-off</span></span>
+                        </label>
+
+                        <label class="q-item">
+                            <input type="checkbox" name="addon" value="Directory listing — hogsbackguide.co.za (12 months)" data-price="4500">
+                            <div class="q-body">
+                                <span class="q-title logic-content">Directory listing — hogsbackguide.co.za (12 months)</span>
+                                <span class="q-title wild-content">Get in the Guide</span>
+                                <div class="q-expand">Details ▾</div>
+                                <p class="q-desc logic-content">A vetted, curated listing on the Hogsback visitor guide: 12 months, with event sync and status updates included. The guide carries the region's visitor traffic — your name rides it.</p>
+                                <p class="q-desc wild-content">The guide site gets the tourists. You get on it. Twelve months, updated when your hours change, synced when you run an event.</p>
+                            </div>
+                            <span class="q-price">R4,500 <span class="per">once-off</span></span>
+                        </label>
+                    </div>
+
+                    <!-- ============ SECTION 3: MONTHLY CARE (checkboxes, recurring) ============ -->
+                    <div class="q-section">
+                        <h3 class="logic-content">3. Monthly Care — keep it running</h3>
+                        <h3 class="wild-content">3. Keep the Lights On — monthly</h3>
+
+                        <label class="q-item">
+                            <input type="checkbox" name="monthly" value="System monitoring &amp; maintenance" data-price="850">
+                            <div class="q-body">
+                                <span class="q-title logic-content">System monitoring &amp; maintenance</span>
+                                <span class="q-title wild-content">Watchdog on the Wire</span>
+                                <div class="q-desc q-checked-note">Automated health checks with human intervention when something trips.</div>
+                            </div>
+                            <span class="q-price">R850 <span class="per">/mo</span></span>
+                        </label>
+
+                        <label class="q-item">
+                            <input type="checkbox" name="monthly" value="Content &amp; reporting" data-price="1500">
+                            <div class="q-body">
+                                <span class="q-title logic-content">Content &amp; reporting</span>
+                                <span class="q-title wild-content">Proof It's Working</span>
+                                <div class="q-desc q-checked-note">Monthly content pushes plus a one-page report: what ranked, what converted, what's next.</div>
+                            </div>
+                            <span class="q-price">R1,500 <span class="per">/mo</span></span>
+                        </label>
+
+                        <label class="q-item">
+                            <input type="checkbox" name="monthly" value="Listing updates &amp; event sync" data-price="450">
+                            <div class="q-body">
+                                <span class="q-title logic-content">Listing updates &amp; event sync</span>
+                                <span class="q-title wild-content">Stay Accurate, Stay Found</span>
+                                <div class="q-desc q-checked-note">Hours, closures and events kept current across your listings — the thing that quietly kills bookings when it's wrong.</div>
+                            </div>
+                            <span class="q-price">R450 <span class="per">/mo</span></span>
+                        </label>
+                    </div>
+
+                    <p class="logic-content" style="font-size:0.85em;opacity:0.7;">All figures exclude VAT. Once-off work is invoiced 50/50 (start/delivery). The diagnostic fee is credited in full against approved rewire work.</p>
+                    <p class="wild-content" style="font-size:0.85em;opacity:0.7;">Numbers are real-ish demo numbers. The mechanism is the point: you ticked, it added up, nothing was hidden. VAT extra, half up front, and the diagnostic comes off the fix.</p>
+                </div>
+            </section>
+        </div>
+
+        <!-- Sticky totals -->
+        <div class="q-totals">
+            <div class="t-block">
+                <div class="t-label logic-content">Once-off total</div>
+                <div class="t-label wild-content">Up Front</div>
+                <div class="t-value" id="total-once">R3,500</div>
+            </div>
+            <div class="t-block">
+                <div class="t-label logic-content">Monthly total</div>
+                <div class="t-label wild-content">Monthly</div>
+                <div class="t-value" id="total-monthly">R0</div>
+            </div>
+            <a href="#" class="button primary" id="request-btn">
+                <span class="logic-content">Request This Package</span>
+                <span class="wild-content">Lock It In</span>
+            </a>
+        </div>
+
+        <!-- Summary modal -->
+        <div class="q-modal-bg" id="modal-bg">
+            <div class="q-modal">
+                <h3 class="logic-content">Your selection — ready to send</h3>
+                <h3 class="wild-content">Here's What You Built</h3>
+                <pre id="summary-text"></pre>
+                <div class="actions">
+                    <a href="#" class="button primary" id="copy-btn">
+                        <span class="logic-content">Copy to clipboard</span>
+                        <span class="wild-content">Copy the Damn Thing</span>
+                    </a>
+                    <a href="index.html" class="button">Close</a>
+                </div>
+                <p style="font-size:0.78em;opacity:0.6;margin-top:1em;">Demo note: in production this button POSTs the selection to an n8n webhook and lands as a WhatsApp message + log entry. Zero additional infrastructure cost.</p>
+            </div>
+        </div>
+
+        <footer id="footer">
+            <div class="inner">
+                <ul class="copyright">
+                    <li>&copy; 2026 WildLogic.</li>
+                    <li><a href="index.html">Back to the main site</a></li>
+                </ul>
+            </div>
+        </footer>
+
+        <script>
+            // ===== Dual-voice toggle (same mechanic as index) =====
+            const toggle = document.getElementById('mode-toggle');
+            toggle.addEventListener('change', () => document.body.classList.toggle('wild-mode'));
+            document.body.classList.remove('is-preload');
+
+            // ===== Expand/collapse detail lines =====
+            document.querySelectorAll('.q-expand').forEach(el => {
+                el.addEventListener('click', e => {
+                    e.preventDefault();
+                    const item = el.closest('.q-item');
+                    item.classList.toggle('open');
+                    el.textContent = item.classList.contains('open') ? 'Details ▴' : 'Details ▾';
+                });
+            });
+
+            // ===== Totals =====
+            const fmt = n => 'R' + n.toLocaleString('en-ZA');
+            function recalc() {
+                let once = 0, monthly = 0;
+                const core = document.querySelector('input[name="core"]:checked');
+                if (core) once += parseInt(core.dataset.price, 10);
+                document.querySelectorAll('input[name="addon"]:checked').forEach(c => once += parseInt(c.dataset.price, 10));
+                document.querySelectorAll('input[name="monthly"]:checked').forEach(c => monthly += parseInt(c.dataset.price, 10));
+                document.getElementById('total-once').textContent = fmt(once);
+                document.getElementById('total-monthly').textContent = fmt(monthly);
+            }
+            document.querySelectorAll('.q-item input').forEach(i => i.addEventListener('change', recalc));
+            recalc();
+
+            // ===== Summary + modal =====
+            function buildSummary() {
+                const lines = ['WILDLOGIC PROPOSAL — selection', ''];
+                const core = document.querySelector('input[name="core"]:checked');
+                lines.push('CORE: ' + core.value + ' — ' + fmt(parseInt(core.dataset.price, 10)));
+                const addons = [...document.querySelectorAll('input[name="addon"]:checked')];
+                if (addons.length) {
+                    lines.push('', 'ADD-ONS:');
+                    addons.forEach(c => lines.push('  • ' + c.value + ' — ' + fmt(parseInt(c.dataset.price, 10))));
+                }
+                const months = [...document.querySelectorAll('input[name="monthly"]:checked')];
+                if (months.length) {
+                    lines.push('', 'MONTHLY CARE:');
+                    months.forEach(c => lines.push('  • ' + c.value + ' — ' + fmt(parseInt(c.dataset.price, 10)) + '/mo'));
+                }
+                lines.push('', 'TOTALS: once-off ' + document.getElementById('total-once').textContent +
+                             ' | monthly ' + document.getElementById('total-monthly').textContent);
+                lines.push('', 'Name: ____________   Business: ____________');
+                return lines.join('\n');
+            }
+            const modalBg = document.getElementById('modal-bg');
+            document.getElementById('request-btn').addEventListener('click', e => {
+                e.preventDefault();
+                document.getElementById('summary-text').textContent = buildSummary();
+                modalBg.classList.add('show');
+            });
+            document.getElementById('copy-btn').addEventListener('click', e => {
+                e.preventDefault();
+                navigator.clipboard.writeText(document.getElementById('summary-text').textContent)
+                    .then(() => { e.target.closest('a').querySelector('span[style], span').textContent = 'Copied ✓'; });
+            });
+            modalBg.addEventListener('click', e => { if (e.target === modalBg) modalBg.classList.remove('show'); });
+        </script>
+    </body>
+</html>
