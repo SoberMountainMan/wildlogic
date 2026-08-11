@@ -5,6 +5,15 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
         <meta name="description" content="A one-man, AI-powered marketing consultancy. I find the fault draining your budget, wire the fix with n8n and AI agents, and make content people talk about." />
+        <link rel="canonical" href="https://wildlogic.co.za/" />
+        <meta property="og:title" content="WildLogic | Marketing Audits, AI Automation, Disruptive Content" />
+        <meta property="og:description" content="A one-man, AI-powered marketing consultancy. I find the fault draining your budget, wire the fix with n8n and AI agents, and make content people talk about." />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://wildlogic.co.za/" />
+        <meta property="og:image" content="https://wildlogic.co.za/images/wildlogic_logo_white.png" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="WildLogic | Marketing Audits, AI Automation, Disruptive Content" />
+        <meta name="twitter:description" content="A one-man, AI-powered marketing consultancy." />
         <link rel="stylesheet" href="assets/css/main.css" />
     </head>
     <body class="is-preload">
@@ -107,11 +116,17 @@
         <footer id="footer">
             <div class="inner">
                 <ul class="copyright">
-                    <li>&copy; 2026 WildLogic.</li>
+                    <li>&copy; <span id="yr"></span> WildLogic.</li>
                     <li>Status: <span class="logic-content">Scalable</span><span class="wild-content">100% Bullshit-Free Zone.</span></li>
                 </ul>
             </div>
         </footer>
+
+        <script>document.getElementById('yr').textContent=new Date().getFullYear()</script>
+
+        <script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"ProfessionalService","name":"WildLogic","description":"AI-powered marketing consultancy. Marketing audits, AI automation, disruptive content.","url":"https://wildlogic.co.za/","address":{"@type":"PostalAddress","addressCountry":"ZA"}}
+        </script>
 
         <script src="assets/js/jquery.min.js"></script>
         <script src="assets/js/jquery.poptrox.min.js"></script>

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://wildlogic.co.za/sitemap.xml

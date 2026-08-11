@@ -5,6 +5,13 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
         <meta name="description" content="An interactive WildLogic proposal. Tick the work you want, watch the total move. This page is the demo — built in-house, free, in one day." />
+        <link rel="canonical" href="https://wildlogic.co.za/quote.html" />
+        <meta property="og:title" content="WildLogic | Interactive Proposal" />
+        <meta property="og:description" content="An interactive WildLogic proposal. Tick the work you want, watch the total move." />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://wildlogic.co.za/quote.html" />
+        <meta name="twitter:card" content="summary" />
+        <meta name="twitter:title" content="WildLogic | Interactive Proposal" />
         <link rel="stylesheet" href="assets/css/main.css" />
         <style>
             /* ===== Interactive pricing table (page-local) ===== */
@@ -259,11 +266,13 @@
         <footer id="footer">
             <div class="inner">
                 <ul class="copyright">
-                    <li>&copy; 2026 WildLogic.</li>
+                    <li>&copy; <span id="yr"></span> WildLogic.</li>
                     <li><a href="index.html">Back to the main site</a></li>
                 </ul>
             </div>
         </footer>
+
+        <script>document.getElementById('yr').textContent=new Date().getFullYear()</script>
 
         <script>
             // ===== Dual-voice toggle (same mechanic as index) =====
