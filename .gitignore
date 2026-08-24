@@ -25,3 +25,6 @@ Thumbs.db
 
 # Output directories
 output/
+
+# Internal tools (not public pages)
+admin/
