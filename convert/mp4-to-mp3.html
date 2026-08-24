@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>MP4 to MP3 — Extract Audio Online Free | Hog Convert</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Extract audio from MP4, MOV, MKV or any video file to MP3 free. Choose 320/192/128kbps. No upload, no limits — runs in your browser." />
+  <link rel="canonical" href="https://wildlogic.co.za/convert/mp4-to-mp3.html" />
+  <meta property="og:title" content="MP4 → MP3 — No Upload" />
+  <meta property="og:description" content="Pull the audio out of any video, right in your browser. Free, unlimited." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wildlogic.co.za/convert/mp4-to-mp3.html" />
+  <meta property="og:image" content="https://wildlogic.co.za/images/wildlogic_logo_white.png" />
+  <link rel="stylesheet" href="hog.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"Hog Convert MP4 to MP3","url":"https://wildlogic.co.za/convert/mp4-to-mp3.html","applicationCategory":"MultimediaApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"ZAR"}}
+  </script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="./"><span class="snout">🐗</span> Hog Convert</a>
+    <a class="backlink" href="./">← all tools</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="badge">RUNS ON YOUR DEVICE — NO UPLOAD</span>
+      <h1>MP4 → MP3</h1>
+      <p class="sub">Rip the soundtrack out of any video file. Works with MP4, MOV, MKV, WebM, AVI — anything your browser can hold.</p>
+    </div>
+
+    <section class="tool">
+      <div id="dropzone" class="dropzone">
+        <div class="big">🎧</div>
+        <p><b>Drop a video here</b> or click to browse</p>
+      </div>
+      <input type="file" id="fileInput" hidden />
+
+      <div class="opts">
+        <label>Quality
+          <select id="qSel">
+            <option value="320k">320kbps — archive</option>
+            <option value="192k" selected>192kbps — music, everyday</option>
+            <option value="128k">128kbps — voice, podcasts</option>
+          </select>
+        </label>
+        <button class="run" id="runBtn" disabled>Convert</button>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="bar" id="progressBar"><div></div></div>
+        <div class="status-line" id="status"></div>
+      </div>
+
+      <div id="result" class="result">
+        <a class="dl" download>Download result</a>
+        <span class="meta"></span>
+      </div>
+    </section>
+
+    <section class="prose">
+      <h2>No upload = no waiting</h2>
+      <p>Cloud converters make you send the whole video up just to keep its audio. We skip that: the extraction happens on your device at disk speed. A two-hour movie finishes in a minute or two — try finding a free online tool that even accepts the upload.</p>
+    </section>
+  </main>
+
+  <footer class="site">
+    <span>🐗 Hog Convert · part of <a href="https://wildlogic.co.za">WildLogic</a></span>
+    <nav><a href="wav-to-flac.html">WAV→FLAC for distribution</a> <a href="compress-video.html">Compress video</a></nav>
+    <span>© <span class="year"></span> WildLogic</span>
+  </footer>
+</div>
+<script src="hog.js" defer></script>
+<script defer>
+window.addEventListener('DOMContentLoaded', function () {
+  Hog.stampYear();
+  var file = null;
+  var lastFF = null;
+
+  document.getElementById('runBtn').addEventListener('click', function () {
+    var btn = this;
+    if (!file) return;
+    var q = document.getElementById('qSel').value;
+    btn.disabled = true;
+    Hog.showProgress(true);
+    Hog.setProgress(0.03);
+    var ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '');
+    var inName = 'in.' + ext;
+
+    Hog.status('Loading engine (~30 MB, cached after first run)…');
+    Hog.getFFmpeg()
+      .then(function (ff) {
+        lastFF = ff;
+        Hog.status('Reading ' + file.name + '…');
+        return Hog.readAsUint8(file).then(function (d) { return ff.writeFile(inName, d); }).then(function () { return ff; });
+      })
+      .then(function (ff) {
+        Hog.status('Extracting audio…');
+        return ff.exec(['-i', inName, '-vn', '-c:a', 'libmp3lame', '-b:a', q, 'out.mp3']).then(function (rc) {
+          if (rc !== 0) throw new Error('No audio track found in that file.');
+          return ff.readFile('out.mp3');
+        });
+      })
+      .then(function (out) {
+        var u8 = out instanceof Uint8Array ? out : new Uint8Array(out);
+        var blob = new Blob([u8.buffer], { type: 'audio/mpeg' });
+        var base = file.name.replace(/\.[^.]+$/, '');
+        Hog.showResult(blob, base + '.mp3', Hog.fmtBytes(blob.size) + ' · ' + q + ' MP3 · extracted locally');
+        Hog.setProgress(1);
+        Hog.status('Done.', 'ok');
+        btn.disabled = false;
+        if (lastFF) { lastFF.deleteFile(inName); lastFF.deleteFile('out.mp3'); }
+      })
+      .catch(function (e) {
+        Hog.status(e.message || String(e), 'err');
+        btn.disabled = false;
+      });
+  });
+
+  Hog.dropzone(function (files) { file = files[0]; }, { accept: 'video/*,.mkv,.mov,.avi,.webm,.ts,.m4v' });
+});
+</script>
+</body>
+</html>

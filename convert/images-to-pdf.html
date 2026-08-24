@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>JPG / PNG Images to PDF Online Free | Hog Convert</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Combine JPG and PNG images into a single PDF free — scans, receipts, notes. No upload, no signup, no page limits. Runs entirely in your browser." />
+  <link rel="canonical" href="https://wildlogic.co.za/convert/images-to-pdf.html" />
+  <meta property="og:title" content="Images → PDF — No Upload" />
+  <meta property="og:description" content="Turn photos into one tidy PDF right in your browser." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wildlogic.co.za/convert/images-to-pdf.html" />
+  <meta property="og:image" content="https://wildlogic.co.za/images/wildlogic_logo_white.png" />
+  <link rel="stylesheet" href="hog.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"Hog Convert Images to PDF","url":"https://wildlogic.co.za/convert/images-to-pdf.html","applicationCategory":"UtilitiesApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"ZAR"}}
+  </script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="./"><span class="snout">🐗</span> Hog Convert</a>
+    <a class="backlink" href="./">← all tools</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="badge">RUNS ON YOUR DEVICE — NO UPLOAD</span>
+      <h1>Images → PDF</h1>
+      <p class="sub">Photos of receipts, signed forms, whiteboards — dropped in the order you pick them out comes one clean PDF. Perfect for email attachments that demand "one file only".</p>
+    </div>
+
+    <section class="tool">
+      <div id="dropzone" class="dropzone">
+        <div class="big">📷</div>
+        <p><b>Drop images here</b> or click to browse<br>JPG, PNG, WebP — pick as many as you like (order = pick order)</p>
+      </div>
+      <input type="file" id="fileInput" hidden multiple accept="image/*" />
+      <ul id="filelist" class="filelist"></ul>
+
+      <div class="opts">
+        <label>Page fit
+          <select id="fitSel">
+            <option value="image" selected>Page exactly per image</option>
+            <option value="a4">Fit onto A4 pages</option>
+          </select>
+        </label>
+        <button class="run" id="runBtn" disabled>Create PDF</button>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="bar" id="progressBar"><div></div></div>
+        <div class="status-line" id="status"></div>
+      </div>
+
+      <div id="result" class="result">
+        <a class="dl" download>Download result</a>
+        <span class="meta"></span>
+      </div>
+    </section>
+
+    <section class="prose">
+      <h2>Fair warning, honestly given</h2>
+      <p>A phone photo is a much bigger file than a text page — twenty photos make a chunky PDF. If it's for emailing, run the pictures through the <a href="compress-image.html">compress tool</a> first. Everything here happens locally: your documents never meet a server.</p>
+    </section>
+  </main>
+
+  <footer class="site">
+    <span>🐗 Hog Convert · part of <a href="https://wildlogic.co.za">WildLogic</a></span>
+    <nav><a href="merge-pdf.html">Merge PDF</a> <a href="split-pdf.html">Split PDF</a></nav>
+    <span>© <span class="year"></span> WildLogic</span>
+  </footer>
+</div>
+<script src="hog.js" defer></script>
+<script defer>
+window.addEventListener('DOMContentLoaded', function () {
+  Hog.stampYear();
+  var files = [];
+
+  function toCanvasPng(file) {
+    return new Promise(function (res, rej) {
+      var img = new Image();
+      img.onload = function () {
+        var c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        c.getContext('2d').drawImage(img, 0, 0);
+        c.toBlob(function (b) { b ? res(b) : rej(new Error('Canvas export failed')); }, 'image/png');
+      };
+      img.onerror = function () { rej(new Error('Not readable as an image')); };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  document.getElementById('runBtn').addEventListener('click', function () {
+    var btn = this;
+    if (!files.length) return;
+    var fit = document.getElementById('fitSel').value;
+    btn.disabled = true;
+    Hog.showProgress(true);
+    Hog.setProgress(0.05);
+
+    Hog.loadScript('https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js').then(function () {
+      var doc = PDFLib.PDFDocument.create();
+      var chain = Promise.resolve();
+      files.forEach(function (f, i) {
+        chain = chain.then(function () {
+          Hog.status('Adding ' + f.name + '…');
+          Hog.setProgress((i + 1) / (files.length + 1));
+          var embedPromise;
+          if (/\.jpe?g$/i.test(f.name)) {
+            embedPromise = f.arrayBuffer().then(function (b) { return doc.embedJpg(b); });
+          } else if (/\.png$/i.test(f.name)) {
+            embedPromise = f.arrayBuffer().then(function (b) { return doc.embedPng(b); });
+          } else {
+            // webp & friends: repaint through canvas to PNG bytes first
+            embedPromise = toCanvasPng(f).then(function (blob) { return blob.arrayBuffer(); }).then(function (b) { return doc.embedPng(b); });
+          }
+          return embedPromise.then(function (img) {
+            if (fit === 'a4') {
+              var A4 = [595.28, 841.89];
+              var page = doc.addPage(A4);
+              var s = Math.min(A4[0] / img.width, A4[1] / img.height);
+              var w = img.width * s, h = img.height * s;
+              page.drawImage(img, { x: (A4[0] - w) / 2, y: (A4[1] - h) / 2, width: w, height: h });
+            } else {
+              var page2 = doc.addPage([img.width, img.height]);
+              page2.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+            }
+          });
+        });
+      });
+      return chain.then(function () {
+        Hog.status('Writing PDF…');
+        return doc.save();
+      });
+    }).then(function (bytes) {
+      var blob = new Blob([bytes], { type: 'application/pdf' });
+      Hog.showResult(blob, 'hog_images.pdf',
+        files.length + ' images · ' + Hog.fmtBytes(bytes.byteLength) + ' · built locally');
+      Hog.setProgress(1);
+      Hog.status('Done.', 'ok');
+      btn.disabled = false;
+    }).catch(function (e) {
+      Hog.status('Failed: ' + (e.message || e), 'err');
+      btn.disabled = false;
+    });
+  });
+
+  Hog.dropzone(function (picked) {
+    picked.forEach(function (f) { if (/^image\//.test(f.type) || /\.(jpe?g|png|webp)$/i.test(f.name)) files.push(f); });
+    renderList();
+  });
+
+  function renderList() {
+    var list = document.getElementById('filelist');
+    list.innerHTML = '';
+    files.forEach(function (f, idx) {
+      var li = document.createElement('li');
+      li.innerHTML = '<b></b><span>' + (idx + 1) + '. position · ' + Hog.fmtBytes(f.size) + '</span>';
+      li.querySelector('b').textContent = f.name;
+      list.appendChild(li);
+    });
+    document.getElementById('runBtn').disabled = !files.length;
+  }
+});
+</script>
+</body>
+</html>

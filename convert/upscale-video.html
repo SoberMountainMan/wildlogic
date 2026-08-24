@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Free Video Upscaler — Enlarge &amp; Sharpen Clips Online | Hog Convert</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Upscale video 2x or 4x to HD / 4K with Lanczos scaling and edge sharpening. Free, unlimited, no upload — the conversion runs entirely in your browser." />
+  <link rel="canonical" href="https://wildlogic.co.za/convert/upscale-video.html" />
+  <meta property="og:title" content="Free Video Upscaler — No Upload" />
+  <meta property="og:description" content="Enlarge clips 2x/4x with Lanczos + sharpening. Browser-only, free, unlimited size." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wildlogic.co.za/convert/upscale-video.html" />
+  <meta property="og:image" content="https://wildlogic.co.za/images/wildlogic_logo_white.png" />
+  <link rel="stylesheet" href="hog.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"Hog Convert Video Upscaler","url":"https://wildlogic.co.za/convert/upscale-video.html","applicationCategory":"MultimediaApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"ZAR"}}
+  </script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="./"><span class="snout">🐗</span> Hog Convert</a>
+    <a class="backlink" href="./">← all tools</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="badge">RUNS ON YOUR DEVICE — NO UPLOAD</span>
+      <h1>Video Upscaler</h1>
+      <p class="sub">Enlarge a clip 2× or 4× using Lanczos resampling with edge-aware sharpening, re-encoded to clean H.264 MP4. Audio passes through untouched.</p>
+    </div>
+
+    <section class="tool">
+      <div id="dropzone" class="dropzone">
+        <div class="big">🎬</div>
+        <p><b>Drop a video here</b> or click to browse<br>MP4, MOV, MKV, AVI, WebM</p>
+      </div>
+      <input type="file" id="fileInput" hidden />
+
+      <div class="opts">
+        <label>Scale
+          <select id="scaleSel">
+            <option value="2" selected>2× (480p→960p, 1080p→4K)</option>
+            <option value="4">4× (small clips only — slow)</option>
+          </select>
+        </label>
+        <label>Sharpen
+          <select id="sharpSel">
+            <option value="0.5">Gentle</option>
+            <option value="0.9" selected>Standard</option>
+            <option value="1.4">Punchy</option>
+          </select>
+        </label>
+        <button class="run" id="runBtn" disabled>Upscale</button>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="bar" id="progressBar"><div></div></div>
+        <div class="status-line" id="status"></div>
+      </div>
+
+      <div id="result" class="result">
+        <a class="dl" download>Download result</a>
+        <span class="meta"></span>
+      </div>
+    </section>
+
+    <section class="prose">
+      <h2>Straight talk on speed</h2>
+      <p>This runs on your CPU inside the browser tab, so it's roughly real-time: a 1-minute SD clip takes a few minutes to upscale. Best suited to clips under ~10 minutes. Upscaling happens frame-by-frame with Lanczos (the same family of algorithm pro editors use) plus an unsharp pass to restore perceived detail — then everything is packed into a universally playable MP4.</p>
+      <p>No frames are uploaded anywhere. Close the tab mid-job and nothing lingers on any server — because there isn't one.</p>
+    </section>
+  </main>
+
+  <footer class="site">
+    <span>🐗 Hog Convert · part of <a href="https://wildlogic.co.za">WildLogic</a></span>
+    <nav><a href="compress-video.html">Compress video</a> <a href="upscale-image.html">Image upscaler</a></nav>
+    <span>© <span class="year"></span> WildLogic</span>
+  </footer>
+</div>
+<script src="hog.js" defer></script>
+<script defer>
+window.addEventListener('DOMContentLoaded', function () {
+  Hog.stampYear();
+  var file = null;
+
+  document.getElementById('runBtn').addEventListener('click', function () {
+    var btn = this;
+    if (!file) return;
+    var S = parseInt(document.getElementById('scaleSel').value, 10);
+    var A = parseFloat(document.getElementById('sharpSel').value);
+    var inName = 'in.' + (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '');
+    var lastFF = null;
+    btn.disabled = true;
+    Hog.showProgress(true);
+    Hog.setProgress(0.03);
+
+    Hog.status('Loading engine (~30 MB, cached after first run)…');
+    Hog.getFFmpeg()
+      .then(function (ff) {
+        lastFF = ff;
+        Hog.status('Reading ' + file.name + '…');
+        return Hog.readAsUint8(file).then(function (d) { return ff.writeFile(inName, d); }).then(function () { return ff; });
+      })
+      .then(function (ff) {
+        Hog.status('Upscaling — this takes about real-time length. Keep the tab visible.');
+        function vf() { return 'scale=iw*' + S + ':ih*' + S + ':flags=lanczos+accurate_rnd,unsharp=5:5:' + A + ':5:5:0'; }
+        var ffc = null;
+        return ff.exec(['-i', inName, '-vf', vf(), '-c:v', 'libx264', '-crf', '17', '-preset', 'veryfast', '-c:a', 'copy', '-movflags', '+faststart', 'out.mp4'])
+          .then(function (rc) {
+            if (rc === 0) return ff.readFile('out.mp4');
+            Hog.status('Audio passthrough failed — re-encoding audio too…');
+            return ff.exec(['-i', inName, '-vf', vf(), '-c:v', 'libx264', '-crf', '17', '-preset', 'veryfast', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', 'out.mp4'])
+              .then(function (rc2) {
+                if (rc2 !== 0) throw new Error('Conversion failed — unsupported source format?');
+                return ff.readFile('out.mp4');
+              });
+          });
+      })
+      .then(function (out) {
+        var u8 = out instanceof Uint8Array ? out : new Uint8Array(out);
+        var blob = new Blob([u8.buffer], { type: 'video/mp4' });
+        var base = file.name.replace(/\.[^.]+$/, '');
+        Hog.showResult(blob, base + '_hog' + S + 'x.mp4',
+          Hog.fmtBytes(blob.size) + ' · ' + S + '× upscaled · sharpened · processed on your device');
+        Hog.setProgress(1);
+        Hog.status('Done.', 'ok');
+        btn.disabled = false;
+        if (lastFF) { lastFF.deleteFile(inName); lastFF.deleteFile('out.mp4'); }
+      })
+      .catch(function (e) {
+        Hog.status(e.message || String(e), 'err');
+        btn.disabled = false;
+      });
+  });
+
+  Hog.dropzone(function (files) { file = files[0]; }, { accept: 'video/*,.mkv,.mov,.avi,.webm,.ts,.m4v' });
+});
+</script>
+</body>
+</html>

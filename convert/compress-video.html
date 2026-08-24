@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Compress Video Online Free — No File Size Limit | Hog Convert</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Shrink large MP4, MOV, MKV and AVI videos free with no upload and no file-size cap. WhatsApp-friendly presets. Runs entirely in your browser." />
+  <link rel="canonical" href="https://wildlogic.co.za/convert/compress-video.html" />
+  <meta property="og:title" content="Free Video Compressor — No Upload, No Size Limit" />
+  <meta property="og:description" content="Compress video in your browser. Unlimited size, no watermark, no signup." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wildlogic.co.za/convert/compress-video.html" />
+  <meta property="og:image" content="https://wildlogic.co.za/images/wildlogic_logo_white.png" />
+  <link rel="stylesheet" href="hog.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"Hog Convert Video Compressor","url":"https://wildlogic.co.za/convert/compress-video.html","applicationCategory":"MultimediaApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"ZAR"}}
+  </script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="./"><span class="snout">🐗</span> Hog Convert</a>
+    <a class="backlink" href="./">← all tools</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="badge">RUNS ON YOUR DEVICE — NO UPLOAD</span>
+      <h1>Compress Video</h1>
+      <p class="sub">Re-encode to right-sized H.264 MP4. No cap, no watermark, no queue — your connection uploads nothing.</p>
+    </div>
+
+    <section class="tool">
+      <div id="dropzone" class="dropzone">
+        <div class="big">📦</div>
+        <p><b>Drop a video here</b> or click to browse<br>MP4, MOV, MKV, AVI, WebM</p>
+      </div>
+      <input type="file" id="fileInput" hidden />
+
+      <div class="opts">
+        <label>Preset
+          <select id="presetSel">
+            <option value="light">Light touch — near-original quality (CRF 26)</option>
+            <option value="balanced" selected>Balanced — half the size, looks fine (CRF 30)</option>
+            <option value="whatsapp">WhatsApp — small &amp; shareable (CRF 34, ≤720p)</option>
+          </select>
+        </label>
+        <button class="run" id="runBtn" disabled>Compress</button>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="bar" id="progressBar"><div></div></div>
+        <div class="status-line" id="status"></div>
+      </div>
+
+      <div id="result" class="result">
+        <a class="dl" download>Download result</a>
+        <span class="meta"></span>
+      </div>
+    </section>
+
+    <section class="prose">
+      <h2>Which preset?</h2>
+      <p><b>Light touch</b> keeps archive-grade quality while trimming fat from phone footage. <b>Balanced</b> is the everyday choice — typically halves the size with little visible change. <b>WhatsApp</b> caps resolution at 720p and pushes compression hard so clips fly through messaging apps.</p>
+      <p>Speed is roughly real-time on a laptop: a 5-minute clip takes about 5 minutes. Everything happens locally — the file you drop never leaves the machine.</p>
+    </section>
+  </main>
+
+  <footer class="site">
+    <span>🐗 Hog Convert · part of <a href="https://wildlogic.co.za">WildLogic</a></span>
+    <nav><a href="upscale-video.html">Upscale video</a> <a href="mp4-to-mp3.html">MP4→MP3</a></nav>
+    <span>© <span class="year"></span> WildLogic</span>
+  </footer>
+</div>
+<script src="hog.js" defer></script>
+<script defer>
+window.addEventListener('DOMContentLoaded', function () {
+  Hog.stampYear();
+  var file = null;
+  var PRESETS = {
+    light:    { args: ['-crf', '26'], extra: [] },
+    balanced: { args: ['-crf', '30'], extra: [] },
+    whatsapp: { args: ['-crf', '34'], extra: ['-vf', 'scale=-2:min(ih\\,720)'] }
+  };
+
+  document.getElementById('runBtn').addEventListener('click', function () {
+    var btn = this;
+    if (!file) return;
+    var p = PRESETS[document.getElementById('presetSel').value];
+    btn.disabled = true;
+    Hog.showProgress(true);
+    Hog.setProgress(0.03);
+    var ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '');
+    var inName = 'in.' + ext;
+
+    Hog.getFFmpeg()
+      .then(function (ff) {
+        Hog.status('Reading ' + file.name + '…');
+        return Hog.readAsUint8(file).then(function (d) { return ff.writeFile(inName, d); }).then(function () { return ff; });
+      })
+      .then(function (ff) {
+        Hog.status('Compressing… keep this tab visible.');
+        var args = ['-i', inName].concat(p.extra, ['-c:v', 'libx264'], p.args, ['-preset', 'veryfast', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 'out.mp4']);
+        return ff.exec(args).then(function (rc) {
+          if (rc !== 0) throw new Error('Compression failed — unsupported source format?');
+          return ff.readFile('out.mp4');
+        });
+      })
+      .then(function (out) {
+        var u8 = out instanceof Uint8Array ? out : new Uint8Array(out);
+        var blob = new Blob([u8.buffer], { type: 'video/mp4' });
+        var saved = file.size > 0 ? Math.round((1 - blob.size / file.size) * 100) : 0;
+        var base = file.name.replace(/\.[^.]+$/, '');
+        Hog.showResult(blob, base + '_small.mp4',
+          Hog.fmtBytes(blob.size) + ' · ' + saved + '% smaller than your ' + Hog.fmtBytes(file.size));
+        Hog.setProgress(1);
+        Hog.status('Done.', 'ok');
+        btn.disabled = false;
+      })
+      .catch(function (e) {
+        Hog.status(e.message || String(e), 'err');
+        btn.disabled = false;
+      });
+  });
+
+  Hog.dropzone(function (files) { file = files[0]; }, { accept: 'video/*,.mkv,.mov,.avi,.webm,.ts,.m4v' });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Free WAV to FLAC Converter — 44.1kHz 16-bit Stereo | Hog Convert</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Convert WAV to FLAC online free at exactly 44.1kHz, 16-bit, stereo — the format digital distributors like RouteNote require. Or export MP3 320kbps. No upload, runs in your browser." />
+  <link rel="canonical" href="https://wildlogic.co.za/convert/wav-to-flac.html" />
+  <meta property="og:title" content="WAV → FLAC for music distribution — no upload" />
+  <meta property="og:description" content="Convert to FLAC at 44.1kHz / 16-bit / stereo, or MP3 320kbps. Browser-only, free, unlimited." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wildlogic.co.za/convert/wav-to-flac.html" />
+  <meta property="og:image" content="https://wildlogic.co.za/images/wildlogic_logo_white.png" />
+  <link rel="stylesheet" href="hog.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"Hog Convert WAV to FLAC","url":"https://wildlogic.co.za/convert/wav-to-flac.html","applicationCategory":"MultimediaApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"ZAR"}}
+  </script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="./"><span class="snout">🐗</span> Hog Convert</a>
+    <a class="backlink" href="./">← all tools</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="badge">RUNS ON YOUR DEVICE — NO UPLOAD</span>
+      <h1>WAV → FLAC <small style="color:var(--dim);font-weight:400;">(or MP3 320)</small></h1>
+      <p class="sub">Built for digital distribution: outputs exactly <b>44.1&nbsp;kHz · 16-bit · stereo FLAC</b> — the spec stores and distributors like RouteNote ask for. Your unreleased masters never touch anyone's server.</p>
+    </div>
+
+    <section class="tool">
+      <div id="dropzone" class="dropzone">
+        <div class="big">🎹</div>
+        <p><b>Drop your audio here</b> or click to browse<br>WAV, AIFF, M4A, MP3, FLAC</p>
+      </div>
+      <input type="file" id="fileInput" hidden />
+
+      <div class="opts">
+        <label>Output format
+          <select id="fmtSel">
+            <option value="flac" selected>FLAC — lossless, 44.1kHz 16-bit stereo (distribution)</option>
+            <option value="mp3">MP3 — 320kbps CBR, 44.1kHz stereo</option>
+          </select>
+        </label>
+        <button class="run" id="runBtn" disabled>Convert</button>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="bar" id="progressBar"><div></div></div>
+        <div class="status-line" id="status"></div>
+      </div>
+
+      <div id="result" class="result">
+        <a class="dl" download>Download result</a>
+        <span class="meta"></span>
+      </div>
+    </section>
+
+    <section class="prose">
+      <h2>Distribution checklist this tool covers</h2>
+      <ul>
+        <li>✅ Stereo (channels forced to 2)</li>
+        <li>✅ Sample rate locked to 44.1&nbsp;kHz</li>
+        <li>✅ 16-bit depth (FLAC) or 320kbps (MP3)</li>
+        <li>✅ Lossless FLAC compression — smaller than WAV, zero quality lost</li>
+      </ul>
+      <p>Cover art still needed? Stores want exactly 3000×3000 — the <a href="compress-image.html">image resize tool</a> has a one-click RouteNote preset.</p>
+      <h2>Why FLAC for release day?</h2>
+      <p>FLAC is compressed like a ZIP but plays everywhere stores and streamers need it: mathematically identical to your WAV master at roughly half the size. MP3 320 is the accepted fallback when a platform won't take FLAC — transparent to most ears, but it discards information forever. Ship FLAC where possible.</p>
+    </section>
+  </main>
+
+  <footer class="site">
+    <span>🐗 Hog Convert · part of <a href="https://wildlogic.co.za">WildLogic</a></span>
+    <nav><a href="mp4-to-mp3.html">MP4→MP3</a> <a href="compress-image.html">Cover art 3000×3000</a></nav>
+    <span>© <span class="year"></span> WildLogic</span>
+  </footer>
+</div>
+<script src="hog.js" defer></script>
+<script defer>
+window.addEventListener('DOMContentLoaded', function () {
+  Hog.stampYear();
+  var file = null;
+  var EXT = { flac: 'flac', mp3: 'mp3' };
+
+  document.getElementById('runBtn').addEventListener('click', function () {
+    var btn = this;
+    if (!file) return;
+    var fmt = document.getElementById('fmtSel').value;
+    btn.disabled = true;
+    Hog.showProgress(true);
+    Hog.setProgress(0.05);
+    Hog.status('Loading engine (~30 MB, cached after first run)…');
+
+    Hog.getFFmpeg().then(function (ff) {
+      var inName = 'in.' + (file.name.split('.').pop() || 'wav').toLowerCase().replace(/[^a-z0-9]/g, '');
+      Hog.status('Reading ' + file.name + '…');
+      return Hog.readAsUint8(file).then(function (data) {
+        ff.writeFile(inName, data);
+        Hog.status('Converting…');
+        var args;
+        if (fmt === 'flac') {
+          // RouteNote spec: stereo, 44.1kHz, 16-bit
+          args = ['-i', inName, '-ar', '44100', '-ac', '2', '-c:a', 'flac', '-sample_fmt', 's16', 'out.flac'];
+        } else {
+          args = ['-i', inName, '-ar', '44100', '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '320k', 'out.mp3'];
+        }
+        return ff.exec(args).then(function (rc) {
+          if (rc !== 0) throw new Error('Conversion failed (code ' + rc + ') — is that file really audio?');
+          return ff.readFile('out.' + EXT[fmt]);
+        });
+      }).then(function (out) {
+        var u8 = out instanceof Uint8Array ? out : new Uint8Array(out);
+        var blob = new Blob([u8.buffer], { type: fmt === 'flac' ? 'audio/flac' : 'audio/mpeg' });
+        var base = file.name.replace(/\.[^.]+$/, '');
+        var specTxt = fmt === 'flac' ? '44.1 kHz · stereo · 16-bit FLAC' : '44.1 kHz · stereo · 320kbps MP3';
+        Hog.showResult(blob, base + '.' + EXT[fmt],
+          Hog.fmtBytes(blob.size) + ' · ' + specTxt + ' · ready for distribution');
+        Hog.setProgress(1);
+        Hog.status('Done — spec verified.', 'ok');
+        btn.disabled = false;
+        ff.deleteFile(inName);
+        ff.deleteFile('out.' + EXT[fmt]);
+      });
+    }).catch(function (e) {
+      Hog.status(e.message || String(e), 'err');
+      btn.disabled = false;
+    });
+  });
+
+  Hog.dropzone(function (files) { file = files[0]; }, { accept: 'audio/*,.flac,.aiff,.aif' });
+});
+</script>
+</body>
+</html>

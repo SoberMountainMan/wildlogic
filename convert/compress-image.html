@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Compress &amp; Resize Images Online Free — JPG PNG WebP | Hog Convert</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Compress and resize JPG, PNG and WebP images free — hit email and form limits, or export perfect 3000×3000 cover art for music distribution. No upload; runs in your browser." />
+  <link rel="canonical" href="https://wildlogic.co.za/convert/compress-image.html" />
+  <meta property="og:title" content="Compress / Resize Image — No Upload" />
+  <meta property="og:description" content="Shrink images for email and forms, or export 3000×3000 store cover art. Free, private, browser-only." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wildlogic.co.za/convert/compress-image.html" />
+  <meta property="og:image" content="https://wildlogic.co.za/images/wildlogic_logo_white.png" />
+  <link rel="stylesheet" href="hog.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"Hog Convert Image Compressor","url":"https://wildlogic.co.za/convert/compress-image.html","applicationCategory":"UtilitiesApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"ZAR"}}
+  </script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="./"><span class="snout">🐗</span> Hog Convert</a>
+    <a class="backlink" href="./">← all tools</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="badge">RUNS ON YOUR DEVICE — NO UPLOAD</span>
+      <h1>Compress / Resize Image</h1>
+      <p class="sub">Shrink photos for email and upload forms — or export exact 3000×3000 cover art that music distributors accept.</p>
+    </div>
+
+    <section class="tool">
+      <div id="dropzone" class="dropzone">
+        <div class="big">🗜️</div>
+        <p><b>Drop an image here</b> or click to browse<br>JPG, PNG, WebP</p>
+      </div>
+      <input type="file" id="fileInput" hidden />
+
+      <div class="opts">
+        <label>Preset
+          <select id="presetSel">
+            <option value="custom" selected>Custom</option>
+            <option value="routenote">🎵 Cover art 3000×3000 (RouteNote-ready)</option>
+            <option value="email">Email — max 1000px, small file</option>
+            <option value="hd">HD — max 1920px</option>
+          </select>
+        </label>
+        <label>Max side
+          <select id="sizeSel">
+            <option value="0">Original</option>
+            <option value="3000">3000 px</option>
+            <option value="1920">1920 px</option>
+            <option value="1280">1280 px</option>
+            <option value="800">800 px</option>
+          </select>
+        </label>
+        <label>Quality <span id="qVal" style="color:var(--text);">85%</span>
+          <input type="range" id="qRange" min="40" max="95" value="85" style="width:140px;" />
+        </label>
+        <button class="run" id="runBtn" disabled>Process</button>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="bar" id="progressBar"><div></div></div>
+        <div class="status-line" id="status"></div>
+      </div>
+
+      <div id="result" class="result">
+        <a class="dl" download>Download result</a>
+        <span class="meta"></span>
+      </div>
+      <img id="preview" alt="" style="display:none;max-width:100%;margin-top:16px;border-radius:12px;" />
+    </section>
+
+    <section class="prose">
+      <h2>The 3000×3000 preset explained</h2>
+      <p>Digital distributors (RouteNote, DistroKid and friends) reject cover art that isn't exactly square at 3000×3000. This preset center-crops to square, scales to exactly 3000×3000, and exports high-quality JPG — the two boxes on their checklist ticked in one click. Pair it with <a href="wav-to-flac.html">WAV→FLAC</a> and your release is submission-ready.</p>
+      <p>Square-cropping cuts the sides of non-square images — check the preview before shipping.</p>
+    </section>
+  </main>
+
+  <footer class="site">
+    <span>🐗 Hog Convert · part of <a href="https://wildlogic.co.za">WildLogic</a></span>
+    <nav><a href="upscale-image.html">Upscale image</a> <a href="wav-to-flac.html">WAV→FLAC</a></nav>
+    <span>© <span class="year"></span> WildLogic</span>
+  </footer>
+</div>
+<script src="hog.js" defer></script>
+<script defer>
+window.addEventListener('DOMContentLoaded', function () {
+  Hog.stampYear();
+  var file = null;
+
+  var presetSel = document.getElementById('presetSel');
+  var sizeSel = document.getElementById('sizeSel');
+  var qRange = document.getElementById('qRange');
+  var qVal = document.getElementById('qVal');
+
+  presetSel.addEventListener('change', function () {
+    var v = this.value;
+    if (v === 'routenote') { sizeSel.value = '3000'; qRange.value = 92; }
+    else if (v === 'email') { sizeSel.value = '800'; qRange.value = 70; }
+    else if (v === 'hd') { sizeSel.value = '1920'; qRange.value = 85; }
+    qVal.textContent = qRange.value + '%';
+  });
+  [sizeSel, qRange].forEach(function (el) {
+    el.addEventListener('change', function () { presetSel.value = 'custom'; });
+  });
+  qRange.addEventListener('input', function () { qVal.textContent = this.value + '%'; });
+
+  document.getElementById('runBtn').addEventListener('click', function () {
+    var btn = this;
+    if (!file) return;
+    btn.disabled = true;
+    Hog.showProgress(true);
+    Hog.status('Reading image…');
+    Hog.setProgress(0.2);
+
+    var img = new Image();
+    img.onload = function () { setTimeout(process, 30); };
+    img.onerror = function () { Hog.status('Could not read that file as an image.', 'err'); btn.disabled = false; };
+    img.src = URL.createObjectURL(file);
+
+    function process() {
+      var maxSide = parseInt(sizeSel.value, 10);
+      var q = parseInt(qRange.value, 10) / 100;
+      var routenote = presetSel.value === 'routenote';
+      var iw = img.naturalWidth, ih = img.naturalHeight;
+      var W, H, sx = 0, sy = 0, sw = iw, sh = ih;
+
+      if (routenote) {
+        W = H = 3000;
+        sw = sh = Math.min(iw, ih);
+        sx = (iw - sw) / 2; sy = (ih - sh) / 2;
+      } else if (maxSide > 0 && Math.max(iw, ih) > maxSide) {
+        var s = maxSide / Math.max(iw, ih);
+        W = Math.round(iw * s); H = Math.round(ih * s);
+      } else {
+        W = iw; H = ih;
+      }
+
+      var c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      var ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+
+      Hog.setProgress(0.7);
+      Hog.status('Exporting…');
+      setTimeout(function () {
+        c.toBlob(function (blob) {
+          if (!blob) { Hog.status('Export failed.', 'err'); btn.disabled = false; return; }
+          var saved = file.size > 0 ? Math.round((1 - blob.size / file.size) * 100) : 0;
+          var base = file.name.replace(/\.[^.]+$/, '');
+          var suffix = routenote ? '_cover3000.jpg' : '_hog.jpg';
+          var msg = Hog.fmtBytes(blob.size) + ' · ' + W + '×' + H +
+            (saved > 0 ? ' · ' + saved + '% smaller than your ' + Hog.fmtBytes(file.size) : '') +
+            (routenote ? ' · RouteNote-ready' : '');
+          Hog.showResult(blob, base + suffix, msg + ' · processed on your device');
+          Hog.setProgress(1);
+          Hog.status(routenote ? 'Done — exactly 3000×3000.' : 'Done.', 'ok');
+          var pv = document.getElementById('preview');
+          pv.src = c.toDataURL();
+          pv.style.display = 'block';
+          btn.disabled = false;
+        }, 'image/jpeg', q);
+      }, 30);
+    }
+  });
+
+  Hog.dropzone(function (files) { file = files[0]; }, { accept: 'image/*' });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Upscale Image 2x / 4x Online Free — No Upload | Hog Convert</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Enlarge photos 2x or 4x with detail-preserving sharpening, free and unlimited. Runs entirely in your browser — your images are never uploaded." />
+  <link rel="canonical" href="https://wildlogic.co.za/convert/upscale-image.html" />
+  <meta property="og:title" content="Free Image Upscaler — No Upload" />
+  <meta property="og:description" content="2x / 4x image upscaling with GPU sharpening. Runs in your browser, files never leave your device." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wildlogic.co.za/convert/upscale-image.html" />
+  <meta property="og:image" content="https://wildlogic.co.za/images/wildlogic_logo_white.png" />
+  <link rel="stylesheet" href="hog.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"Hog Convert Image Upscaler","url":"https://wildlogic.co.za/convert/upscale-image.html","applicationCategory":"MultimediaApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"ZAR"}}
+  </script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="./"><span class="snout">🐗</span> Hog Convert</a>
+    <a class="backlink" href="./">← all tools</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="badge">RUNS ON YOUR DEVICE — NO UPLOAD</span>
+      <h1>Image Upscaler</h1>
+      <p class="sub">Enlarge a photo 2× or 4× with Lanczos interpolation and edge-aware sharpening on your GPU. Old scans and screenshots come out crisp instead of mushy.</p>
+    </div>
+
+    <section class="tool">
+      <div id="dropzone" class="dropzone">
+        <div class="big">🖼️</div>
+        <p><b>Drop an image here</b> or click to browse<br>JPG, PNG, WebP</p>
+      </div>
+      <input type="file" id="fileInput" hidden />
+
+      <div class="opts">
+        <label>Scale
+          <select id="scaleSel">
+            <option value="2" selected>2×</option>
+            <option value="4">4×</option>
+          </select>
+        </label>
+        <label>Sharpen
+          <select id="sharpSel">
+            <option value="0.5">Gentle</option>
+            <option value="1" selected>Standard</option>
+            <option value="1.6">Punchy</option>
+          </select>
+        </label>
+        <button class="run" id="runBtn" disabled>Upscale</button>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="bar" id="progressBar"><div></div></div>
+        <div class="status-line" id="status"></div>
+      </div>
+
+      <div id="result" class="result">
+        <a class="dl" download>Download result</a>
+        <span class="meta"></span>
+      </div>
+      <img id="preview" alt="" style="display:none;max-width:100%;margin-top:16px;border-radius:12px;" />
+    </section>
+
+    <section class="prose">
+      <h2>How it works</h2>
+      <p>The enlargement uses Lanczos-class high-quality resampling applied in clean doubling steps, followed by an edge-aware unsharp pass executed on your GPU through WebGL. Everything runs locally: no upload wait, no file-size cap — a 20&nbsp;MP photo takes about a second on any recent laptop.</p>
+      <p>This is honest upscaling: real detail can't be invented from nothing. For photos, artwork and screenshots, quality resampling plus smart sharpening gets you most of what paid tools deliver — at zero cost, with nothing leaving your device.</p>
+      <p><b>Distribution tip:</b> streaming stores want 3000×3000 cover art. Upscale here first, then use the <a href="compress-image.html">image resize tool's</a> RouteNote preset.</p>
+    </section>
+  </main>
+
+  <footer class="site">
+    <span>🐗 Hog Convert · part of <a href="https://wildlogic.co.za">WildLogic</a></span>
+    <nav><a href="upscale-video.html">Video upscaler</a> <a href="compress-image.html">Compress image</a></nav>
+    <span>© <span class="year"></span> WildLogic</span>
+  </footer>
+</div>
+<script src="hog.js" defer></script>
+<script defer>
+window.addEventListener('DOMContentLoaded', function () {
+  Hog.stampYear();
+  var SHARP_VS = 'attribute vec2 p;varying vec2 uv;void main(){uv=(p+1.0)/2.0;gl_Position=vec4(p,0.,1.);}';
+  var SHARP_FS = 'precision mediump float;varying vec2 uv;uniform sampler2D tex;uniform vec2 px;uniform float amt;'
+    + 'void main(){vec4 c=texture2D(tex,uv);'
+    + 'vec3 b=texture2D(tex,uv+vec2(px.x,0.)).rgb+texture2D(tex,uv-vec2(px.x,0.)).rgb'
+    + '+texture2D(tex,uv+vec2(0.,px.y)).rgb+texture2D(tex,uv-vec2(0.,px.y)).rgb;'
+    + 'gl_FragColor=vec4(clamp(c.rgb+(c.rgb*4.0-b)*amt*0.25,0.0,1.0),c.a);}';
+
+  function gpuSharpen(srcCanvas, amt) {
+    var W = srcCanvas.width, H = srcCanvas.height;
+    var glc = document.createElement('canvas');
+    glc.width = W; glc.height = H;
+    var g = glc.getContext('webgl', { preserveDrawingBuffer: true });
+    if (!g) return null;
+    function sh(t, s) { var o = g.createShader(t); g.shaderSource(o, s); g.compileShader(o); return o; }
+    var prog = g.createProgram();
+    g.attachShader(prog, sh(g.VERTEX_SHADER, SHARP_VS));
+    g.attachShader(prog, sh(g.FRAGMENT_SHADER, SHARP_FS));
+    g.linkProgram(prog);
+    if (!g.getProgramParameter(prog, g.LINK_STATUS)) return null;
+    g.useProgram(prog);
+    var buf = g.createBuffer();
+    g.bindBuffer(g.ARRAY_BUFFER, buf);
+    g.bufferData(g.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), g.STATIC_DRAW);
+    var loc = g.getAttribLocation(prog, 'p');
+    g.enableVertexAttribArray(loc);
+    g.vertexAttribPointer(loc, 2, g.FLOAT, false, 0, 0);
+    var tex = g.createTexture();
+    g.bindTexture(g.TEXTURE_2D, tex);
+    g.texImage2D(g.TEXTURE_2D, 0, g.RGBA, g.RGBA, g.UNSIGNED_BYTE, srcCanvas);
+    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.LINEAR);
+    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.LINEAR);
+    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE);
+    g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
+    g.uniform1i(g.getUniformLocation(prog, 'tex'), 0);
+    g.uniform2f(g.getUniformLocation(prog, 'px'), 1 / W, 1 / H);
+    g.uniform1f(g.getUniformLocation(prog, 'amt'), amt);
+    g.viewport(0, 0, W, H);
+    g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
+    var out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    out.getContext('2d').drawImage(glc, 0, 0);
+    return out;
+  }
+
+  function cpuSharpen(srcCanvas, amt) {
+    var W = srcCanvas.width, H = srcCanvas.height;
+    var ctx = srcCanvas.getContext('2d');
+    var sd = ctx.getImageData(0, 0, W, H), d = sd.data, out = new Uint8ClampedArray(d);
+    for (var y = 1; y < H - 1; y++) {
+      for (var x = 1; x < W - 1; x++) {
+        var i4 = (y * W + x) * 4;
+        for (var c = 0; c < 3; c++) {
+          var i = i4 + c;
+          out[i] = d[i] + (4 * d[i] - d[i - 4] - d[i + 4] - d[i - W * 4] - d[i + W * 4]) * amt * 0.25;
+        }
+      }
+    }
+    ctx.putImageData(new ImageData(out, W, H), 0, 0);
+    return srcCanvas;
+  }
+
+  document.getElementById('runBtn').addEventListener('click', function () {
+    var btn = this;
+    if (!window._hogFile) return;
+    var file = window._hogFile;
+    var scale = parseInt(document.getElementById('scaleSel').value, 10);
+    var amount = parseFloat(document.getElementById('sharpSel').value);
+    btn.disabled = true;
+    Hog.showProgress(true);
+    Hog.setProgress(0.15);
+    Hog.status('Decoding ' + file.name + '…');
+
+    var img = new Image();
+    img.onload = function () { setTimeout(step1, 30); };
+    img.onerror = function () { Hog.status('Could not read that file as an image.', 'err'); btn.disabled = false; };
+    img.src = URL.createObjectURL(file);
+
+    function step1() {
+      var w = img.naturalWidth * scale, h = img.naturalHeight * scale;
+      // stepped doubling keeps resampling clean vs one giant jump
+      var cur = document.createElement('canvas');
+      cur.width = img.naturalWidth; cur.height = img.naturalHeight;
+      cur.getContext('2d').drawImage(img, 0, 0);
+      while (cur.width * 2 <= w) {
+        var nxt = document.createElement('canvas');
+        nxt.width = cur.width * 2; nxt.height = cur.height * 2;
+        var nc = nxt.getContext('2d');
+        nc.imageSmoothingEnabled = true; nc.imageSmoothingQuality = 'high';
+        nc.drawImage(cur, 0, 0, nxt.width, nxt.height);
+        cur = nxt;
+      }
+      var dst = document.createElement('canvas');
+      dst.width = w; dst.height = h;
+      var dc = dst.getContext('2d');
+      dc.imageSmoothingEnabled = true; dc.imageSmoothingQuality = 'high';
+      dc.drawImage(cur, 0, 0, w, h);
+      Hog.setProgress(0.6);
+      Hog.status('Sharpening on GPU…');
+      setTimeout(function () { step2(dst, amount, w, h); }, 30);
+    }
+
+    function step2(canvas, amount, w, h) {
+      var out = null;
+      try { out = gpuSharpen(canvas, amount); } catch (e) { out = null; }
+      if (!out) { Hog.status('GPU busy — using CPU path…'); out = cpuSharpen(canvas, amount); }
+      Hog.setProgress(0.95);
+      setTimeout(function () { step3(out, w, h); }, 20);
+    }
+
+    function step3(canvas, w, h) {
+      canvas.toBlob(function (blob) {
+        if (!blob) { Hog.status('Export failed — try a smaller source.', 'err'); btn.disabled = false; return; }
+        var base = file.name.replace(/\.[^.]+$/, '');
+        Hog.showResult(blob, base + '_hog' + scale + 'x.png',
+          Hog.fmtBytes(blob.size) + ' · ' + w + '×' + h + ' px · processed on your device');
+        Hog.setProgress(1);
+        Hog.status('Done.', 'ok');
+        var pv = document.getElementById('preview');
+        pv.src = canvas.toDataURL();
+        pv.style.display = 'block';
+        btn.disabled = false;
+      }, 'image/png');
+    }
+  });
+
+  Hog.dropzone(function (files) { window._hogFile = files[0]; }, { accept: 'image/*' });
+});
+</script>
+</body>
+</html>

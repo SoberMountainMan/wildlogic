@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Merge PDF Online Free — Combine Files | Hog Convert</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Combine multiple PDFs into one free, in any order. No upload, no signup, no page limits — runs entirely in your browser." />
+  <link rel="canonical" href="https://wildlogic.co.za/convert/merge-pdf.html" />
+  <meta property="og:title" content="Merge PDF — No Upload" />
+  <meta property="og:description" content="Stitch PDFs together in your browser. Free, unlimited, private." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wildlogic.co.za/convert/merge-pdf.html" />
+  <meta property="og:image" content="https://wildlogic.co.za/images/wildlogic_logo_white.png" />
+  <link rel="stylesheet" href="hog.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"Hog Convert Merge PDF","url":"https://wildlogic.co.za/convert/merge-pdf.html","applicationCategory":"UtilitiesApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"ZAR"}}
+  </script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="./"><span class="snout">🐗</span> Hog Convert</a>
+    <a class="backlink" href="./">← all tools</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="badge">RUNS ON YOUR DEVICE — NO UPLOAD</span>
+      <h1>Merge PDF</h1>
+      <p class="sub">Drop several PDFs, drag them into the right order, one combined file comes out. Contracts, statements, scans — nothing gets uploaded.</p>
+    </div>
+
+    <section class="tool">
+      <div id="dropzone" class="dropzone">
+        <div class="big">📑</div>
+        <p><b>Drop PDFs here</b> or click to browse<br>pick several — order can be changed below</p>
+      </div>
+      <input type="file" id="fileInput" hidden multiple accept="application/pdf" />
+      <ul id="filelist" class="filelist"></ul>
+
+      <div class="opts">
+        <button class="run" id="runBtn" disabled>Merge</button>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="bar" id="progressBar"><div></div></div>
+        <div class="status-line" id="status"></div>
+      </div>
+
+      <div id="result" class="result">
+        <a class="dl" download>Download result</a>
+        <span class="meta"></span>
+      </div>
+    </section>
+
+    <section class="prose">
+      <h2>How it stays fast</h2>
+      <p>Pages are copied byte-for-byte between documents — no re-rendering, so quality and file size are preserved exactly. A 50-document merge finishes in seconds even on a modest laptop, and the contents of confidential documents never cross your network connection.</p>
+    </section>
+  </main>
+
+  <footer class="site">
+    <span>🐗 Hog Convert · part of <a href="https://wildlogic.co.za">WildLogic</a></span>
+    <nav><a href="split-pdf.html">Split PDF</a> <a href="images-to-pdf.html">Images→PDF</a></nav>
+    <span>© <span class="year"></span> WildLogic</span>
+  </footer>
+</div>
+<script src="hog.js" defer></script>
+<script defer>
+window.addEventListener('DOMContentLoaded', function () {
+  Hog.stampYear();
+  var files = [];
+
+  document.getElementById('runBtn').addEventListener('click', function () {
+    var btn = this;
+    if (files.length < 2) { Hog.status('Pick at least two PDFs to merge.', 'err'); return; }
+    btn.disabled = true;
+    Hog.showProgress(true);
+    Hog.setProgress(0.05);
+
+    Hog.loadScript('https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js').then(function () {
+      var out = PDFLib.PDFDocument.create();
+      var chain = Promise.resolve();
+      files.forEach(function (f, i) {
+        chain = chain.then(function () {
+          Hog.status('Adding ' + f.name + '…');
+          Hog.setProgress((i + 1) / (files.length + 1));
+          return f.arrayBuffer().then(function (buf) {
+            return PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
+          }).then(function (doc) {
+            return out.copyPages(doc, doc.getPageIndices());
+          }).then(function (pages) {
+            pages.forEach(function (p) { out.addPage(p); });
+          });
+        });
+      });
+      return chain.then(function () {
+        Hog.status('Writing merged PDF…');
+        return out.save();
+      });
+    }).then(function (bytes) {
+      var blob = new Blob([bytes], { type: 'application/pdf' });
+      Hog.showResult(blob, 'hog_merged.pdf',
+        files.length + ' files · ' + Hog.fmtBytes(bytes.byteLength) + ' · merged locally');
+      Hog.setProgress(1);
+      Hog.status('Done.', 'ok');
+      btn.disabled = false;
+    }).catch(function (e) {
+      Hog.status('Merge failed: ' + (e.message || e) + ' — encrypted PDFs can still fail; try removing their password first.', 'err');
+      btn.disabled = false;
+    });
+  });
+
+  Hog.dropzone(function (pickedFiles) {
+    pickedFiles.forEach(function (f) {
+      if (/\.pdf$/i.test(f.name)) files.push(f);
+    });
+    renderList();
+  });
+
+  function renderList() {
+    var list = document.getElementById('filelist');
+    list.innerHTML = '';
+    files.forEach(function (f, idx) {
+      var li = document.createElement('li');
+      li.innerHTML = '<b></b><span><button class="mv" data-d="-1">↑</button> <button class="mv" data-d="1">↓</button> <button class="rm">✕</button></span>';
+      li.querySelector('b').textContent = (idx + 1) + '. ' + f.name + ' (' + Hog.fmtBytes(f.size) + ')';
+      li.querySelectorAll('.mv').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var d = parseInt(this.dataset.d, 10);
+          var j = idx + d;
+          if (j < 0 || j >= files.length) return;
+          var t = files[idx]; files[idx] = files[j]; files[j] = t;
+          renderList();
+        });
+      });
+      li.querySelector('.rm').addEventListener('click', function () {
+        files.splice(idx, 1);
+        renderList();
+      });
+      list.appendChild(li);
+    });
+    document.getElementById('runBtn').disabled = files.length < 2;
+  }
+});
+</script>
+</body>
+</html>

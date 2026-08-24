@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Convert Video to MP4 Online Free — MOV AVI MKV WebM | Hog Convert</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Convert MOV, AVI, MKV, WebM and more to universally-playable MP4 free. No upload, no size limit, no signup — runs in your browser." />
+  <link rel="canonical" href="https://wildlogic.co.za/convert/convert-to-mp4.html" />
+  <meta property="og:title" content="Convert Video → MP4 — No Upload" />
+  <meta property="og:description" content="MOV, AVI, MKV, WebM to MP4 in your browser. Free, unlimited, private." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wildlogic.co.za/convert/convert-to-mp4.html" />
+  <meta property="og:image" content="https://wildlogic.co.za/images/wildlogic_logo_white.png" />
+  <link rel="stylesheet" href="hog.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"Hog Convert to MP4","url":"https://wildlogic.co.za/convert/convert-to-mp4.html","applicationCategory":"MultimediaApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"ZAR"}}
+  </script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="./"><span class="snout">🐗</span> Hog Convert</a>
+    <a class="backlink" href="./">← all tools</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="badge">RUNS ON YOUR DEVICE — NO UPLOAD</span>
+      <h1>Convert → MP4</h1>
+      <p class="sub">Anything in, H.264 + AAC MP4 out — the combination every phone, TV, editor and messaging app agrees on.</p>
+    </div>
+
+    <section class="tool">
+      <div id="dropzone" class="dropzone">
+        <div class="big">🎞️</div>
+        <p><b>Drop a video here</b> or click to browse<br>MOV, AVI, MKV, WebM, TS, WMV…</p>
+      </div>
+      <input type="file" id="fileInput" hidden />
+
+      <div class="opts">
+        <label>Quality
+          <select id="qSel">
+            <option value="18">High (CRF 18)</option>
+            <option value="22" selected>Standard (CRF 22)</option>
+            <option value="27">Smaller file (CRF 27)</option>
+          </select>
+        </label>
+        <button class="run" id="runBtn" disabled>Convert</button>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="bar" id="progressBar"><div></div></div>
+        <div class="status-line" id="status"></div>
+      </div>
+
+      <div id="result" class="result">
+        <a class="dl" download>Download result</a>
+        <span class="meta"></span>
+      </div>
+    </section>
+
+    <section class="prose">
+      <h2>Why re-encode instead of remux?</h2>
+      <p>Sometimes an .mov or .mkv already contains H.264 video and only the container needs swapping — that takes seconds. But plenty of files carry exotic codecs that won't play outside VLC. This tool always produces clean H.264/AAC so the result plays everywhere, first time. If speed matters more than compatibility for your file, it still beats uploading 4&nbsp;GB to somebody's queue.</p>
+      <p>Exotic codecs (some WMV variants, old DivX) may fail inside the browser engine — you'll get a clear error rather than a broken file.</p>
+    </section>
+  </main>
+
+  <footer class="site">
+    <span>🐗 Hog Convert · part of <a href="https://wildlogic.co.za">WildLogic</a></span>
+    <nav><a href="compress-video.html">Compress video</a> <a href="upscale-video.html">Upscale video</a></nav>
+    <span>© <span class="year"></span> WildLogic</span>
+  </footer>
+</div>
+<script src="hog.js" defer></script>
+<script defer>
+window.addEventListener('DOMContentLoaded', function () {
+  Hog.stampYear();
+  var file = null;
+  var lastFF = null;
+
+  document.getElementById('runBtn').addEventListener('click', function () {
+    var btn = this;
+    if (!file) return;
+    var crf = document.getElementById('qSel').value;
+    btn.disabled = true;
+    Hog.showProgress(true);
+    Hog.setProgress(0.03);
+    var ext = (file.name.split('.').pop() || 'mov').toLowerCase().replace(/[^a-z0-9]/g, '');
+    var inName = 'in.' + ext;
+
+    Hog.status('Loading engine (~30 MB, cached after first run)…');
+    Hog.getFFmpeg()
+      .then(function (ff) {
+        lastFF = ff;
+        Hog.status('Reading ' + file.name + '…');
+        return Hog.readAsUint8(file).then(function (d) { return ff.writeFile(inName, d); }).then(function () { return ff; });
+      })
+      .then(function (ff) {
+        Hog.status('Converting to MP4… keep this tab visible.');
+        return ff.exec(['-i', inName, '-c:v', 'libx264', '-crf', crf, '-preset', 'medium', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', 'out.mp4']).then(function (rc) {
+          if (rc !== 0) throw new Error('Conversion failed — that source codec may not be supported in-browser.');
+          return ff.readFile('out.mp4');
+        });
+      })
+      .then(function (out) {
+        var u8 = out instanceof Uint8Array ? out : new Uint8Array(out);
+        var blob = new Blob([u8.buffer], { type: 'video/mp4' });
+        var base = file.name.replace(/\.[^.]+$/, '');
+        Hog.showResult(blob, base + '.mp4', Hog.fmtBytes(blob.size) + ' · H.264+AAC MP4 · converted locally');
+        Hog.setProgress(1);
+        Hog.status('Done.', 'ok');
+        btn.disabled = false;
+        if (lastFF) { lastFF.deleteFile(inName); lastFF.deleteFile('out.mp4'); }
+      })
+      .catch(function (e) {
+        Hog.status(e.message || String(e), 'err');
+        btn.disabled = false;
+      });
+  });
+
+  Hog.dropzone(function (files) { file = files[0]; }, { accept: 'video/*,.mkv,.mov,.avi,.webm,.ts,.m4v,.wmv,.flv' });
+});
+</script>
+</body>
+</html>

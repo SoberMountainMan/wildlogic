@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Watermark &amp; Object Remover Online Free — Inpainting | Hog Convert</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Remove watermarks, logos and unwanted objects from photos free. Brush over the area — OpenCV inpainting fills it from surrounding pixels. Runs entirely in your browser." />
+  <link rel="canonical" href="https://wildlogic.co.za/convert/remove-watermark.html" />
+  <meta property="og:title" content="Watermark &amp; Object Remover — No Upload" />
+  <meta property="og:description" content="Brush over a logo or object — smart inpainting fills the gap. Free and browser-only." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wildlogic.co.za/convert/remove-watermark.html" />
+  <meta property="og:image" content="https://wildlogic.co.za/images/wildlogic_logo_white.png" />
+  <link rel="stylesheet" href="hog.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"Hog Convert Watermark Remover","url":"https://wildlogic.co.za/convert/remove-watermark.html","applicationCategory":"UtilitiesApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"ZAR"}}
+  </script>
+  <style>
+    .stage{position:relative;line-height:0;max-width:100%;display:none;margin-top:16px;}
+    .stage.on{display:inline-block;}
+    #baseCv{max-width:100%;display:block;border-radius:12px;}
+    #paintCv{position:absolute;top:0;left:0;width:100%;height:100%;cursor:crosshair;border-radius:12px;touch-action:none;}
+    .brushrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="./"><span class="snout">🐗</span> Hog Convert</a>
+    <a class="backlink" href="./">← all tools</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="badge">RUNS ON YOUR DEVICE — NO UPLOAD</span>
+      <h1>Watermark &amp; Object Remover</h1>
+      <p class="sub">Brush over a timestamp, logo or photobomber — inpainting rebuilds the area from the pixels around it. Your image never leaves the device.</p>
+    </div>
+
+    <section class="tool">
+      <div class="notice">⚖️ Use this only on images you own or have the rights to edit.</div>
+
+      <div id="dropzone" class="dropzone">
+        <div class="big">🪄</div>
+        <p><b>Drop an image here</b> or click to browse<br>JPG, PNG, WebP</p>
+      </div>
+      <input type="file" id="fileInput" hidden accept="image/*" />
+      <ul id="filelist" class="filelist"></ul>
+
+      <div class="stage" id="stage">
+        <canvas id="baseCv"></canvas>
+        <canvas id="paintCv"></canvas>
+      </div>
+
+      <div class="brushrow">
+        <label>Brush size
+          <input type="range" id="brushRange" min="4" max="120" value="24" style="width:140px;" />
+          <span id="brushVal" style="color:var(--text);">24px</span>
+        </label>
+        <label>Fill method
+          <select id="methodSel">
+            <option value="telea" selected>Telea (smooth)</option>
+            <option value="ns">Navier-Stokes (texture)</option>
+          </select>
+        </label>
+        <button class="run" id="runBtn" disabled>Heal marked areas</button>
+        <button class="ghost" id="resetBtn" disabled>Start over</button>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="bar" id="progressBar"><div></div></div>
+        <div class="status-line" id="status"></div>
+      </div>
+
+      <div id="result" class="result">
+        <a class="dl" download>Download PNG</a>
+        <span class="meta"></span>
+      </div>
+    </section>
+
+    <section class="prose">
+      <h2>How it works</h2>
+      <p>Everything you paint gets handed to OpenCV's inpainting algorithm, which regrows the covered patch outwards from its surroundings. Great on timestamps, small logos, wires and blemishes over fairly uniform backgrounds. Big marks over busy texture come back soft or smudged — that's physics, not a paywall.</p>
+      <h2>First run downloads an engine</h2>
+      <p>The healing brain is about 9&nbsp;MB and loads once, then lives in your browser cache. On a slow connection the first heal may take a minute to start — every later one is instant.</p>
+      <h2>The rights thing, again</h2>
+      <p>Watermarks exist because someone claimed a work. Clean yours, your family's and your clients' photos freely — leave other people's property alone.</p>
+    </section>
+  </main>
+
+  <footer class="site">
+    <span>🐗 Hog Convert · part of <a href="https://wildlogic.co.za">WildLogic</a></span>
+    <nav><a href="upscale-image.html">Upscale image</a> <a href="compress-image.html">Compress image</a></nav>
+    <span>© <span class="year"></span> WildLogic</span>
+  </footer>
+</div>
+<script src="hog.js" defer></script>
+<script defer>
+window.addEventListener('DOMContentLoaded', function () {
+  Hog.stampYear();
+
+  var MAXSIDE = 2000;
+  var img = null, W = 0, H = 0, nameBase = 'hog_image';
+  var stage = document.getElementById('stage');
+  var base = document.getElementById('baseCv');
+  var paint = document.getElementById('paintCv');
+  var bctx = base.getContext('2d');
+  var pctx = paint.getContext('2d');
+  var mask = document.createElement('canvas');
+  var mctx = mask.getContext('2d');
+  var runBtn = document.getElementById('runBtn');
+  var resetBtn = document.getElementById('resetBtn');
+  var brushRange = document.getElementById('brushRange');
+  var brushVal = document.getElementById('brushVal');
+
+  brushRange.addEventListener('input', function () { brushVal.textContent = this.value + 'px'; });
+
+  /* ---- opencv.js lazy boot ---- */
+  var _cvP = null, _kicked = false;
+  function kick() {
+    if (_kicked) return;
+    _kicked = true;
+    try {
+      var c = window.cv;
+      if (c && typeof c.then === 'function') c.then(function (m) { window.cv = m; });
+      else if (typeof c === 'function') {
+        var p = c();
+        if (p && typeof p.then === 'function') p.then(function (m) { window.cv = m; });
+      }
+    } catch (e) { /* poll will retry */ }
+  }
+  function cvReady() {
+    try { return !!(window.cv && typeof window.cv.getBuildInformation === 'function'); }
+    catch (e) { return false; }
+  }
+  function ensureCV() {
+    if (_cvP) return _cvP;
+    _cvP = new Promise(function (resolve, reject) {
+      if (!cvReady() && !window.cv) {
+        Hog.status('Downloading OpenCV engine (~9 MB, one-time, then cached)…');
+        var s = document.createElement('script');
+        s.src = 'https://docs.opencv.org/4.13.0/opencv.js';
+        s.onload = function () { kick(); };
+        s.onerror = function () { _cvP = null; reject(new Error('Could not download the OpenCV engine')); };
+        document.head.appendChild(s);
+      }
+      var tries = 0;
+      (function poll() {
+        if (!cvReady()) kick();
+        if (cvReady()) return resolve();
+        if (++tries > 600) { _cvP = null; return reject(new Error('OpenCV engine did not start — connection too slow or memory full')); }
+        setTimeout(poll, 200);
+      })();
+    });
+    return _cvP;
+  }
+
+  /* ---- load image into stacked canvases ---- */
+  function loadImage(file) {
+    nameBase = file.name.replace(/\.[^.]+$/, '');
+    var probe = new Image();
+    probe.onload = function () {
+      var iw = probe.naturalWidth, ih = probe.naturalHeight;
+      var sc = Math.min(1, MAXSIDE / Math.max(iw, ih));
+      W = Math.max(1, Math.round(iw * sc));
+      H = Math.max(1, Math.round(ih * sc));
+      [base, paint, mask].forEach(function (c) { c.width = W; c.height = H; });
+      bctx.drawImage(probe, 0, 0, W, H);
+      pctx.clearRect(0, 0, W, H);
+      mctx.clearRect(0, 0, W, H);
+      img = probe;
+      stage.classList.add('on');
+      resetBtn.disabled = false;
+      document.getElementById('result').classList.remove('on');
+      Hog.showProgress(true);
+      Hog.setProgress(0);
+      Hog.status(sc < 1
+        ? 'Scaled to ' + W + '×' + H + ' (fits browser memory). Now paint over what must go.'
+        : 'Loaded ' + W + '×' + H + '. Paint over what must go.', 'ok');
+    };
+    probe.onerror = function () { Hog.status('Could not read that file as an image.', 'err'); };
+    probe.src = URL.createObjectURL(file);
+  }
+
+  /* ---- painting ---- */
+  var down = false;
+  function toCanvasXY(e) {
+    var r = paint.getBoundingClientRect();
+    return [
+      (e.clientX - r.left) * (paint.width / r.width),
+      (e.clientY - r.top) * (paint.height / r.height)
+    ];
+  }
+  function dab(x, y) {
+    var rad = parseInt(brushRange.value, 10) / 2;
+    pctx.fillStyle = 'rgba(255,64,64,0.55)';
+    pctx.beginPath(); pctx.arc(x, y, rad, 0, 6.2832); pctx.fill();
+    mctx.fillStyle = '#fff';
+    mctx.beginPath(); mctx.arc(x, y, rad, 0, 6.2832); mctx.fill();
+  }
+  paint.addEventListener('pointerdown', function (e) {
+    if (!img) return;
+    down = true;
+    paint.setPointerCapture(e.pointerId);
+    var p = toCanvasXY(e); dab(p[0], p[1]);
+  });
+  paint.addEventListener('pointermove', function (e) {
+    if (!down) return;
+    var p = toCanvasXY(e); dab(p[0], p[1]);
+  });
+  ['pointerup', 'pointercancel'].forEach(function (ev) {
+    paint.addEventListener(ev, function () { down = false; });
+  });
+
+  /* ---- inpaint ---- */
+  runBtn.addEventListener('click', function () {
+    if (!img || !W) return;
+    var mdata = mctx.getImageData(0, 0, W, H).data;
+    var marked = false;
+    for (var i = 3; i < mdata.length; i += 4) { if (mdata[i] > 10) { marked = true; break; } }
+    if (!marked) { Hog.status('Paint over something first.', 'err'); return; }
+
+    runBtn.disabled = true;
+    Hog.showProgress(true);
+    ensureCV().then(function () {
+      Hog.status('Healing…');
+      Hog.setProgress(0.4);
+      var src = cv.matFromImageData(bctx.getImageData(0, 0, W, H));
+      var m8 = new Uint8Array(W * H);
+      for (var j = 0, k = 0; j < mdata.length; j += 4, k++) m8[k] = mdata[j];
+      var msk = cv.matFromArray(H, W, cv.CV_8UC1, m8);
+      var dst = new cv.Mat();
+      var flag = document.getElementById('methodSel').value === 'ns' ? cv.INPAINT_NS : cv.INPAINT_TELEA;
+      cv.inpaint(src, msk, dst, 3, flag);
+      bctx.putImageData(new ImageData(new Uint8ClampedArray(dst.data), W, H), 0, 0);
+      src.delete(); msk.delete(); dst.delete();
+      pctx.clearRect(0, 0, W, H);
+      mctx.clearRect(0, 0, W, H);
+
+      base.toBlob(function (blob) {
+        if (!blob) { Hog.status('Export failed.', 'err'); runBtn.disabled = false; return; }
+        var r = document.getElementById('result');
+        var a = r.querySelector('a.dl');
+        a.href = URL.createObjectURL(blob);
+        a.download = nameBase + '_healed.png';
+        r.querySelector('.meta').textContent =
+          'Healed · ' + W + '×' + H + ' PNG · brush more areas or download · never left your device';
+        r.classList.add('on');
+        Hog.setProgress(1);
+        Hog.status('Done. Brush more areas or download.', 'ok');
+        runBtn.disabled = false;
+      }, 'image/png');
+    }).catch(function (e) {
+      Hog.status('Failed: ' + (e.message || e), 'err');
+      runBtn.disabled = false;
+    });
+  });
+
+  resetBtn.addEventListener('click', function () {
+    if (!img) return;
+    bctx.drawImage(img, 0, 0, W, H);
+    pctx.clearRect(0, 0, W, H);
+    mctx.clearRect(0, 0, W, H);
+    document.getElementById('result').classList.remove('on');
+    Hog.status('Back to the original. Paint away.');
+  });
+
+  Hog.dropzone(function (files) {
+    if (files[0]) loadImage(files[0]);
+  }, { accept: 'image/*' });
+});
+</script>
+</body>
+</html>
