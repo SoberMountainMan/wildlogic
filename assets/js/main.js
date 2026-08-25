@@ -70,6 +70,36 @@
 
 			if (settings.parallax) {
 
+				// Largest upward shift available before 'cover' runs out of
+				// image at the panel's bottom edge (per background image).
+					var bgURL = null,
+						bgLimit = null;
+
+					function bgMaxShift() {
+						var el = $header[0],
+							parts = getComputedStyle(el).backgroundImage.match(/url\(["']?([^"')]+)["']?\)/g) || [];
+						if (!parts.length)
+							return 0;
+						var url = parts[parts.length - 1].replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
+						if (url !== bgURL) {
+							bgURL = url;
+							bgLimit = null;
+							var img = new Image();
+							img.onload = function() {
+								var r = el.getBoundingClientRect(),
+									s = Math.max(r.width / img.width, r.height / img.height);
+								bgLimit = Math.max(0, img.height * s - r.height);
+								$window.triggerHandler('scroll');
+							};
+							img.src = url;
+						}
+						return bgLimit === null ? Infinity : bgLimit;
+					}
+
+					$window.on('resize.strata_bgmeasure', function() {
+						bgURL = null;
+					});
+
 				breakpoints.on('<=medium', function() {
 
 					$window.off('scroll.strata_parallax');
@@ -82,7 +112,11 @@
 					$header.css('background-position', 'left 0px');
 
 					$window.on('scroll.strata_parallax', function() {
-						$header.css('background-position', 'left ' + (-1 * (parseInt($window.scrollTop()) / settings.parallaxFactor)) + 'px');
+						var y = -1 * (parseInt($window.scrollTop()) / settings.parallaxFactor),
+							max = bgMaxShift();
+						if (-y > max)
+							y = -max;
+						$header.css('background-position', 'left ' + y + 'px');
 					});
 
 				});
