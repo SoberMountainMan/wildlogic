@@ -151,5 +151,14 @@
     return file.arrayBuffer().then(function (buf) { return new Uint8Array(buf); });
   };
 
+  /* offline shell: pages network-first, assets cache-first (convert/sw.js) */
+  var secure = location.protocol === 'https:' ||
+    location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  if ('serviceWorker' in navigator && secure) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    });
+  }
+
   window.Hog = Hog;
 })();
