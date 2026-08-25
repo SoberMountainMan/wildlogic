@@ -1,0 +1,4 @@
+{
+  "_comment": "Still Kicking signup — set joinEndpoint to the public hb-signup-join URL when the carve-out lands (pop-in day). Empty string = pre-launch mode (form visible, submit shows 'opening soon').",
+  "joinEndpoint": ""
+}
