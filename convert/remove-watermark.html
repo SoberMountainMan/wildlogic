@@ -100,6 +100,9 @@ window.addEventListener('DOMContentLoaded', function () {
   Hog.stampYear();
 
   var MAXSIDE = 2000;
+  // low-RAM devices get a smaller working canvas — inpaint allocates several
+  // full-frame buffers inside wasm, so keep phone use well under desktop RAM
+  try { if (navigator.deviceMemory && navigator.deviceMemory <= 4) MAXSIDE = 1400; } catch (err) {}
   var img = null, W = 0, H = 0, nameBase = 'hog_image';
   var stage = document.getElementById('stage');
   var base = document.getElementById('baseCv');
@@ -137,12 +140,19 @@ window.addEventListener('DOMContentLoaded', function () {
     if (_cvP) return _cvP;
     _cvP = new Promise(function (resolve, reject) {
       if (!cvReady() && !window.cv) {
-        Hog.status('Downloading OpenCV engine (~9 MB, one-time, then cached)…');
-        var s = document.createElement('script');
-        s.src = 'https://docs.opencv.org/4.13.0/opencv.js';
-        s.onload = function () { kick(); };
-        s.onerror = function () { _cvP = null; reject(new Error('Could not download the OpenCV engine')); };
-        document.head.appendChild(s);
+        Hog.status('Downloading healing engine (~11 MB, one-time, then cached)…');
+        var mirrors = ['vendor/opencv.js', 'https://docs.opencv.org/4.13.0/opencv.js'];
+        var mi = 0;
+        (function tryMirror() {
+          var s = document.createElement('script');
+          s.src = mirrors[mi];
+          s.onload = function () { kick(); };
+          s.onerror = function () {
+            if (++mi < mirrors.length) tryMirror();
+            else { _cvP = null; reject(new Error('Could not download the healing engine — check your connection and retry')); }
+          };
+          document.head.appendChild(s);
+        })();
       }
       var tries = 0;
       (function poll() {
@@ -213,6 +223,13 @@ window.addEventListener('DOMContentLoaded', function () {
   });
 
   /* ---- inpaint ---- */
+  /* this emscripten build surfaces C++ exceptions as raw heap addresses */
+  function decodeCvErr(err) {
+    if (typeof err === 'number')
+      return new Error('The healing engine failed on this image — try painting a smaller area or a smaller source photo.');
+    return new Error((err && err.message) ? err.message : String(err));
+  }
+
   runBtn.addEventListener('click', function () {
     if (!img || !W) return;
     var mdata = mctx.getImageData(0, 0, W, H).data;
@@ -225,17 +242,28 @@ window.addEventListener('DOMContentLoaded', function () {
     ensureCV().then(function () {
       Hog.status('Healing…');
       Hog.setProgress(0.4);
-      var src = cv.matFromImageData(bctx.getImageData(0, 0, W, H));
-      var m8 = new Uint8Array(W * H);
-      for (var j = 0, k = 0; j < mdata.length; j += 4, k++) m8[k] = mdata[j];
-      var msk = cv.matFromArray(H, W, cv.CV_8UC1, m8);
-      var dst = new cv.Mat();
-      var flag = document.getElementById('methodSel').value === 'ns' ? cv.INPAINT_NS : cv.INPAINT_TELEA;
-      cv.inpaint(src, msk, dst, 3, flag);
-      bctx.putImageData(new ImageData(new Uint8ClampedArray(dst.data), W, H), 0, 0);
-      src.delete(); msk.delete(); dst.delete();
-      pctx.clearRect(0, 0, W, H);
-      mctx.clearRect(0, 0, W, H);
+      var src4 = null, src3 = null, msk = null, dst = null, rgba = null;
+      try {
+        src4 = cv.matFromImageData(bctx.getImageData(0, 0, W, H));
+        // inpaint rejects 4-channel mats (throws as a bare number), so run it on RGB
+        src3 = new cv.Mat(H, W, cv.CV_8UC3);
+        cv.cvtColor(src4, src3, cv.COLOR_RGBA2RGB);
+        var m8 = new Uint8Array(W * H);
+        for (var j = 0, k = 0; j < mdata.length; j += 4, k++) m8[k] = mdata[j];
+        msk = cv.matFromArray(H, W, cv.CV_8UC1, m8);
+        dst = new cv.Mat();
+        var flag = document.getElementById('methodSel').value === 'ns' ? cv.INPAINT_NS : cv.INPAINT_TELEA;
+        cv.inpaint(src3, msk, dst, 3, flag);
+        rgba = new cv.Mat();
+        cv.cvtColor(dst, rgba, cv.COLOR_RGB2RGBA);
+        bctx.putImageData(new ImageData(new Uint8ClampedArray(rgba.data), W, H), 0, 0);
+        pctx.clearRect(0, 0, W, H);
+        mctx.clearRect(0, 0, W, H);
+      } catch (err) {
+        throw decodeCvErr(err);
+      } finally {
+        [src4, src3, msk, dst, rgba].forEach(function (m) { if (m) m.delete(); });
+      }
 
       base.toBlob(function (blob) {
         if (!blob) { Hog.status('Export failed.', 'err'); runBtn.disabled = false; return; }
@@ -251,7 +279,7 @@ window.addEventListener('DOMContentLoaded', function () {
         runBtn.disabled = false;
       }, 'image/png');
     }).catch(function (e) {
-      Hog.status('Failed: ' + (e.message || e), 'err');
+      Hog.status(e.message || 'Healing failed.', 'err');
       runBtn.disabled = false;
     });
   });
