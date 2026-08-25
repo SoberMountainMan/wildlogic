@@ -66,6 +66,14 @@
         <div class="status-line" id="status"></div>
       </div>
 
+      <div id="cropBox" style="display:none;margin-top:16px;">
+        <p style="font-size:.9rem;color:#9fb4a3;margin:0 0 8px;">Your square for the 3000×3000 cover — drag inside to move, drag a corner to resize (defaults to centre).</p>
+        <div id="cropStage" style="position:relative;display:inline-block;max-width:100%;touch-action:none;">
+          <canvas id="cropCv" style="max-width:100%;display:block;border-radius:12px;"></canvas>
+          <canvas id="cropOv" style="position:absolute;left:0;top:0;width:100%;height:100%;border-radius:12px;"></canvas>
+        </div>
+      </div>
+
       <div id="result" class="result">
         <a class="dl" download>Download result</a>
         <span class="meta"></span>
@@ -75,8 +83,8 @@
 
     <section class="prose">
       <h2>The 3000×3000 preset explained</h2>
-      <p>Digital distributors (RouteNote, DistroKid and friends) reject cover art that isn't exactly square at 3000×3000. This preset center-crops to square, scales to exactly 3000×3000, and exports high-quality JPG — the two boxes on their checklist ticked in one click. Pair it with <a href="wav-to-flac.html">WAV→FLAC</a> and your release is submission-ready.</p>
-      <p>Square-cropping cuts the sides of non-square images — check the preview before shipping.</p>
+      <p>Digital distributors (RouteNote, DistroKid and friends) reject cover art that isn't exactly square at 3000×3000. This preset crops to a square — centred by default, or drag the frame in the preview to pick your own region — scales it to exactly 3000×3000, and exports high-quality JPG. Pair it with <a href="wav-to-flac.html">WAV→FLAC</a> and your release is submission-ready.</p>
+      <p>Square-cropping cuts away everything outside the frame — drag it over the part of the image that matters before shipping.</p>
     </section>
   </main>
 
@@ -90,12 +98,16 @@
 <script defer>
 window.addEventListener('DOMContentLoaded', function () {
   Hog.stampYear();
-  var file = null;
+  var file = null, dec = null;              /* dec: loaded image + natural dims */
+  var crop = { x: 0, y: 0, s: 0 };          /* selected square, display-pixel coords */
 
   var presetSel = document.getElementById('presetSel');
   var sizeSel = document.getElementById('sizeSel');
   var qRange = document.getElementById('qRange');
   var qVal = document.getElementById('qVal');
+  var cropBox = document.getElementById('cropBox');
+  var cropCv = document.getElementById('cropCv');
+  var cropOv = document.getElementById('cropOv');
 
   presetSel.addEventListener('change', function () {
     var v = this.value;
@@ -103,36 +115,121 @@ window.addEventListener('DOMContentLoaded', function () {
     else if (v === 'email') { sizeSel.value = '800'; qRange.value = 70; }
     else if (v === 'hd') { sizeSel.value = '1920'; qRange.value = 85; }
     qVal.textContent = qRange.value + '%';
+    syncCropUI();
   });
   [sizeSel, qRange].forEach(function (el) {
-    el.addEventListener('change', function () { presetSel.value = 'custom'; });
+    el.addEventListener('change', function () { presetSel.value = 'custom'; syncCropUI(); });
   });
   qRange.addEventListener('input', function () { qVal.textContent = this.value + '%'; });
 
+  /* ---- load ---- */
+  function loadImage(f) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(f);
+      var img = new Image();
+      img.onload = function () { URL.revokeObjectURL(url); res({ src: img, w: img.naturalWidth, h: img.naturalHeight }); };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('decode')); };
+      img.src = url;
+    });
+  }
+
+  /* ---- crop-square picker (RouteNote preset) ---- */
+  function syncCropUI() {
+    var want = presetSel.value === 'routenote' && !!dec;
+    cropBox.style.display = want ? '' : 'none';
+    if (want) initCrop();
+  }
+  function initCrop() {
+    var dw = Math.min(dec.w, 640);
+    var dh = Math.round(dec.h * dw / dec.w);
+    cropCv.width = cropOv.width = dw;
+    cropCv.height = cropOv.height = dh;
+    cropCv.getContext('2d').drawImage(dec.src, 0, 0, dw, dh);
+    if (!crop.s || crop.s > Math.min(dw, dh)) {
+      crop.s = Math.min(dw, dh);
+      crop.x = (dw - crop.s) / 2;
+      crop.y = (dh - crop.s) / 2;
+    } else {
+      crop.x = Math.max(0, Math.min(crop.x, dw - crop.s));
+      crop.y = Math.max(0, Math.min(crop.y, dh - crop.s));
+    }
+    drawOverlay();
+  }
+  function drawOverlay() {
+    var ctx = cropOv.getContext('2d');
+    ctx.clearRect(0, 0, cropOv.width, cropOv.height);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, cropOv.width, cropOv.height);
+    ctx.clearRect(crop.x, crop.y, crop.s, crop.s);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(crop.x + 1, crop.y + 1, crop.s - 2, crop.s - 2);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(crop.x + crop.s - 14, crop.y + crop.s - 14, 12, 12);
+  }
+  (function wireCropDrag() {
+    var stage = document.getElementById('cropStage');
+    var mode = null, ox = 0, oy = 0;
+    function pos(e) {
+      var r = cropCv.getBoundingClientRect();
+      var k = cropCv.width / r.width;
+      return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k };
+    }
+    stage.addEventListener('pointerdown', function (e) {
+      if (!dec || cropBox.style.display === 'none') return;
+      var p = pos(e);
+      if (Math.abs(p.x - (crop.x + crop.s)) < 22 && Math.abs(p.y - (crop.y + crop.s)) < 22) {
+        mode = 'resize';
+      } else if (p.x >= crop.x && p.x <= crop.x + crop.s && p.y >= crop.y && p.y <= crop.y + crop.s) {
+        mode = 'move'; ox = p.x - crop.x; oy = p.y - crop.y;
+      } else return;
+      e.preventDefault();
+      try { stage.setPointerCapture(e.pointerId); } catch (err2) {}
+    });
+    stage.addEventListener('pointermove', function (e) {
+      if (!mode) return;
+      var p = pos(e);
+      if (mode === 'move') {
+        crop.x = Math.max(0, Math.min(p.x - ox, cropOv.width - crop.s));
+        crop.y = Math.max(0, Math.min(p.y - oy, cropOv.height - crop.s));
+      } else {
+        crop.s = Math.max(40, Math.min(Math.max(p.x - crop.x, p.y - crop.y),
+          cropOv.width - crop.x, cropOv.height - crop.y));
+      }
+      drawOverlay();
+    });
+    ['pointerup', 'pointercancel'].forEach(function (ev) {
+      stage.addEventListener(ev, function () { mode = null; });
+    });
+  })();
+
   document.getElementById('runBtn').addEventListener('click', function () {
     var btn = this;
-    if (!file) return;
+    if (!file || !dec) return;
     btn.disabled = true;
     Hog.showProgress(true);
-    Hog.status('Reading image…');
-    Hog.setProgress(0.2);
+    Hog.status('Processing…');
+    Hog.setProgress(0.4);
 
-    var img = new Image();
-    img.onload = function () { setTimeout(process, 30); };
-    img.onerror = function () { Hog.status('Could not read that file as an image.', 'err'); btn.disabled = false; };
-    img.src = URL.createObjectURL(file);
+    process();
 
     function process() {
       var maxSide = parseInt(sizeSel.value, 10);
       var q = parseInt(qRange.value, 10) / 100;
       var routenote = presetSel.value === 'routenote';
-      var iw = img.naturalWidth, ih = img.naturalHeight;
+      var iw = dec.w, ih = dec.h;
       var W, H, sx = 0, sy = 0, sw = iw, sh = ih;
 
       if (routenote) {
         W = H = 3000;
-        sw = sh = Math.min(iw, ih);
-        sx = (iw - sw) / 2; sy = (ih - sh) / 2;
+        if (cropBox.style.display !== 'none') {
+          var k = iw / cropCv.width;
+          sw = sh = crop.s * k;
+          sx = crop.x * k; sy = crop.y * k;
+        } else {
+          sw = sh = Math.min(iw, ih);
+          sx = (iw - sw) / 2; sy = (ih - sh) / 2;
+        }
       } else if (maxSide > 0 && Math.max(iw, ih) > maxSide) {
         var s = maxSide / Math.max(iw, ih);
         W = Math.round(iw * s); H = Math.round(ih * s);
@@ -145,7 +242,7 @@ window.addEventListener('DOMContentLoaded', function () {
       var ctx = c.getContext('2d');
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+      ctx.drawImage(dec.src, sx, sy, sw, sh, 0, 0, W, H);
 
       Hog.setProgress(0.7);
       Hog.status('Exporting…');
@@ -170,7 +267,22 @@ window.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  Hog.dropzone(function (files) { file = files[0]; }, { accept: 'image/*' });
+  Hog.dropzone(function (files) {
+    file = files[0] || null;
+    dec = null;
+    document.getElementById('result').classList.remove('on');
+    if (!file) return;
+    loadImage(file).then(function (d) {
+      dec = d;
+      Hog.showProgress(false);
+      Hog.status(d.w + '×' + d.h + ' loaded.');
+      crop.s = 0;
+      syncCropUI();
+    }).catch(function () {
+      Hog.showProgress(false);
+      Hog.status('Could not read that file as an image.', 'err');
+    });
+  }, { accept: 'image/*' });
 });
 </script>
 </body>
