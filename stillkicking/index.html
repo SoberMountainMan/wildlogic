@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Still Kicking? — a free daily WhatsApp check-in for people who live alone in Hogsback. You answer one message a day; if you ever go quiet, the people you trust are told.">
+<title>Still Kicking? — daily WhatsApp check-in</title>
+<style>
+  :root{--ink:#1d2b22;--paper:#f7f5ef;--card:#fff;--green:#2e6e4e;--soft:#e7efe9}
+  *{box-sizing:border-box}
+  body{font-family:Georgia,'Times New Roman',serif;background:var(--paper);color:var(--ink);margin:0;padding:24px 12px;line-height:1.45}
+  main{max-width:640px;margin:0 auto}
+  h1{font-size:1.7rem;margin:0 0 4px;color:var(--green)}
+  .tag{font-style:italic;margin:0 0 18px;opacity:.8}
+  fieldset{border:0;background:var(--card);border-radius:12px;padding:16px 18px;margin:0 0 14px;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  legend{font-weight:bold;color:var(--green);padding:0 6px;font-size:1.02rem}
+  label{display:block;margin:10px 0 2px;font-size:.95rem}
+  input[type=text],input[type=tel],input[type=email],select,textarea{width:100%;padding:9px 10px;border:1px solid #c8cfc9;border-radius:8px;font-size:1rem;background:#fdfdfb}
+  .row{display:flex;gap:10px}.row>div{flex:1}
+  .hint{font-size:.82rem;opacity:.75;margin-top:2px}
+  .check{display:flex;gap:8px;align-items:flex-start;margin:10px 0;font-size:.92rem}
+  .check input{margin-top:3px;width:18px;height:18px;flex:none}
+  button{width:100%;background:var(--green);color:#fff;border:0;border-radius:10px;padding:14px;font-size:1.15rem;font-family:inherit;margin-top:6px;cursor:pointer}
+  button:hover{filter:brightness(1.08)}
+  .hp{position:absolute;left:-3000px;top:-3000px} /* honeypot — humans never see this */
+  .foot{font-size:.8rem;opacity:.75;text-align:center;margin-top:10px}
+  #pending{display:none;background:var(--soft);border-radius:12px;padding:18px;text-align:center;margin-top:14px}
+  #pending b{color:var(--green)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Still Kicking?</h1>
+  <p class="tag">A free daily WhatsApp check-in — because living alone shouldn't mean no one notices.</p>
+
+  <form id="join" method="POST">
+    <input class="hp" type="text" name="hp" tabindex="-1" autocomplete="off">
+
+    <fieldset>
+      <legend>You</legend>
+      <label for="firstName">First name *</label>
+      <input id="firstName" name="firstName" type="text" required maxlength="40">
+
+      <label for="phone">Your WhatsApp number *</label>
+      <input id="phone" name="phone" type="tel" required placeholder="083 123 4567 or +27 83 123 4567">
+      <div class="hint">We'll send one WhatsApp to this number to prove it's you — your reply switches the service on.</div>
+
+      <label for="email">Email (optional backup)</label>
+      <input id="email" name="email" type="email">
+
+      <div class="row">
+        <div>
+          <label for="pingHour">Daily ping time</label>
+          <select id="pingHour" name="pingHour"><option value="5">05:00</option><option value="6">06:00</option><option value="7">07:00</option><option value="8">08:00</option><option value="9" selected>09:00</option><option value="10">10:00</option><option value="11">11:00</option><option value="12">12:00</option><option value="13">13:00</option><option value="14">14:00</option><option value="15">15:00</option><option value="16">16:00</option><option value="17">17:00</option><option value="18">18:00</option></select>
+        </div>
+        <div>
+          <label for="cadence">How often?</label>
+          <select id="cadence" name="cadence">
+            <option value="daily">Every day</option>
+            <option value="weekly">Once a week (hermit mode)</option>
+          </select>
+        </div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Your people (called only if you go quiet)</legend>
+      <div class="hint">In order of preference, up to three. They never sign up — we contact them only on a day you don't answer.</div>
+      <label>Contact 1 — name * &amp; WhatsApp number *</label>
+      <div class="row"><div><input name="nomName1" type="text"></div><div><input name="nomPhone1" type="tel"></div></div>
+      <label>Contact 2 (optional)</label>
+      <div class="row"><div><input name="nomName2" type="text"></div><div><input name="nomPhone2" type="tel"></div></div>
+      <label>Contact 3 (optional)</label>
+      <div class="row"><div><input name="nomName3" type="text"></div><div><input name="nomPhone3" type="tel"></div></div>
+      <label>A local neighbour who could physically check on you (optional)</label>
+      <div class="row"><div><input name="neighbourName" type="text" placeholder="Name"></div><div><input name="neighbourPhone" type="tel" placeholder="WhatsApp number"></div></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Access notes (optional)</legend>
+      <textarea name="notes" rows="3" maxlength="500" placeholder="Gate code, dogs, key-holder…"></textarea>
+      <div class="hint">Only ever shared privately with the ONE person sent to check on you, and only if everything else has failed. Never shown on any website.</div>
+      <label class="check"><input type="checkbox" name="notesConsent"> I agree these notes may be shared with my checker in that situation.</label>
+    </fieldset>
+
+    <fieldset>
+      <legend>The plain-language deal *</legend>
+      <label class="check"><input type="checkbox" name="consentStorage" required> We store only your contact details and preferences — nothing else. You can say STOP anytime and everything is deleted immediately.</label>
+      <label class="check"><input type="checkbox" name="consentSilence" required> If you don't answer by evening, we re-ping you, then contact your people, then possibly ask a checker to visit. That is the whole escalation, in that order.</label>
+      <label class="check"><input type="checkbox" name="consentNominees" required> My nominated contacts know I've named them (I'll tell them — they also get one explanation from Still Kicking? if ever contacted).</label>
+    </fieldset>
+
+    <button type="submit" id="goBtn">Sign me up 🌿</button>
+    <div id="pending"><b>Check-ins start soon.</b><br>Sign-ups open with our launch — this page will take your details then.<br>Questions? Ask in the community WhatsApp groups.</div>
+    <p class="foot">A WildLogic community project · Hogsback, Eastern Cape · POPIA: contacts + preferences only, deleted instantly on request</p>
+  </form>
+</main>
+<script>
+(async function () {
+  var form = document.getElementById('join');
+  var pending = document.getElementById('pending');
+  var endpoint = '';
+  try {
+    var r = await fetch('config.json?t=' + Date.now(), { cache: 'no-store' });
+    var cfg = await r.json();
+    endpoint = String(cfg.joinEndpoint || '').trim();
+  } catch (e) { /* stay pending */ }
+  form.addEventListener('submit', function (ev) {
+    if (!endpoint) { ev.preventDefault(); pending.style.display = 'block'; pending.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
+    form.action = endpoint;
+  });
+})();
+</script>
+</body>
+</html>
