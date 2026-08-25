@@ -29,17 +29,30 @@ cv.width = W * DPR; cv.height = H * DPR; ctx.scale(DPR, DPR);
 
 const DAY  = { sky:'#bfe0f2', far:'#8fb6cf', near:'#5e8aa6', ground:'#c8a86a', line:'#a98f57' };
 const NIGHT= { sky:'#141d38', far:'#232f52', near:'#1a2542', ground:'#3a3f63', line:'#2e3352' };
-const MILESTONES = [
-  [100, 'Nee man, kyk uit vir die aalwyne!'],
-  [250, 'Die mis kom en gaan... bly wakker.'],
-  [500, 'Lekker loop, boet!'],
-  [750, 'Die varke is wakker vandag.'],
+const GRAV = 1800, JUMPV = -378;          // ~420ms airtime, mobile-tap sweet spot
+const LOGY = GROUND - 52, LOGH = 26;      // fallen yellowwood: slide-only gap
+const LANDMARKS = [
+  [60,   'THE EDGE',         'Welkom by die Edge — hou daai voete!'],
+  [150,  '39 STEPS FALLS',   '39 trappies op — moenie afkyk nie!'],
+  [300,  'MADONNA & CHILD',  "Ag nee, hier's weer daai waterval!"],
+  [500,  'DUSK',             'Jislaaik, dis donker soos in die kloof.'],
+  [600,  'THE BIG TREE',     'Daai boom is ouer as Oom self.'],
+  [1000, 'THE LABYRINTH',    'Moenie verdwaal nie, vark.'],
 ];
-function milestoneFor(m){ let q=null; for(const [t,s] of MILESTONES) if(m>=t && !hit.has(t)){q=s;hit.add(t);} return q; }
+const AMBIENT = [
+  'Nee man, kyk uit vir die aalwyne!',
+  'Pasop vir daai sampioen!',
+  'Hier bly die fairies, moenie trap nie',
+  'Loop, vark, loop!',
+  'Die varke is wakker vandag.',
+  'Lekker loop, boet!',
+];
+const MISLINE = 'Haai, dis mis, dis nie rook nie!';
 
-let hit = new Set(), state = 'ready', speed = 330, trav = 0, meters = 0, hi = +(localStorage.getItem('hogback_hi')||0);
+let state = 'ready', speed = 330, trav = 0, meters = 0, hi = +(localStorage.getItem('hogback_hi')||0);
 let hogY = GROUND, vy = 0, jumping = false, obs = [], nextGap = 420, deadAt = 0;
-let mistTimer = 14, mist = null; // {age,dur}
+let mistTimer = 12, mist = null; // {age,dur}
+let lmIdx = 0, nextAmb = 170;
 let toast = null, last = performance.now();
 const stars = Array.from({length:70}, () => [Math.random()*W, Math.random()*GROUND*.65, Math.random()]);
 
@@ -55,7 +68,9 @@ const HB = [
 ];
 const CELL = 3, HW = HB[0].length * CELL, HH = HB.length * CELL;
 
-function drawHog(x, phase){
+function drawHog(x, phase, squash){
+  ctx.save();
+  if(squash){ ctx.translate(x+HW/2, GROUND); ctx.scale(1,.5); ctx.translate(-(x+HW/2), -GROUND); }
   const top = hogY - HH - 14;
   ctx.fillStyle = '#33313b';
   for(let r=0;r<HB.length;r++) for(let c=0;c<HB[r].length;c++){
@@ -65,37 +80,65 @@ function drawHog(x, phase){
     else ctx.fillRect(x+c*CELL, top+r*CELL, CELL, CELL);
   }
   // four trotting legs
-  const lb = top + HH - 2, amp = jumping ? 0 : 4;
+  const lb = top + HH - 2, amp = jumping ? 0 : (squash ? 2 : 4);
   [[8,-1],[16,1],[44,-1],[52,1]].forEach(([lx,dir],i)=>{
     const sw = Math.sin(phase + i*Math.PI/2) * amp * dir;
     ctx.fillRect(x+lx, lb, 5, 16+sw);
   });
+  ctx.restore();
 }
 
 // ---- obstacles ----
 function spawn(){
-  const kind = Math.random() < .45 ? 'rock' : 'aloe';
-  if(kind==='rock'){
-    const w = 42+Math.random()*16, h = 26+Math.random()*8;
-    obs.push({kind,x:W+40,w,h});
+  let roll = Math.random();
+  if(meters < 120) roll *= .7;            // fallen logs only after the player has warmed up
+  let o;
+  if(roll < .30){
+    const n = Math.random() < .3 ? 2 : 1;
+    o = {kind:'aloe', n, x:W+40, w:n===2?74:34, h:(n===2?30:34)+Math.random()*8};
+  } else if(roll < .55){
+    o = {kind:'stump', x:W+40, w:44+Math.random()*14, h:22+Math.random()*6};
+  } else if(roll < .75){
+    o = {kind:'toad', x:W+40, w:34, h:24+Math.random()*6};
   } else {
-    const n = Math.random()<.3 ? 2 : 1, h = 52+Math.random()*14;
-    obs.push({kind,x:W+40,w:n===2?76:34,h,n});
+    o = {kind:'log', x:W+40, w:86, h:LOGH};
   }
+  obs.push(o);
 }
 function drawObstacle(o){
   const gy = GROUND;
-  if(o.kind==='rock'){
-    ctx.fillStyle='#7d7469';
+  if(o.kind==='stump'){
+    ctx.fillStyle='#6e5638';
     ctx.beginPath(); ctx.moveTo(o.x,gy);
-    ctx.quadraticCurveTo(o.x+o.w*.1,gy-o.h,o.x+o.w*.42,gy-o.h);
-    ctx.quadraticCurveTo(o.x+o.w*.85,gy-o.h*.92,o.x+o.w,gy);
+    ctx.quadraticCurveTo(o.x+o.w*.06,gy-o.h,o.x+o.w*.3,gy-o.h);
+    ctx.lineTo(o.x+o.w*.72,gy-o.h*.96);
+    ctx.quadraticCurveTo(o.x+o.w*.95,gy-o.h*.9,o.x+o.w,gy);
     ctx.closePath(); ctx.fill();
-    ctx.fillStyle='#948a7d';
-    ctx.beginPath(); ctx.ellipse(o.x+o.w*.38,gy-o.h*.62,o.w*.16,o.h*.2,-.5,0,7); ctx.fill();
+    ctx.strokeStyle='#57432a'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.ellipse(o.x+o.w/2,gy-o.h,o.w*.3,3.4,0,0,7); ctx.stroke();
+    ctx.fillStyle='#5c8a4a';                       // moss cap
+    ctx.beginPath(); ctx.ellipse(o.x+o.w*.34,gy-o.h-1,o.w*.26,4.5,-.12,0,7); ctx.fill();
+    ctx.lineWidth=1;
+  } else if(o.kind==='toad'){
+    const ch=o.h;
+    ctx.fillStyle='#efe4c8'; ctx.fillRect(o.x+13,gy-ch*.62,8,ch*.62);   // stem
+    ctx.fillStyle='#c23b2e';                                            // red cap
+    ctx.beginPath(); ctx.moveTo(o.x+2,gy-ch*.58);
+    ctx.quadraticCurveTo(o.x+17,gy-ch-6,o.x+32,gy-ch*.58);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#f7f1e4';
+    [[10,-ch*.72],[20,-ch*.86],[26,-ch*.66]].forEach(([dx,dy])=>ctx.fillRect(o.x+dx,gy+dy,3.5,3));
+  } else if(o.kind==='log'){
+    ctx.fillStyle='#77593a'; ctx.fillRect(o.x,LOGY,o.w,LOGH);
+    ctx.strokeStyle='#5d4529';
+    for(let i=1;i<4;i++){ ctx.beginPath(); ctx.moveTo(o.x+4,LOGY+i*6.5); ctx.lineTo(o.x+o.w-4,LOGY+i*6.5); ctx.stroke(); }
+    ctx.fillStyle='#8a6845'; ctx.beginPath(); ctx.arc(o.x+o.w-6,LOGY+LOGH/2,LOGH/2-3,0,7); ctx.fill();
+    ctx.fillStyle='#5c8a4a';                        // moss along the top
+    ctx.fillRect(o.x+6,LOGY-3,o.w*.55,5);
+    ctx.beginPath(); ctx.ellipse(o.x+o.w*.78,LOGY-2,14,4,.08,0,7); ctx.fill();
   } else {
     for(let i=0;i<(o.n||1);i++){
-      const bx=o.x+i*42, bh=o.h-(i?6:0);
+      const bx=o.x+i*40, bh=o.h-(i?4:0);
       ctx.strokeStyle='#4c8b4c'; ctx.lineWidth=5; ctx.lineCap='round';
       ctx.beginPath(); ctx.moveTo(bx+17,gy); ctx.lineTo(bx+17,gy-bh*.55); ctx.stroke();
       for(let L=0;L<5;L++){
@@ -145,17 +188,44 @@ function backdrop(k){
   for(let i=0;i<14;i++){ const gx=(i*97 - (trav%97)); ctx.fillRect(gx,GROUND+8+((i*53)%3)*9,7,2); }
 }
 
-// ---- mist ----
-function drawMist(){
+// ---- mist (Hogsback style: brief, soft, and the fairies show you the lane) ----
+function drawMist(tNow){
   if(!mist) return;
   const p = Math.min(mist.age/mist.dur,1);
   const cxp = W*(1.25 - 1.5*p);
   const g = ctx.createLinearGradient(cxp-W*.33,0,cxp+W*.33,0);
   g.addColorStop(0,'rgba(235,240,244,0)');
-  g.addColorStop(.5,'rgba(235,240,244,.62)');
+  g.addColorStop(.5,'rgba(235,240,244,.6)');
   g.addColorStop(1,'rgba(235,240,244,0)');
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-  ctx.fillStyle=`rgba(230,236,240,${.14*Math.sin(p*Math.PI)})`; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=`rgba(230,236,240,${.12*Math.sin(p*Math.PI)})`; ctx.fillRect(0,0,W,H);
+  if(p<1){
+    for(const o of obs){
+      if(o.x<-20 || o.x>W+40) continue;
+      const cy = GROUND-(o.kind==='log'?LOGH+18:o.h)-14;
+      for(let i=0;i<3;i++){
+        const a=.45+.4*Math.sin(tNow/130+i*2.1+o.x*.01);
+        ctx.fillStyle=`rgba(255,226,122,${a})`;
+        ctx.beginPath();
+        ctx.arc(o.x+o.w/2+(i-1)*14, cy+(i===1?-8:0), 2.2, 0, 7);
+        ctx.fill();
+      }
+    }
+  }
+}
+
+// ---- landmarks: wooden signs at real Hogsback spots ----
+function drawSigns(){
+  ctx.font='bold 10px monospace'; ctx.textAlign='center';
+  for(const [m,label] of LANDMARKS){
+    const sx = 60 + m*10 - trav;
+    if(sx < -110 || sx > W+30) continue;
+    ctx.fillStyle='#5a4630'; ctx.fillRect(sx+50,GROUND-46,5,46);
+    ctx.fillStyle='#c9b184'; ctx.fillRect(sx,GROUND-64,106,22);
+    ctx.strokeStyle='#8a744f'; ctx.strokeRect(sx+.5,GROUND-63.5,105,21);
+    ctx.fillStyle='#4a3a24'; ctx.fillText(label,sx+53,GROUND-50);
+  }
+  ctx.textAlign='left';
 }
 
 // ---- sound (tiny, lazy, gesture-unlocked) ----
@@ -174,7 +244,7 @@ function beep(f0,f1,t,type){
 // ---- loop ----
 function reset(){
   state='run'; speed=330; trav=0; meters=0; vy=0; hogY=GROUND; jumping=false;
-  obs=[]; nextGap=420; mist=null; mistTimer=14; hit=new Set(); toast=null;
+  obs=[]; nextGap=420; mist=null; mistTimer=12; lmIdx=0; nextAmb=170; toast=null;
 }
 function die(){
   state='dead'; deadAt=performance.now(); beep(160,70,.28,'sawtooth');
@@ -182,37 +252,68 @@ function die(){
 }
 function jump(){
   if(state!=='run') return;
-  if(!jumping){ vy=-700; jumping=true; beep(440,660,.09); }
+  if(!jumping && !slideHeld){ vy=JUMPV; jumping=true; beep(440,660,.09); }
 }
 function act(){
   if(state==='ready') reset();
   else if(state==='dead' && performance.now()-deadAt>450) reset();
   else jump();
 }
+let slideHeld=false;
 addEventListener('keydown', e=>{
   if(e.code==='Space'||e.code==='ArrowUp'){ e.preventDefault(); act(); }
+  if(e.code==='ArrowDown'||e.code==='KeyS'){ e.preventDefault(); slideHeld=true; }
 });
-cv.addEventListener('pointerdown', e=>{ e.preventDefault(); act(); });
+addEventListener('keyup', e=>{
+  if(e.code==='ArrowDown'||e.code==='KeyS') slideHeld=false;
+});
+let pStartY=null;
+cv.addEventListener('pointerdown', e=>{ e.preventDefault(); pStartY=e.clientY; act(); });
+cv.addEventListener('pointermove', e=>{
+  if(pStartY!==null && e.clientY-pStartY>26) slideHeld=true;
+});
+['pointerup','pointercancel'].forEach(ev =>
+  cv.addEventListener(ev, ()=>{ pStartY=null; slideHeld=false; }));
 
 function tick(now){
   const dt = Math.min((now-last)/1000,.05); last=now;
   if(state==='run'){
     speed=Math.min(speed+8*dt,720); trav+=speed*dt; meters=Math.floor(trav/10);
-    if(jumping){ vy+=2600*dt; hogY+=vy*dt; if(hogY>=GROUND){hogY=GROUND;jumping=false;} }
+    const sliding = slideHeld && !jumping && hogY>=GROUND;
+    if(jumping){
+      vy += (GRAV + (slideHeld ? 5200 : 0))*dt;   // down = fast-drop
+      hogY += vy*dt;
+      if(hogY>=GROUND){ hogY=GROUND; jumping=false; }
+    }
     nextGap-=speed*dt;
-    if(nextGap<=0){ spawn(); nextGap=340+Math.random()*340; }
+    if(nextGap<=0){
+      spawn();
+      nextGap+=340+Math.random()*340+(obs[obs.length-1].kind==='log'?140:0);
+    }
     for(const o of obs) o.x-=speed*dt;
     obs=obs.filter(o=>o.x>-140);
-    const q=milestoneFor(meters);
-    if(q){ toast={s:q,age:0}; beep(880,880,.09,'sine'); }
+    // landmarks & Oom
+    while(lmIdx<LANDMARKS.length && meters>=LANDMARKS[lmIdx][0]){
+      toast={s:LANDMARKS[lmIdx][2],age:0}; beep(880,880,.09,'sine'); lmIdx++;
+    }
+    if(meters>=nextAmb){
+      toast={s:AMBIENT[Math.floor(Math.random()*AMBIENT.length)],age:0};
+      nextAmb=meters+160+Math.random()*160;
+    }
     mistTimer-=dt;
-    if(!mist && mistTimer<=0){ mist={age:0,dur:4.4}; }
-    if(mist){ mist.age+=dt; if(mist.age>mist.dur+1.6){ mist=null; mistTimer=20+Math.random()*14; } }
-    // collision: forgiving AABB insets
-    const hx = 70 + 8, hw = HW - 28, htop = hogY - HH - 10, hh = HH + 8;
+    if(!mist && mistTimer<=0){
+      mist={age:0,dur:2.4};
+      if(Math.random()<.5 && !toast) toast={s:MISLINE,age:0};
+    }
+    if(mist){ mist.age+=dt; if(mist.age>mist.dur+1.6){ mist=null; mistTimer=18+Math.random()*4; } }
+    // collision: forgiving AABB insets (squashed box while sliding)
+    const hx = 70 + 8, hw = (sliding ? HW - 8 : HW - 28);
+    const htop = sliding ? hogY - 15 : hogY - HH - 10, hh = sliding ? 13 : HH + 8;
     for(const o of obs){
-      const ox = o.x + 5, ow = (o.n ? o.w : o.w) - 10, otop = GROUND - o.h + 4, oh = o.h - 4;
-      if(hx < ox + ow && hx + hw > ox && htop < otop + oh && htop + hh > otop){ die(); break; }
+      let ox, ow, otop, oh;
+      if(o.kind==='log'){ ox=o.x+4; ow=o.w-8; otop=LOGY+4; oh=LOGH-8; }
+      else { ox=o.x+5; ow=o.w-10; otop=GROUND-o.h+4; oh=o.h-4; }
+      if(hx < ox+ow && hx+hw > ox && htop < otop+oh && htop+hh > otop){ die(); break; }
     }
   }
   if(toast){ toast.age+=dt; if(toast.age>2.4) toast=null; }
@@ -220,9 +321,10 @@ function tick(now){
   // ---- render ----
   const k=Math.max(0,Math.min(1,(meters-500)/120));
   backdrop(k);
+  drawSigns();
   obs.forEach(drawObstacle);
-  drawHog(70, trav*.045);
-  drawMist();
+  drawHog(70, trav*.045, slideHeld && !jumping && hogY>=GROUND);
+  drawMist(now);
   // HUD
   ctx.fillStyle = k>.5?'#cdd6ee':'#23405c';
   ctx.font='bold 16px monospace'; ctx.textAlign='right';
@@ -249,7 +351,7 @@ function tick(now){
       ctx.font='16px system-ui'; ctx.globalAlpha=.85;
       ctx.fillText('404 — this page wandered into the mist.', W/2, 136);
       ctx.globalAlpha=pulse;
-      ctx.fillText('tap or press SPACE to run the ridge', W/2, 162);
+      ctx.fillText('tap / SPACE to run — hold ↓ or swipe down to slide', W/2, 162);
     } else {
       ctx.fillStyle='rgba(20,29,56,.88)';
       ctx.fillRect(W/2-170,84,340,110);
