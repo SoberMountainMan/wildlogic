@@ -29,8 +29,8 @@ cv.width = W * DPR; cv.height = H * DPR; ctx.scale(DPR, DPR);
 
 const DAY  = { sky:'#bfe0f2', far:'#8fb6cf', near:'#5e8aa6', ground:'#c8a86a', line:'#a98f57' };
 const NIGHT= { sky:'#141d38', far:'#232f52', near:'#1a2542', ground:'#3a3f63', line:'#2e3352' };
-const GRAV = 1800, JUMPV = -378;          // ~420ms airtime, mobile-tap sweet spot
-const LOGY = GROUND - 52, LOGH = 26;      // fallen yellowwood: slide-only gap
+const GRAV = 2700, JUMPV = -567;          // 420ms airtime, ~60px apex (mobile-tuned)
+const LOGY = GROUND - 66, LOGH = 38;      // fallen yellowwood: slide-only gap
 const LANDMARKS = [
   [60,   'THE EDGE',         'Welkom by die Edge — hou daai voete!'],
   [150,  '39 STEPS FALLS',   '39 trappies op — moenie afkyk nie!'],
@@ -131,8 +131,8 @@ function drawObstacle(o){
   } else if(o.kind==='log'){
     ctx.fillStyle='#77593a'; ctx.fillRect(o.x,LOGY,o.w,LOGH);
     ctx.strokeStyle='#5d4529';
-    for(let i=1;i<4;i++){ ctx.beginPath(); ctx.moveTo(o.x+4,LOGY+i*6.5); ctx.lineTo(o.x+o.w-4,LOGY+i*6.5); ctx.stroke(); }
-    ctx.fillStyle='#8a6845'; ctx.beginPath(); ctx.arc(o.x+o.w-6,LOGY+LOGH/2,LOGH/2-3,0,7); ctx.fill();
+    for(let i=1;i<6;i++){ ctx.beginPath(); ctx.moveTo(o.x+4,LOGY+i*6.3); ctx.lineTo(o.x+o.w-4,LOGY+i*6.3); ctx.stroke(); }
+    ctx.fillStyle='#8a6845'; ctx.beginPath(); ctx.arc(o.x+o.w-7,LOGY+LOGH/2,LOGH/2-4,0,7); ctx.fill();
     ctx.fillStyle='#5c8a4a';                        // moss along the top
     ctx.fillRect(o.x+6,LOGY-3,o.w*.55,5);
     ctx.beginPath(); ctx.ellipse(o.x+o.w*.78,LOGY-2,14,4,.08,0,7); ctx.fill();
