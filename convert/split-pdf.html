@@ -108,7 +108,7 @@ window.addEventListener('DOMContentLoaded', function () {
     Hog.showProgress(true);
     Hog.setProgress(0.15);
 
-    Hog.loadScript('https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js').then(function () {
+    Hog.needPdfLib().then(function () {
       Hog.status('Reading ' + file.name + '…');
       return file.arrayBuffer().then(function (buf) {
         return PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
@@ -141,7 +141,7 @@ window.addEventListener('DOMContentLoaded', function () {
     document.getElementById('runBtn').disabled = true;
     document.getElementById('rangeInput').disabled = true;
     document.getElementById('rangeInput').value = '';
-    Hog.loadScript('https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js').then(function () {
+    Hog.needPdfLib().then(function () {
       return file.arrayBuffer().then(function (buf) {
         return PDFLib.PDFDocument.load(buf, { ignoreEncryption: true });
       });

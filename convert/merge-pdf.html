@@ -78,8 +78,9 @@ window.addEventListener('DOMContentLoaded', function () {
     Hog.showProgress(true);
     Hog.setProgress(0.05);
 
-    Hog.loadScript('https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js').then(function () {
-      var out = PDFLib.PDFDocument.create();
+    Hog.needPdfLib().then(function () {
+      return PDFLib.PDFDocument.create();
+    }).then(function (out) {
       var chain = Promise.resolve();
       files.forEach(function (f, i) {
         chain = chain.then(function () {
