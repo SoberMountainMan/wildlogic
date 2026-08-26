@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hog's Back Run — Leaderboard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐗</text></svg>">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;background:#0e1526;color:#cdd6ee;font-family:system-ui,sans-serif}
+  body{min-height:100vh;padding:32px 16px 64px;max-width:720px;margin:0 auto}
+  h1{color:#ffe9a8;font-size:30px;margin:0 0 4px;letter-spacing:.5px}
+  .sub{color:#8fa0c0;font-size:14px;margin:0 0 20px}
+  a.play{display:inline-block;color:#141d38;background:#ffe9a8;text-decoration:none;
+         border-radius:20px;padding:10px 20px;font-size:15px;margin-bottom:24px}
+  a.play:hover{background:#ffd75e}
+  section.card{background:#141d38;border:1px solid #2a3a5e;border-radius:16px;
+               padding:18px 20px;margin-bottom:20px}
+  h2{color:#ffe9a8;font-size:14px;text-transform:uppercase;letter-spacing:1px;
+     margin:0 0 12px;font-family:ui-monospace,monospace}
+  .row{display:flex;align-items:baseline;gap:12px;padding:7px 0;border-bottom:1px solid #1d2a44}
+  .row:last-child{border-bottom:none}
+  .rk{color:#8fa0c0;font-family:ui-monospace,monospace;width:22px;flex:none}
+  .row.top .rk{color:#ffd75e}
+  .nm{flex:1;color:#e6ecf7;font-weight:600;word-break:break-word}
+  .nm .cs{display:block;color:#8fa0c0;font-weight:400;font-size:12px;margin-top:1px}
+  .m{color:#ffd75e;font-family:ui-monospace,monospace;font-weight:700;flex:none}
+  .empty{color:#8fa0c0;font-style:italic;margin:4px 0 0}
+  #stamp{color:#5d6f92;font-size:12px;text-align:center;margin-top:24px}
+</style>
+</head>
+<body>
+<h1>HOG'S BACK RUN</h1>
+<p class="sub">the leaderboard — how far can a hog run before the ridge gets him?</p>
+<a class="play" href="/hogs-back-run">▶ play</a>
+<div id="boards"><p class="empty">Loading…</p></div>
+<p id="stamp"></p>
+<script>
+const API='https://hogboard.whatjonothinks.workers.dev/scores';
+const esc = s => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function card(title, list){
+  if(!list || !list.length) return '<section class="card"><h2>'+title+'</h2><p class="empty">No pigs on the board yet. Be the first.</p></section>';
+  const rows = list.map((r,i)=>
+    '<div class="row'+(i===0?' top':'')+'">'+
+      '<span class="rk">'+(i+1)+'</span>'+
+      '<span class="nm">'+esc(r.n)+'<span class="cs">killed by '+esc(r.c)+'</span></span>'+
+      '<span class="m">'+r.m+' m</span>'+
+    '</div>').join('');
+  return '<section class="card"><h2>'+title+'</h2>'+rows+'</section>';
+}
+async function load(){
+  try{
+    const r=await fetch(API,{cache:'no-store'});
+    const b=await r.json();
+    if(!b.ok) throw new Error('bad');
+    document.getElementById('boards').innerHTML =
+      card('This week · '+b.week, b.weekly) + card('All time', b.all);
+    document.getElementById('stamp').textContent='updated '+new Date().toLocaleTimeString();
+  }catch(e){
+    document.getElementById('boards').innerHTML='<section class="card"><p class="empty">The mist ate the leaderboard. Try again.</p></section>';
+  }
+}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

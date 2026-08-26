@@ -42,8 +42,7 @@ function shareFallback(t, done){
 }
 document.getElementById('sh').addEventListener('click', e=>{
   e.stopPropagation();
-  const msg='I died from '+deathCause.replace(/\.\s+/g,', ')+' '+meters+' m into the Hogsback mist. Beat that: wildlogic.co.za/'+
-    SHARE_PATHS[Math.floor(Math.random()*SHARE_PATHS.length)];
+  const msg='I died from '+deathCause.replace(/\.\s+/g,', ')+' '+meters+' m into the Hogsback mist. Beat that: wildlogic.co.za/hogs-back-run';
   const done=()=>{ e.target.textContent='✓ Copied — go paste it on them';
     setTimeout(()=>{ e.target.textContent='⚔️ Challenge a chommie'; },1800); };
   try{
@@ -117,9 +116,9 @@ const flies = Array.from({length:9}, () => [Math.random()*W, 60+Math.random()*(G
 let shrooms = [], nextShroom = 900, sCount = 0;   // 3 picked = the fairies open the mist
 const WANT = (()=>{ try{
   const p = decodeURIComponent(location.pathname).replace(/[^a-zA-Z0-9\/\-. ]/g,'').slice(1,26).trim();
+  if(p==='hogs-back-run') return "HOG'S BACK RUN";
   return p || 'This page';
 }catch(e){ return 'This page'; }})();
-const SHARE_PATHS = ['hogsback','mist','oom','porcupine42','bigtree','labyrinth','39steps'];
 // death-cause reveals — must read grammatically as "You were killed by <line>."
 // and "I died from <line> <m> m into the mist"
 const KILLERS = {
