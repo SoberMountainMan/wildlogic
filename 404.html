@@ -94,8 +94,8 @@ function spawn(){
   if(meters < 120) roll *= .7;            // fallen logs only after the player has warmed up
   let o;
   if(roll < .30){
-    const n = Math.random() < .3 ? 2 : 1;
-    o = {kind:'aloe', n, x:W+40, w:n===2?74:34, h:(n===2?30:34)+Math.random()*8};
+    const n = Math.random() < .22 ? 2 : 1;
+    o = {kind:'aloe', n, x:W+40, w:n===2?54:34, h:(n===2?22:34)+Math.random()*6};
   } else if(roll < .55){
     o = {kind:'stump', x:W+40, w:44+Math.random()*14, h:22+Math.random()*6};
   } else if(roll < .75){
@@ -138,7 +138,7 @@ function drawObstacle(o){
     ctx.beginPath(); ctx.ellipse(o.x+o.w*.78,LOGY-2,14,4,.08,0,7); ctx.fill();
   } else {
     for(let i=0;i<(o.n||1);i++){
-      const bx=o.x+i*40, bh=o.h-(i?4:0);
+      const bx=o.x+i*22, bh=o.h-(i?4:0);
       ctx.strokeStyle='#4c8b4c'; ctx.lineWidth=5; ctx.lineCap='round';
       ctx.beginPath(); ctx.moveTo(bx+17,gy); ctx.lineTo(bx+17,gy-bh*.55); ctx.stroke();
       for(let L=0;L<5;L++){
