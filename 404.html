@@ -112,7 +112,7 @@ let logHintShown = false;   // taught once per session, survives restarts
 let shroomHintShown = false;
 let deathCause = '', deathHead = '', shakeT = 0;
 let floaters = [];          // {x,y,t} '+1' pickup puffs
-const API='https://hogboard.whatjonothinks.workers.dev/scores';
+const API='https://lb.wildlogic.co.za/scores';
 let board=null, boardAt=0, qualify=false, posted=false, lastPostedM=0;
 const stars = Array.from({length:70}, () => [Math.random()*W, Math.random()*GROUND*.65, Math.random()]);
 const flies = Array.from({length:9}, () => [Math.random()*W, 60+Math.random()*(GROUND-90), Math.random()*7]);

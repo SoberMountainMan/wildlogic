@@ -36,7 +36,7 @@
 <div id="boards"><p class="empty">Loading…</p></div>
 <p id="stamp"></p>
 <script>
-const API='https://hogboard.whatjonothinks.workers.dev/scores';
+const API='https://lb.wildlogic.co.za/scores';
 const esc = s => String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function card(title, list){
   if(!list || !list.length) return '<section class="card"><h2>'+title+'</h2><p class="empty">No pigs on the board yet. Be the first.</p></section>';
