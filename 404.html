@@ -14,12 +14,25 @@
   #sh{position:fixed;left:50%;bottom:7vh;transform:translateX(-50%);z-index:3;
       background:#141d38;color:#ffe9a8;border:1px solid #3a4a78;border-radius:22px;
       font-size:16px;padding:12px 22px;font-family:system-ui,sans-serif}
+  #nm{position:fixed;left:50%;bottom:26vh;transform:translateX(-50%);z-index:4;
+      display:flex;gap:8px;align-items:center;background:#141d38;
+      border:1px solid #3a4a78;border-radius:22px;padding:10px 14px}
+  #nm span{color:#cdd6ee;font-size:14px}
+  #ni{background:#0e1526;color:#ffe9a8;border:1px solid #3a4a78;border-radius:12px;
+      font-size:15px;padding:8px 10px;width:140px;font-family:system-ui,sans-serif}
+  #ns{background:#ffe9a8;color:#141d38;border:none;border-radius:12px;
+      font-size:14px;padding:8px 14px;font-family:system-ui,sans-serif}
 </style>
 </head>
 <body>
 <a id="home" href="/">&#8592; wildlogic.co.za</a>
 <div id="wrap"><canvas id="cv"></canvas></div>
 <button id="sh" hidden>⚔️ Challenge a chommie</button>
+<div id="nm" hidden>
+  <span>On the board? Name yourself:</span>
+  <input id="ni" maxlength="14" placeholder="your name" autocomplete="off">
+  <button id="ns">Yebo</button>
+</div>
 <script>
 function shareFallback(t, done){
   const ta=document.createElement('textarea'); ta.value=t;
@@ -39,6 +52,22 @@ document.getElementById('sh').addEventListener('click', e=>{
     else shareFallback(msg,done);
   }catch(err){ shareFallback(msg,done); }
 });
+document.getElementById('ns').addEventListener('click', submitName);
+document.getElementById('ni').addEventListener('keydown', e=>{ if(e.key==='Enter') submitName(); });
+function submitName(){
+  const name=(document.getElementById('ni').value||'').trim();
+  if(!name) return;
+  fetch(API,{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({name:name,meters:meters,cause:deathCause})})
+    .then(r=>r.json()).then(res=>{
+      if(res.ok){
+        posted=true; lastPostedM=meters;
+        document.getElementById('nm').hidden=true;
+        toast={s:'Yebo — you are #'+res.weeklyRank+' this week!',age:0};
+        fetchBoard(true).then(refreshQualify);
+      }
+    }).catch(()=>{});
+}
 /* PURPOSE: wildlogic.co.za custom 404 easter egg — "Hog's Back Run", a dino-class
    endless runner starring the WildLogic hog along his own ridge. Vanilla canvas,
    one file, no deps. Signature twist: Hogsback mist banks periodically obscure
@@ -81,6 +110,8 @@ let logHintShown = false;   // taught once per session, survives restarts
 let shroomHintShown = false;
 let deathCause = '', deathHead = '', shakeT = 0;
 let floaters = [];          // {x,y,t} '+1' pickup puffs
+const API='https://hogboard.whatjonothinks.workers.dev/scores';
+let board=null, boardAt=0, qualify=false, posted=false, lastPostedM=0;
 const stars = Array.from({length:70}, () => [Math.random()*W, Math.random()*GROUND*.65, Math.random()]);
 const flies = Array.from({length:9}, () => [Math.random()*W, 60+Math.random()*(GROUND-90), Math.random()*7]);
 let shrooms = [], nextShroom = 900, sCount = 0;   // 3 picked = the fairies open the mist
@@ -337,7 +368,19 @@ function reset(){
   obs=[]; nextGap=420; mist=null; mistTimer=12; lmIdx=0; nextAmb=170; toast=null;
   shrooms=[]; nextShroom=900; sCount=0; queuedAt=-1e9;
   floaters=[]; deathCause='';
-  try{ document.getElementById('sh').hidden = true; }catch(e){}
+  try{ document.getElementById('sh').hidden = true; document.getElementById('nm').hidden = true; }catch(e){}
+}
+async function fetchBoard(force){
+  if(board && !force && performance.now()-boardAt<60000) return board;
+  try{ const r=await fetch(API); if(!r.ok) return board; board=await r.json(); boardAt=performance.now(); return board; }
+  catch(e){ return board; }
+}
+function refreshQualify(b){
+  const w=(b && b.weekly)||[];
+  const nm=document.getElementById('nm');
+  qualify = w.length<10 || meters > ((w[w.length-1]||{m:0}).m);
+  if(state==='dead' && qualify && !(posted && meters<=lastPostedM)) nm.hidden=false;
+  else nm.hidden=true;
 }
 function die(kind){
   const lines = KILLERS[kind];
@@ -346,6 +389,7 @@ function die(kind){
   state='dead'; deadAt=performance.now(); shakeT=.35; beep(160,70,.28,'sawtooth');
   if(meters>hi){ hi=meters; localStorage.setItem('hogback_hi',hi); }
   try{ document.getElementById('sh').hidden = false; }catch(e){}
+  fetchBoard().then(refreshQualify).catch(()=>{});
 }
 function jump(){
   if(state!=='run') return;
@@ -524,11 +568,27 @@ function tick(now){
       ctx.fillText(`${meters} m   ·   HI ${hi} m`, W/2, 168);
       ctx.font='15px system-ui'; ctx.globalAlpha=pulse;
       ctx.fillText('tap to try again', W/2, 190);
+      drawBoard();
     }
     ctx.globalAlpha=1; ctx.textAlign='left';
   }
   ctx.restore();
   requestAnimationFrame(tick);
+}
+function drawBoard(){
+  if(!board || !board.weekly || !board.weekly.length) return;
+  const list=board.weekly;
+  ctx.textAlign='center';
+  ctx.fillStyle='rgba(20,29,56,.82)';
+  ctx.fillRect(W/2-160,200,320,24+list.length*13);
+  ctx.fillStyle='#ffe9a8'; ctx.font='bold 12px monospace';
+  ctx.fillText('TOP 10 · '+board.week, W/2, 216);
+  ctx.font='12px monospace';
+  list.forEach((r,i)=>{
+    const nm=r.n.length>14?r.n.slice(0,13)+'…':r.n;
+    ctx.fillStyle = i===0?'#ffd75e':'#cdd6ee';
+    ctx.fillText((i+1)+'. '+nm+' — '+r.m+' m', W/2, 232+i*13);
+  });
 }
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) last=performance.now(); });
 requestAnimationFrame(tick);
