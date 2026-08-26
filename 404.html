@@ -404,11 +404,14 @@ function act(){
   else jump();
 }
 let slideHeld=false;
+const isTyping = e => e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA');
 addEventListener('keydown', e=>{
+  if(isTyping(e)) return;
   if(e.code==='Space'||e.code==='ArrowUp'){ e.preventDefault(); act(); }
   if(e.code==='ArrowDown'||e.code==='KeyS'){ e.preventDefault(); slideHeld=true; }
 });
 addEventListener('keyup', e=>{
+  if(isTyping(e)) return;
   if(e.code==='ArrowDown'||e.code==='KeyS') slideHeld=false;
 });
 // touch: tap = hop · swipe down OR second finger down = duck
