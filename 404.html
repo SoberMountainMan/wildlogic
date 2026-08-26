@@ -19,7 +19,7 @@
 <body>
 <a id="home" href="/">&#8592; wildlogic.co.za</a>
 <div id="wrap"><canvas id="cv"></canvas></div>
-<button id="sh" hidden>📋 Copy my run</button>
+<button id="sh" hidden>⚔️ Challenge a chommie</button>
 <script>
 function shareFallback(t, done){
   const ta=document.createElement('textarea'); ta.value=t;
@@ -29,10 +29,10 @@ function shareFallback(t, done){
 }
 document.getElementById('sh').addEventListener('click', e=>{
   e.stopPropagation();
-  const msg='I ran '+meters+' m through the Hogsback mist — beat me: wildlogic.co.za/'+
+  const msg='I died to '+deathCause+' '+meters+' m into the Hogsback mist. Beat that: wildlogic.co.za/'+
     SHARE_PATHS[Math.floor(Math.random()*SHARE_PATHS.length)];
-  const done=()=>{ e.target.textContent='✓ Copied — send it to someone!';
-    setTimeout(()=>{ e.target.textContent='📋 Copy my run'; },1800); };
+  const done=()=>{ e.target.textContent='✓ Copied — go paste it on them';
+    setTimeout(()=>{ e.target.textContent='⚔️ Challenge a chommie'; },1800); };
   try{
     if(navigator.clipboard && navigator.clipboard.writeText)
       navigator.clipboard.writeText(msg).then(done, ()=>shareFallback(msg,done));
@@ -78,6 +78,9 @@ let lmIdx = 0, nextAmb = 170;
 let toast = null, last = performance.now();
 let queuedAt = -1e9;        // buffered jump timestamp
 let logHintShown = false;   // taught once per session, survives restarts
+let shroomHintShown = false;
+let deathCause = '', deathHead = '', shakeT = 0;
+let floaters = [];          // {x,y,t} '+1' pickup puffs
 const stars = Array.from({length:70}, () => [Math.random()*W, Math.random()*GROUND*.65, Math.random()]);
 const flies = Array.from({length:9}, () => [Math.random()*W, 60+Math.random()*(GROUND-90), Math.random()*7]);
 let shrooms = [], nextShroom = 900, sCount = 0;   // 3 picked = the fairies open the mist
@@ -86,6 +89,14 @@ const WANT = (()=>{ try{
   return p || 'This page';
 }catch(e){ return 'This page'; }})();
 const SHARE_PATHS = ['hogsback','mist','oom','porcupine42','bigtree','labyrinth','39steps'];
+// death-cause reveals — lines read as "You were killed by <line>."
+const KILLERS = {
+  aloe:  ['weed (the cops shot you right after)', 'an aloe — not even the smokable kind', 'weed. it was legal. you were not'],
+  toad:  ['way too many magic mushrooms', 'a mushroom. the fairies saw everything', "that was not an edible, boet"],
+  stump: ['a stump. a literal stump', 'firewood. it fought back', 'the yellowwood. it usually wins'],
+  log:   ['a fallen yellowwood (it fell in 1987)', 'skipping duck day', 'oom told you to duck. oom sees everything'],
+};
+const HEADS = ['AG NEE','EISH','MOER TOG','YOH','Lekker.'];
 
 // ---- hog sprite: proper little boar, drawn from shapes (faces right) ----
 const HW = 72, HH = 21;
@@ -259,16 +270,24 @@ function drawMist(tNow){
   }
 }
 
-// ---- collectable pine mushrooms ----
+// ---- collectable pine mushrooms (GOLD + glowing — the deadly ones are red) ----
 function drawShroom(s, tNow){
   const bob = Math.sin(tNow/220 + s.x*.02)*3;
-  ctx.fillStyle='#efe4c8'; ctx.fillRect(s.x+6, s.y+4, 5, 9);
-  ctx.fillStyle='#c23b2e';
-  ctx.beginPath(); ctx.moveTo(s.x-1, s.y+6);
-  ctx.quadraticCurveTo(s.x+8.5, s.y-7, s.x+18, s.y+6);
+  const y = s.y + bob;
+  const pulse = .25 + .15*Math.sin(tNow/180 + s.x*.05);
+  ctx.fillStyle = `rgba(255,215,94,${pulse})`;                       // fairy-glow halo
+  ctx.beginPath(); ctx.arc(s.x+8.5, y+3, 17, 0, 7); ctx.fill();
+  for(let i=0;i<2;i++){                                              // orbiting sparkles
+    const a = tNow/300 + i*Math.PI;
+    ctx.fillStyle = 'rgba(255,244,200,.9)';
+    ctx.fillRect(s.x+8.5+Math.cos(a)*14-1, y+3+Math.sin(a)*10-1, 2, 2);
+  }
+  ctx.fillStyle='#efe4c8'; ctx.fillRect(s.x+6, y+4, 5, 9);
+  ctx.fillStyle='#ffd75e';
+  ctx.beginPath(); ctx.moveTo(s.x-1, y+6);
+  ctx.quadraticCurveTo(s.x+8.5, y-7, s.x+18, y+6);
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle='#f7f1e4'; ctx.fillRect(s.x+4,s.y+1,2.6,2.6); ctx.fillRect(s.x+11,s.y,2.6,2.6);
-  s.bob = bob;
+  ctx.fillStyle='#fff7d9'; ctx.fillRect(s.x+4,y+1,2.6,2.6); ctx.fillRect(s.x+11,y,2.6,2.6);
 }
 
 // ---- landmarks: wooden signs at real Hogsback spots ----
@@ -303,10 +322,14 @@ function reset(){
   state='run'; speed=330; trav=0; meters=0; vy=0; hogY=GROUND; jumping=false;
   obs=[]; nextGap=420; mist=null; mistTimer=12; lmIdx=0; nextAmb=170; toast=null;
   shrooms=[]; nextShroom=900; sCount=0; queuedAt=-1e9;
+  floaters=[]; deathCause='';
   try{ document.getElementById('sh').hidden = true; }catch(e){}
 }
-function die(){
-  state='dead'; deadAt=performance.now(); beep(160,70,.28,'sawtooth');
+function die(kind){
+  const lines = KILLERS[kind];
+  deathCause = lines ? lines[Math.floor(Math.random()*lines.length)] : 'the mist';
+  deathHead = HEADS[Math.floor(Math.random()*HEADS.length)];
+  state='dead'; deadAt=performance.now(); shakeT=.35; beep(160,70,.28,'sawtooth');
   if(meters>hi){ hi=meters; localStorage.setItem('hogback_hi',hi); }
   try{ document.getElementById('sh').hidden = false; }catch(e){}
 }
@@ -388,13 +411,16 @@ function tick(now){
       let ox, ow, otop, oh;
       if(o.kind==='log'){ ox=o.x+4; ow=o.w-8; otop=LOGY+4; oh=LOGH-8; }
       else { ox=o.x+5; ow=o.w-10; otop=GROUND-o.h+4; oh=o.h-4; }
-      if(hx < ox+ow && hx+hw > ox && htop < otop+oh && htop+hh > otop){ die(); break; }
+      if(hx < ox+ow && hx+hw > ox && htop < otop+oh && htop+hh > otop){ die(o.kind); break; }
     }
     // pine mushrooms: hop through them; 3 = fairies open the mist
     if(trav > nextShroom){
       const sx=W+30, sy=GROUND-46-Math.random()*54;
       if(obs.some(o=>Math.abs(o.x-sx)<80)) nextShroom=trav+120;
-      else { shrooms.push({x:sx,y:sy}); nextShroom=trav+520+Math.random()*420; }
+      else {
+        shrooms.push({x:sx,y:sy}); nextShroom=trav+520+Math.random()*420;
+        if(!shroomHintShown){ shroomHintShown=true; toast={s:'Goud sampioene maak die mis oop — ROOIES MOOR.',age:0}; }
+      }
     }
     for(const s of shrooms) s.x-=speed*dt;
     shrooms=shrooms.filter(s=>s.x>-30 && !s.got);
@@ -402,6 +428,7 @@ function tick(now){
     for(const s of shrooms){
       if(Math.abs(s.x+9-hcx)<26 && Math.abs(s.y+5-hcy)<32){
         s.got=true; sCount++; beep(1040,1320,.08,'sine');
+        floaters.push({x:s.x+9,y:s.y-6,t:0});
         if(mist && sCount>=3){
           sCount-=3; mist=null; mistTimer=18+Math.random()*4;
           toast={s:'Die fairies maak die mis oop!',age:0}; beep(880,1400,.15,'sine');
@@ -414,8 +441,13 @@ function tick(now){
     }
   }
   if(toast){ toast.age+=dt; if(toast.age>2.4) toast=null; }
+  for(const f of floaters) f.t+=dt;
+  floaters = floaters.filter(f=>f.t<.8);
+  if(shakeT>0) shakeT-=dt;
 
   // ---- render ----
+  ctx.save();
+  if(shakeT>0){ const m=9*(shakeT/.35); ctx.translate((Math.random()-.5)*m,(Math.random()-.5)*m); }
   const k=Math.max(0,Math.min(1,(meters-500)/120));
   backdrop(k);
   drawSigns();
@@ -423,6 +455,11 @@ function tick(now){
   shrooms.forEach(s=>drawShroom(s, now));
   drawHog(70, trav*.045, slideHeld && !jumping && hogY>=GROUND);
   drawMist(now);
+  for(const f of floaters){
+    ctx.globalAlpha=1-f.t/.8; ctx.fillStyle='#ffd75e'; ctx.font='bold 13px monospace';
+    ctx.fillText('+1', f.x, f.y - f.t*38);
+  }
+  ctx.globalAlpha=1;
   if(k>.5){                                    // night fireflies
     for(const [fx0,fy,ph] of flies){
       let fx=(fx0 - trav*.06)%W; if(fx<0)fx+=W;
@@ -461,16 +498,22 @@ function tick(now){
       ctx.fillText('tap to hop · swipe down or 2nd finger to duck', W/2, 162);
     } else {
       ctx.fillStyle='rgba(20,29,56,.88)';
-      ctx.fillRect(W/2-170,84,340,110);
-      ctx.fillStyle='#ffe9a8'; ctx.font='bold 22px system-ui';
-      ctx.fillText('The hog found it first.', W/2, 122);
-      ctx.fillStyle='#fff'; ctx.font='16px monospace';
-      ctx.fillText(`${meters} m   ·   HI ${hi} m`, W/2, 152);
+      const cause = 'You were killed by ' + deathCause + '.';
+      ctx.font='bold 15px system-ui';
+      const cw = Math.max(360, ctx.measureText(cause).width+48);
+      ctx.fillRect(W/2-cw/2,84,cw,116);
+      ctx.fillStyle='#ffe9a8'; ctx.font='bold 26px system-ui'; ctx.textAlign='center';
+      ctx.fillText(deathHead, W/2, 118);
+      ctx.fillStyle='#fff'; ctx.font='bold 15px system-ui';
+      ctx.fillText(cause, W/2, 144);
+      ctx.fillStyle='#cdd6ee'; ctx.font='16px monospace';
+      ctx.fillText(`${meters} m   ·   HI ${hi} m`, W/2, 168);
       ctx.font='15px system-ui'; ctx.globalAlpha=pulse;
-      ctx.fillText('tap to try again', W/2, 178);
+      ctx.fillText('tap to try again', W/2, 190);
     }
     ctx.globalAlpha=1; ctx.textAlign='left';
   }
+  ctx.restore();
   requestAnimationFrame(tick);
 }
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) last=performance.now(); });
