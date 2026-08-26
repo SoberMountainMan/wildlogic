@@ -29,7 +29,7 @@ cv.width = W * DPR; cv.height = H * DPR; ctx.scale(DPR, DPR);
 
 const DAY  = { sky:'#bfe0f2', far:'#8fb6cf', near:'#5e8aa6', ground:'#c8a86a', line:'#a98f57' };
 const NIGHT= { sky:'#141d38', far:'#232f52', near:'#1a2542', ground:'#3a3f63', line:'#2e3352' };
-const GRAV = 2700, JUMPV = -567;          // 420ms airtime, ~60px apex (mobile-tuned)
+const GRAV = 2700, JUMPV = -640;          // ~470ms airtime, ~76px apex (mobile-tuned)
 const LOGY = GROUND - 66, LOGH = 38;      // fallen yellowwood: slide-only gap
 const LANDMARKS = [
   [60,   'THE EDGE',         'Welkom by die Edge — hou daai voete!'],
@@ -54,6 +54,7 @@ let hogY = GROUND, vy = 0, jumping = false, obs = [], nextGap = 420, deadAt = 0;
 let mistTimer = 12, mist = null; // {age,dur}
 let lmIdx = 0, nextAmb = 170;
 let toast = null, last = performance.now();
+let logHintShown = false;   // taught once per session, survives restarts
 const stars = Array.from({length:70}, () => [Math.random()*W, Math.random()*GROUND*.65, Math.random()]);
 
 // ---- hog sprite: pixel body (faces right) + animated legs ----
@@ -267,13 +268,23 @@ addEventListener('keydown', e=>{
 addEventListener('keyup', e=>{
   if(e.code==='ArrowDown'||e.code==='KeyS') slideHeld=false;
 });
-let pStartY=null;
-cv.addEventListener('pointerdown', e=>{ e.preventDefault(); pStartY=e.clientY; act(); });
+// touch: tap = hop · swipe down OR second finger down = duck
+const touches = new Map();
+cv.addEventListener('pointerdown', e=>{
+  e.preventDefault();
+  touches.set(e.pointerId, e.clientY);
+  if(touches.size >= 2) slideHeld = true;
+  else act();
+});
 cv.addEventListener('pointermove', e=>{
-  if(pStartY!==null && e.clientY-pStartY>26) slideHeld=true;
+  const y0 = touches.get(e.pointerId);
+  if(y0 !== undefined && e.clientY - y0 > 18) slideHeld = true;
 });
 ['pointerup','pointercancel'].forEach(ev =>
-  cv.addEventListener(ev, ()=>{ pStartY=null; slideHeld=false; }));
+  cv.addEventListener(ev, e=>{
+    touches.delete(e.pointerId);
+    if(touches.size === 0){ slideHeld = false; }
+  }));
 
 function tick(now){
   const dt = Math.min((now-last)/1000,.05); last=now;
@@ -288,7 +299,11 @@ function tick(now){
     nextGap-=speed*dt;
     if(nextGap<=0){
       spawn();
-      nextGap+=340+Math.random()*340+(obs[obs.length-1].kind==='log'?140:0);
+      if(obs[obs.length-1].kind==='log'){
+        nextGap+=140;
+        if(!logHintShown){ logHintShown=true; toast={s:'Log! Swipe down (or 2nd finger) to duck!',age:0}; }
+      }
+      nextGap+=340+Math.random()*340;
     }
     for(const o of obs) o.x-=speed*dt;
     obs=obs.filter(o=>o.x>-140);
@@ -351,7 +366,7 @@ function tick(now){
       ctx.font='16px system-ui'; ctx.globalAlpha=.85;
       ctx.fillText('404 — this page wandered into the mist.', W/2, 136);
       ctx.globalAlpha=pulse;
-      ctx.fillText('tap / SPACE to run — hold ↓ or swipe down to slide', W/2, 162);
+      ctx.fillText('tap to hop · swipe down or 2nd finger to duck', W/2, 162);
     } else {
       ctx.fillStyle='rgba(20,29,56,.88)';
       ctx.fillRect(W/2-170,84,340,110);
