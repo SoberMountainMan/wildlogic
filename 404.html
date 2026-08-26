@@ -11,12 +11,34 @@
   #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
   canvas{width:min(100vw,1040px);height:auto;display:block}
   #home{position:fixed;top:10px;left:12px;color:#23405c;text-decoration:none;font-size:15px;opacity:.7;z-index:2}
+  #sh{position:fixed;left:50%;bottom:7vh;transform:translateX(-50%);z-index:3;
+      background:#141d38;color:#ffe9a8;border:1px solid #3a4a78;border-radius:22px;
+      font-size:16px;padding:12px 22px;font-family:system-ui,sans-serif}
 </style>
 </head>
 <body>
 <a id="home" href="/">&#8592; wildlogic.co.za</a>
 <div id="wrap"><canvas id="cv"></canvas></div>
+<button id="sh" hidden>📋 Copy my run</button>
 <script>
+function shareFallback(t, done){
+  const ta=document.createElement('textarea'); ta.value=t;
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); done(); }catch(e){}
+  document.body.removeChild(ta);
+}
+document.getElementById('sh').addEventListener('click', e=>{
+  e.stopPropagation();
+  const msg='I ran '+meters+' m through the Hogsback mist — beat me: wildlogic.co.za/'+
+    SHARE_PATHS[Math.floor(Math.random()*SHARE_PATHS.length)];
+  const done=()=>{ e.target.textContent='✓ Copied — send it to someone!';
+    setTimeout(()=>{ e.target.textContent='📋 Copy my run'; },1800); };
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(msg).then(done, ()=>shareFallback(msg,done));
+    else shareFallback(msg,done);
+  }catch(err){ shareFallback(msg,done); }
+});
 /* PURPOSE: wildlogic.co.za custom 404 easter egg — "Hog's Back Run", a dino-class
    endless runner starring the WildLogic hog along his own ridge. Vanilla canvas,
    one file, no deps. Signature twist: Hogsback mist banks periodically obscure
@@ -54,38 +76,60 @@ let hogY = GROUND, vy = 0, jumping = false, obs = [], nextGap = 420, deadAt = 0;
 let mistTimer = 12, mist = null; // {age,dur}
 let lmIdx = 0, nextAmb = 170;
 let toast = null, last = performance.now();
+let queuedAt = -1e9;        // buffered jump timestamp
 let logHintShown = false;   // taught once per session, survives restarts
 const stars = Array.from({length:70}, () => [Math.random()*W, Math.random()*GROUND*.65, Math.random()]);
+const flies = Array.from({length:9}, () => [Math.random()*W, 60+Math.random()*(GROUND-90), Math.random()*7]);
+let shrooms = [], nextShroom = 900, sCount = 0;   // 3 picked = the fairies open the mist
+const WANT = (()=>{ try{
+  const p = decodeURIComponent(location.pathname).replace(/[^a-zA-Z0-9\/\-. ]/g,'').slice(1,26).trim();
+  return p || 'This page';
+}catch(e){ return 'This page'; }})();
+const SHARE_PATHS = ['hogsback','mist','oom','porcupine42','bigtree','labyrinth','39steps'];
 
-// ---- hog sprite: pixel body (faces right) + animated legs ----
-const HB = [
-'...............B..B.....',
-'..T...........BBBBBB....',
-'.BT...........BBBBBBB...',
-'..B..........BBBBBBBB...',
-'...BBBBBBBBBBBBBBBBBBB..',
-'..BBBBBBBBBBBBBBBBBBBBB.',
-'..BBBBBBBBBBBBBBBBBBBBWW',
-];
-const CELL = 3, HW = HB[0].length * CELL, HH = HB.length * CELL;
+// ---- hog sprite: proper little boar, drawn from shapes (faces right) ----
+const HW = 72, HH = 21;
+const FUR='#33313b', SNOUT='#6e5f58', LIGHT='#efe9dd', HOOF='#17161c';
 
 function drawHog(x, phase, squash){
   ctx.save();
   if(squash){ ctx.translate(x+HW/2, GROUND); ctx.scale(1,.5); ctx.translate(-(x+HW/2), -GROUND); }
   const top = hogY - HH - 14;
-  ctx.fillStyle = '#33313b';
-  for(let r=0;r<HB.length;r++) for(let c=0;c<HB[r].length;c++){
-    const ch = HB[r][c]; if(ch==='.') continue;
-    if(ch==='W'){ ctx.fillStyle='#efe9dd'; ctx.fillRect(x+c*CELL, top+r*CELL, CELL, CELL); ctx.fillStyle='#33313b'; }
-    else if(ch==='T'){ ctx.fillRect(x+c*CELL, top+r*CELL+Math.sin(phase)*1.5, CELL, CELL); }
-    else ctx.fillRect(x+c*CELL, top+r*CELL, CELL, CELL);
-  }
-  // four trotting legs
-  const lb = top + HH - 2, amp = jumping ? 0 : (squash ? 2 : 4);
-  [[8,-1],[16,1],[44,-1],[52,1]].forEach(([lx,dir],i)=>{
+  // four trotting legs (two-part, with dark hooves)
+  const amp = jumping ? 0 : (squash ? 2 : 4);
+  [[10,-1],[19,1],[43,-1],[52,1]].forEach(([lx,dir],i)=>{
     const sw = Math.sin(phase + i*Math.PI/2) * amp * dir;
-    ctx.fillRect(x+lx, lb, 5, 16+sw);
+    ctx.fillStyle=FUR; ctx.fillRect(x+lx, top+22, 7, 12);
+    ctx.fillRect(x+lx+1+sw*.6, top+30, 5, 6);
+    ctx.fillStyle=HOOF; ctx.fillRect(x+lx+1+sw*.6, top+34, 5, 2);
   });
+  // tail: thin curl off the rump
+  ctx.strokeStyle=FUR; ctx.lineWidth=2.5; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(x+8,top+9);
+  ctx.quadraticCurveTo(x-3,top+2,x+3,top-2); ctx.stroke();
+  ctx.fillStyle=FUR; ctx.beginPath(); ctx.arc(x+3,top-2,2.2,0,7); ctx.fill();   // tuft
+  // body: rump + barrel + shoulder hump read as one mass
+  ctx.beginPath(); ctx.ellipse(x+16,top+15,12,10.5,0,0,7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x+34,top+16,27,12.5,-.04,0,7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x+47,top+11,13,9.5,-.1,0,7); ctx.fill();
+  // head + raised snout
+  ctx.beginPath(); ctx.ellipse(x+55,top+12,10,9,.05,0,7); ctx.fill();
+  ctx.fillStyle=SNOUT; ctx.fillRect(x+61,top+8,11,9);
+  ctx.fillStyle=HOOF; ctx.fillRect(x+69,top+11,2.5,3);           // nostril
+  // tusk curling up past the jaw
+  ctx.strokeStyle=LIGHT; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(x+62,top+17); ctx.quadraticCurveTo(x+65,top+12,x+63,top+10); ctx.stroke();
+  // ear
+  ctx.fillStyle=FUR;
+  ctx.beginPath(); ctx.moveTo(x+47,top+4); ctx.lineTo(x+52,top-5); ctx.lineTo(x+57,top+3); ctx.closePath(); ctx.fill();
+  // mane bristles along the back
+  for(let i=0;i<4;i++){
+    const mx=x+29+i*7;
+    ctx.beginPath(); ctx.moveTo(mx,top+6); ctx.lineTo(mx+2.5,top-(i%2?5:7)); ctx.lineTo(mx+5,top+6); ctx.closePath(); ctx.fill();
+  }
+  // eye
+  ctx.fillStyle=LIGHT; ctx.fillRect(x+56,top+9,2.6,2.6);
+  ctx.lineWidth=1;
   ctx.restore();
 }
 
@@ -215,6 +259,18 @@ function drawMist(tNow){
   }
 }
 
+// ---- collectable pine mushrooms ----
+function drawShroom(s, tNow){
+  const bob = Math.sin(tNow/220 + s.x*.02)*3;
+  ctx.fillStyle='#efe4c8'; ctx.fillRect(s.x+6, s.y+4, 5, 9);
+  ctx.fillStyle='#c23b2e';
+  ctx.beginPath(); ctx.moveTo(s.x-1, s.y+6);
+  ctx.quadraticCurveTo(s.x+8.5, s.y-7, s.x+18, s.y+6);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#f7f1e4'; ctx.fillRect(s.x+4,s.y+1,2.6,2.6); ctx.fillRect(s.x+11,s.y,2.6,2.6);
+  s.bob = bob;
+}
+
 // ---- landmarks: wooden signs at real Hogsback spots ----
 function drawSigns(){
   ctx.font='bold 10px monospace'; ctx.textAlign='center';
@@ -246,14 +302,18 @@ function beep(f0,f1,t,type){
 function reset(){
   state='run'; speed=330; trav=0; meters=0; vy=0; hogY=GROUND; jumping=false;
   obs=[]; nextGap=420; mist=null; mistTimer=12; lmIdx=0; nextAmb=170; toast=null;
+  shrooms=[]; nextShroom=900; sCount=0; queuedAt=-1e9;
+  try{ document.getElementById('sh').hidden = true; }catch(e){}
 }
 function die(){
   state='dead'; deadAt=performance.now(); beep(160,70,.28,'sawtooth');
   if(meters>hi){ hi=meters; localStorage.setItem('hogback_hi',hi); }
+  try{ document.getElementById('sh').hidden = false; }catch(e){}
 }
 function jump(){
   if(state!=='run') return;
   if(!jumping && !slideHeld){ vy=JUMPV; jumping=true; beep(440,660,.09); }
+  else if(jumping) queuedAt = performance.now();   // buffer early taps
 }
 function act(){
   if(state==='ready') reset();
@@ -330,6 +390,28 @@ function tick(now){
       else { ox=o.x+5; ow=o.w-10; otop=GROUND-o.h+4; oh=o.h-4; }
       if(hx < ox+ow && hx+hw > ox && htop < otop+oh && htop+hh > otop){ die(); break; }
     }
+    // pine mushrooms: hop through them; 3 = fairies open the mist
+    if(trav > nextShroom){
+      const sx=W+30, sy=GROUND-46-Math.random()*54;
+      if(obs.some(o=>Math.abs(o.x-sx)<80)) nextShroom=trav+120;
+      else { shrooms.push({x:sx,y:sy}); nextShroom=trav+520+Math.random()*420; }
+    }
+    for(const s of shrooms) s.x-=speed*dt;
+    shrooms=shrooms.filter(s=>s.x>-30 && !s.got);
+    const hcx=hx+hw/2, hcy=sliding ? hogY-8 : hogY-HH/2-4;
+    for(const s of shrooms){
+      if(Math.abs(s.x+9-hcx)<26 && Math.abs(s.y+5-hcy)<32){
+        s.got=true; sCount++; beep(1040,1320,.08,'sine');
+        if(mist && sCount>=3){
+          sCount-=3; mist=null; mistTimer=18+Math.random()*4;
+          toast={s:'Die fairies maak die mis oop!',age:0}; beep(880,1400,.15,'sine');
+        }
+      }
+    }
+    // buffered jump: tapped slightly early still hops on landing
+    if(!jumping && hogY>=GROUND && performance.now()-queuedAt<110 && !slideHeld){
+      vy=JUMPV; jumping=true; beep(440,660,.09); queuedAt=-1e9;
+    }
   }
   if(toast){ toast.age+=dt; if(toast.age>2.4) toast=null; }
 
@@ -338,14 +420,24 @@ function tick(now){
   backdrop(k);
   drawSigns();
   obs.forEach(drawObstacle);
+  shrooms.forEach(s=>drawShroom(s, now));
   drawHog(70, trav*.045, slideHeld && !jumping && hogY>=GROUND);
   drawMist(now);
+  if(k>.5){                                    // night fireflies
+    for(const [fx0,fy,ph] of flies){
+      let fx=(fx0 - trav*.06)%W; if(fx<0)fx+=W;
+      const a=k*(.35+.35*Math.sin(now/300+ph));
+      ctx.fillStyle=`rgba(217,232,107,${a})`;
+      ctx.fillRect(fx+Math.sin(now/700+ph)*16, fy+Math.cos(now/900+ph)*10, 2.4, 2.4);
+    }
+  }
   // HUD
   ctx.fillStyle = k>.5?'#cdd6ee':'#23405c';
   ctx.font='bold 16px monospace'; ctx.textAlign='right';
   ctx.fillText(String(Math.floor(trav/10)).padStart(4,'0')+' m', W-16, 30);
   ctx.font='12px monospace'; ctx.globalAlpha=.7;
   ctx.fillText('HI '+String(hi).padStart(4,'0'), W-16, 48);
+  if(sCount>0){ ctx.font='13px monospace'; ctx.fillText('🍄 '+sCount+'/3', W-16, 66); }
   ctx.globalAlpha=1; ctx.textAlign='left';
 
   if(toast){
@@ -364,7 +456,7 @@ function tick(now){
       ctx.fillStyle='#23405c'; ctx.font='bold 30px system-ui';
       ctx.fillText("HOG'S BACK RUN", W/2, 108);
       ctx.font='16px system-ui'; ctx.globalAlpha=.85;
-      ctx.fillText('404 — this page wandered into the mist.', W/2, 136);
+      ctx.fillText('404 — '+WANT+' wandered into the mist.', W/2, 136);
       ctx.globalAlpha=pulse;
       ctx.fillText('tap to hop · swipe down or 2nd finger to duck', W/2, 162);
     } else {
