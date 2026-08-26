@@ -17,6 +17,7 @@
   #nm{position:fixed;left:50%;bottom:26vh;transform:translateX(-50%);z-index:4;
       display:flex;gap:8px;align-items:center;background:#141d38;
       border:1px solid #3a4a78;border-radius:22px;padding:10px 14px}
+  #nm[hidden]{display:none}
   #nm span{color:#cdd6ee;font-size:14px}
   #ni{background:#0e1526;color:#ffe9a8;border:1px solid #3a4a78;border-radius:12px;
       font-size:15px;padding:8px 10px;width:140px;font-family:system-ui,sans-serif}
@@ -62,7 +63,9 @@ function submitName(){
       if(res.ok){
         posted=true; lastPostedM=meters;
         document.getElementById('nm').hidden=true;
-        toast={s:'Yebo — you are #'+res.weeklyRank+' this week!',age:0};
+        toast = res.weeklyRank
+          ? {s:'Yebo — you are #'+res.weeklyRank+' this week!',age:0}
+          : {s:"Didn't crack the top 10 this time — go again, boet.",age:0};
         fetchBoard(true).then(refreshQualify);
       }
     }).catch(()=>{});
