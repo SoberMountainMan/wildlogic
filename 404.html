@@ -29,7 +29,7 @@ function shareFallback(t, done){
 }
 document.getElementById('sh').addEventListener('click', e=>{
   e.stopPropagation();
-  const msg='I died to '+deathCause+' '+meters+' m into the Hogsback mist. Beat that: wildlogic.co.za/'+
+  const msg='I died from '+deathCause.replace(/\.\s+/g,', ')+' '+meters+' m into the Hogsback mist. Beat that: wildlogic.co.za/'+
     SHARE_PATHS[Math.floor(Math.random()*SHARE_PATHS.length)];
   const done=()=>{ e.target.textContent='✓ Copied — go paste it on them';
     setTimeout(()=>{ e.target.textContent='⚔️ Challenge a chommie'; },1800); };
@@ -89,10 +89,11 @@ const WANT = (()=>{ try{
   return p || 'This page';
 }catch(e){ return 'This page'; }})();
 const SHARE_PATHS = ['hogsback','mist','oom','porcupine42','bigtree','labyrinth','39steps'];
-// death-cause reveals — lines read as "You were killed by <line>."
+// death-cause reveals — must read grammatically as "You were killed by <line>."
+// and "I died from <line> <m> m into the mist"
 const KILLERS = {
-  aloe:  ['weed (the cops shot you right after)', 'an aloe — not even the smokable kind', 'weed. it was legal. you were not'],
-  toad:  ['way too many magic mushrooms', 'a mushroom. the fairies saw everything', "that was not an edible, boet"],
+  aloe:  ['weed (the cops did the actual killing)', 'an aloe — not even the smokable kind', "weed. it was legal. you weren't"],
+  toad:  ['way too many magic mushrooms', 'a mushroom. the fairies saw everything', 'a mushroom that was NOT an edible, boet'],
   stump: ['a stump. a literal stump', 'firewood. it fought back', 'the yellowwood. it usually wins'],
   log:   ['a fallen yellowwood (it fell in 1987)', 'skipping duck day', 'oom told you to duck. oom sees everything'],
 };
@@ -194,16 +195,29 @@ function drawObstacle(o){
     ctx.beginPath(); ctx.ellipse(o.x+o.w*.78,LOGY-2,14,4,.08,0,7); ctx.fill();
   } else {
     for(let i=0;i<(o.n||1);i++){
-      const bx=o.x+i*22, bh=o.h-(i?4:0);
-      ctx.strokeStyle='#4c8b4c'; ctx.lineWidth=5; ctx.lineCap='round';
-      ctx.beginPath(); ctx.moveTo(bx+17,gy); ctx.lineTo(bx+17,gy-bh*.55); ctx.stroke();
-      for(let L=0;L<5;L++){
-        const a=-Math.PI/2 + (L-2)*.42;
-        ctx.beginPath(); ctx.moveTo(bx+17,gy-bh*.5);
-        ctx.quadraticCurveTo(bx+17+Math.cos(a)*bh*.42, gy-bh*.5+Math.sin(a)*bh*.5,
-                             bx+17+Math.cos(a)*bh*.72, gy-bh*.5+Math.sin(a)*bh*.78);
-        ctx.stroke();
+      const bx=o.x+i*22+17, bh=o.h-(i?4:0);
+      const base=gy-bh*.34;
+      ctx.strokeStyle='#3f7d46'; ctx.lineWidth=3; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(bx,gy); ctx.lineTo(bx,base); ctx.stroke();
+      for(let L=0;L<7;L++){                        // seven-fingered dagga leaf
+        const t=L/6-.5;
+        const ang=-Math.PI/2 + t*2.5;
+        const len=bh*.66*(1-Math.abs(t)*.72);
+        const tx=bx+Math.cos(ang)*len, ty=base+Math.sin(ang)*len;
+        const px=Math.cos(ang+Math.PI/2), py=Math.sin(ang+Math.PI/2), hw=len*.14;
+        ctx.fillStyle='#43a04e';
+        ctx.beginPath();
+        ctx.moveTo(bx,base);
+        ctx.quadraticCurveTo(bx+(tx-bx)*.45+px*hw, base+(ty-base)*.45+py*hw, tx,ty);
+        ctx.quadraticCurveTo(bx+(tx-bx)*.45-px*hw, base+(ty-base)*.45-py*hw, bx,base);
+        ctx.closePath(); ctx.fill();
+        if(Math.abs(t)<.34){
+          ctx.strokeStyle='rgba(16,58,28,.6)'; ctx.lineWidth=1;
+          ctx.beginPath(); ctx.moveTo(bx,base); ctx.lineTo(bx+(tx-bx)*.8, base+(ty-base)*.8); ctx.stroke();
+        }
       }
+      ctx.fillStyle='#2e6b38';                     // little nugs at the node
+      ctx.beginPath(); ctx.arc(bx,base-1,2.4,0,7); ctx.fill();
       ctx.lineWidth=1;
     }
   }
@@ -419,7 +433,7 @@ function tick(now){
       if(obs.some(o=>Math.abs(o.x-sx)<80)) nextShroom=trav+120;
       else {
         shrooms.push({x:sx,y:sy}); nextShroom=trav+520+Math.random()*420;
-        if(!shroomHintShown){ shroomHintShown=true; toast={s:'Goud sampioene maak die mis oop — ROOIES MOOR.',age:0}; }
+        if(!shroomHintShown){ shroomHintShown=true; toast={s:'Goud sampioene maak die mis oop — rooies vermoor jou.',age:0}; }
       }
     }
     for(const s of shrooms) s.x-=speed*dt;
