@@ -36,7 +36,7 @@
         <p><b>Drop a video here</b> or click to browse<br>MP4, MOV, MKV, AVI, WebM</p>
       </div>
       <input type="file" id="fileInput" hidden />
-      <p class="notice">On phones, keep clips under ~2–3 minutes — upscaling runs on your device's CPU and memory.</p>
+      <p class="notice">Source up to 1&nbsp;GB. Upscaling makes the file bigger, and source plus result share one 2&nbsp;GB in-browser memory budget. On phones, keep clips under ~2–3 minutes.</p>
 
       <div class="opts">
         <label>Scale
@@ -96,12 +96,11 @@ window.addEventListener('DOMContentLoaded', function () {
     Hog.showProgress(true);
     Hog.setProgress(0.03);
 
-    Hog.status('Loading engine (~30 MB, cached after first run)…');
-    Hog.getFFmpeg()
-      .then(function (ff) {
-        lastFF = ff;
-        Hog.status('Reading ' + file.name + '…');
-        return Hog.readAsUint8(file).then(function (d) { return ff.writeFile(inName, d); }).then(function () { return ff; });
+    Hog.status('Reading file, then loading engine (~30 MB, cached after first run)…');
+    Hog.prepareInput(file)
+      .then(function (r) {
+        lastFF = r.ff;
+        return r.ff.writeFile(inName, r.data).then(function () { return r.ff; });
       })
       .then(function (ff) {
         Hog.status('Upscaling — this takes about real-time length. Keep the tab visible.');
@@ -135,7 +134,13 @@ window.addEventListener('DOMContentLoaded', function () {
       });
   });
 
-  Hog.dropzone(function (files) { file = files[0]; }, { accept: 'video/*,.mkv,.mov,.avi,.webm,.ts,.m4v' });
+  Hog.dropzone(function (files) {
+    var err = Hog.guardInput(files[0], Hog.MAX_VIDEO_INPUT);
+    file = err ? null : files[0];
+    if (err) Hog.status(err, 'err');
+    else { Hog.status(''); Hog.showProgress(false); }
+    return !err;
+  }, { accept: 'video/*,.mkv,.mov,.avi,.webm,.ts,.m4v' });
 });
 </script>
 </body>

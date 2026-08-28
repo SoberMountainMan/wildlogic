@@ -23,6 +23,10 @@
     if (!el) return;
     el.textContent = msg || '';
     el.className = 'status-line' + (cls ? ' ' + cls : '');
+    /* the wrapper stays display:none until a run starts, but pick-time errors
+       must be readable too — reveal it whenever there is something to say */
+    var w = document.getElementById('progressWrap');
+    if (w && msg) w.classList.add('on');
   };
 
   Hog.showProgress = function (on) {
@@ -70,6 +74,9 @@
     });
   };
 
+  /* onFiles returns false to reject the pick — the run button then stays
+     disabled and the file is not listed. The plain list is rendered BEFORE
+     onFiles so a tool that draws its own richer list there is not clobbered. */
   Hog.picked = function (files, onFiles, list) {
     var items = Array.prototype.slice.call(files);
     if (list) {
@@ -82,9 +89,10 @@
         list.appendChild(li);
       });
     }
-    onFiles(items);
+    var ok = onFiles(items);
     var btn = document.getElementById('runBtn');
-    if (btn) btn.disabled = false;
+    if (btn) btn.disabled = ok === false;
+    if (ok === false && list) list.innerHTML = '';
   };
 
   Hog.loadScript = function (src) {
@@ -149,6 +157,37 @@
 
   Hog.readAsUint8 = function (file) {
     return file.arrayBuffer().then(function (buf) { return new Uint8Array(buf); });
+  };
+
+  /* Measured from the shipped core: ffmpeg-core.wasm declares linear memory
+     with a maximum of 32768 pages of 64 KiB — exactly 2 GiB. Source bytes, the
+     encoded result and ffmpeg's own buffers all share that one budget, and
+     nothing uploads, so no device can go bigger than the browser's ceiling. */
+  Hog.MEM_LIMIT = 2 * 1024 * 1024 * 1024;
+  Hog.MAX_VIDEO_INPUT = 1 * 1024 * 1024 * 1024;          // the result needs the other half
+  Hog.MAX_AUDIO_INPUT = Hog.MEM_LIMIT - 256 * 1024 * 1024; // an audio result is tens of MB
+
+  function gib(n) { return (n / 1073741824).toFixed(1); }
+
+  /* Returns rejection copy, or null when the file may proceed. Checks
+     file.size only — it reads no bytes and downloads no engine, so a job that
+     cannot possibly finish is refused the instant it is picked. */
+  Hog.guardInput = function (file, maxBytes) {
+    if (!file || !file.size || file.size <= maxBytes) return null;
+    return 'That file is ' + gib(file.size) + ' GB, and this tool takes sources up to ' +
+      gib(maxBytes) + ' GB. Hog Convert keeps the source and the result together inside ' +
+      '2 GB of in-browser memory, and nothing uploads here — so no device can process a ' +
+      'file this size. Trim or split it first, then run the piece you need.';
+  };
+
+  /* Read the input BEFORE loading the engine. Hog.getFFmpeg() pulls a 31 MB
+     core, and a file picked on a phone is a temporary link into another app's
+     storage — that gap is long enough for the link to lapse or for the bytes
+     to be evicted, which surfaces as a "could not be read" permission error. */
+  Hog.prepareInput = function (file) {
+    return Hog.readAsUint8(file).then(function (data) {
+      return Hog.getFFmpeg().then(function (ff) { return { ff: ff, data: data }; });
+    });
   };
 
   /* offline shell: pages network-first, assets cache-first (convert/sw.js) */

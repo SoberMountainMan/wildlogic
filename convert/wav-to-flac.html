@@ -36,6 +36,7 @@
         <p><b>Drop your audio here</b> or click to browse<br>WAV, AIFF, M4A, MP3, FLAC</p>
       </div>
       <input type="file" id="fileInput" hidden />
+      <p class="notice">Source up to 1.8&nbsp;GB. Nothing uploads — conversion runs on your device inside a 2&nbsp;GB in-browser memory budget.</p>
 
       <div class="opts">
         <label>Output format
@@ -92,13 +93,12 @@ window.addEventListener('DOMContentLoaded', function () {
     btn.disabled = true;
     Hog.showProgress(true);
     Hog.setProgress(0.05);
-    Hog.status('Loading engine (~30 MB, cached after first run)…');
+    Hog.status('Reading file, then loading engine (~30 MB, cached after first run)…');
 
-    Hog.getFFmpeg().then(function (ff) {
+    Hog.prepareInput(file).then(function (r) {
+      var ff = r.ff;
       var inName = 'in.' + (file.name.split('.').pop() || 'wav').toLowerCase().replace(/[^a-z0-9]/g, '');
-      Hog.status('Reading ' + file.name + '…');
-      return Hog.readAsUint8(file).then(function (data) {
-        ff.writeFile(inName, data);
+      return Promise.resolve(ff.writeFile(inName, r.data)).then(function () {
         Hog.status('Converting…');
         var args;
         if (fmt === 'flac') {
@@ -130,7 +130,13 @@ window.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  Hog.dropzone(function (files) { file = files[0]; }, { accept: 'audio/*,.flac,.aiff,.aif' });
+  Hog.dropzone(function (files) {
+    var err = Hog.guardInput(files[0], Hog.MAX_AUDIO_INPUT);
+    file = err ? null : files[0];
+    if (err) Hog.status(err, 'err');
+    else { Hog.status(''); Hog.showProgress(false); }
+    return !err;
+  }, { accept: 'audio/*,.flac,.aiff,.aif' });
 });
 </script>
 </body>

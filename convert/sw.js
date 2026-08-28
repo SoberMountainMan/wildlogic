@@ -1,6 +1,6 @@
 /* Hog Convert offline shell — pages fresh-when-online, cached-when-offline;
    heavy assets cache-first after first use (incl. CDN cores as opaque entries). */
-var CACHE = 'hog-convert-v1';
+var CACHE = 'hog-convert-v2';
 var PRECACHE = ['./', 'hog.css', 'hog.js'];
 
 self.addEventListener('install', function (e) {

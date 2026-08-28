@@ -36,6 +36,7 @@
         <p><b>Drop a video here</b> or click to browse<br>MOV, AVI, MKV, WebM, TS, WMV…</p>
       </div>
       <input type="file" id="fileInput" hidden />
+      <p class="notice">Source up to 1&nbsp;GB. This tool holds the source and the new MP4 together inside a 2&nbsp;GB in-browser memory budget, and nothing uploads — so no device can go larger.</p>
 
       <div class="opts">
         <label>Quality
@@ -89,12 +90,11 @@ window.addEventListener('DOMContentLoaded', function () {
     var ext = (file.name.split('.').pop() || 'mov').toLowerCase().replace(/[^a-z0-9]/g, '');
     var inName = 'in.' + ext;
 
-    Hog.status('Loading engine (~30 MB, cached after first run)…');
-    Hog.getFFmpeg()
-      .then(function (ff) {
-        lastFF = ff;
-        Hog.status('Reading ' + file.name + '…');
-        return Hog.readAsUint8(file).then(function (d) { return ff.writeFile(inName, d); }).then(function () { return ff; });
+    Hog.status('Reading file, then loading engine (~30 MB, cached after first run)…');
+    Hog.prepareInput(file)
+      .then(function (r) {
+        lastFF = r.ff;
+        return r.ff.writeFile(inName, r.data).then(function () { return r.ff; });
       })
       .then(function (ff) {
         Hog.status('Converting to MP4… keep this tab visible.');
@@ -119,7 +119,13 @@ window.addEventListener('DOMContentLoaded', function () {
       });
   });
 
-  Hog.dropzone(function (files) { file = files[0]; }, { accept: 'video/*,.mkv,.mov,.avi,.webm,.ts,.m4v,.wmv,.flv' });
+  Hog.dropzone(function (files) {
+    var err = Hog.guardInput(files[0], Hog.MAX_VIDEO_INPUT);
+    file = err ? null : files[0];
+    if (err) Hog.status(err, 'err');
+    else { Hog.status(''); Hog.showProgress(false); }
+    return !err;
+  }, { accept: 'video/*,.mkv,.mov,.avi,.webm,.ts,.m4v,.wmv,.flv' });
 });
 </script>
 </body>
