@@ -595,13 +595,13 @@ cv.addEventListener('pointermove', e=>{
   }));
 function drawControls(){
   ctx.save();
-  const base = isTouch ? .20 : .12;
+  const base = isTouch ? .40 : .28;              // navy disc + cream text: reads on sky AND night
   [[BTN_JUMP_Y,'JUMP', performance.now()-jumpFlash < 130],
    [BTN_DUCK_Y,'DUCK', slideHeld]].forEach(([cy,label,lit])=>{
     ctx.beginPath(); ctx.arc(BTN_X, cy, BTN_R, 0, 7);
-    ctx.fillStyle = `rgba(255,255,255,${lit ? base+.28 : base})`; ctx.fill();
-    ctx.strokeStyle = `rgba(255,255,255,${lit ? .8 : .38})`; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = `rgba(255,255,255,${lit ? .96 : .62})`;
+    ctx.fillStyle = `rgba(20,29,56,${lit ? base+.30 : base})`; ctx.fill();
+    ctx.strokeStyle = `rgba(255,233,168,${lit ? .95 : .55})`; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = `rgba(255,233,168,${lit ? 1 : .9})`;
     ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center';
     ctx.fillText(label, BTN_X, cy + 4);
   });
@@ -620,12 +620,23 @@ function tick(now){
     }
     nextGap-=speed*dt;
     if(nextGap<=0){
-      spawn();
-      if(obs[obs.length-1].kind==='log'){
-        nextGap+=140;
-        if(!logHintShown){ logHintShown=true; toast={s:'Log! Hold the DUCK pad to slide under!',age:0}; }
+      // Scenic corridor: never spawn an obstacle where it will overlap a waterfall — the mossy
+      // cliff and the small plants read too alike (owner: "too sneaky"). Falls and obstacles
+      // both scroll at `speed`, so relative position is FIXED: a clear gap at spawn time stays
+      // clear for the whole crossing. Just hold the spawn while a fall is near the spawn lane.
+      const fallNearSpawn = FALLS.some(f => {
+        const sx = 60 + f.m*10 + 210 - trav;
+        return sx > W-340 && sx < W+340;
+      });
+      if(fallNearSpawn){ nextGap += 90; }        // wait until the fall clears the spawn lane
+      else {
+        spawn();
+        if(obs[obs.length-1].kind==='log'){
+          nextGap+=140;
+          if(!logHintShown){ logHintShown=true; toast={s:'Log! Hold the DUCK pad to slide under!',age:0}; }
+        }
+        nextGap+=340+Math.random()*340;
       }
-      nextGap+=340+Math.random()*340;
     }
     for(const o of obs) o.x-=speed*dt;
     obs=obs.filter(o=>o.x>-140);
@@ -655,9 +666,9 @@ function tick(now){
     // pine mushrooms: hop through them; 3 = fairies open the mist
     if(trav > nextShroom){
       const sx=W+30, sy=GROUND-46-Math.random()*54;
-      if(obs.some(o=>Math.abs(o.x-sx)<80)) nextShroom=trav+120;
+      if(obs.some(o=>Math.abs(o.x-sx)<80)) nextShroom=trav+180;
       else {
-        shrooms.push({x:sx,y:sy}); nextShroom=trav+520+Math.random()*420;
+        shrooms.push({x:sx,y:sy}); nextShroom=trav+1100+Math.random()*800;
         if(!shroomHintShown){ shroomHintShown=true; toast={s:'Goud sampioene maak die mis oop — rooies vermoor jou.',age:0}; }
       }
     }
