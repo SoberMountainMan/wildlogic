@@ -80,8 +80,8 @@ const W = 900, H = 360, GROUND = 296;
 const DPR = Math.min(devicePixelRatio || 1, 2);
 cv.width = W * DPR; cv.height = H * DPR; ctx.scale(DPR, DPR);
 
-const DAY  = { sky:'#bfe0f2', far:'#8fb6cf', near:'#5e8aa6', ground:'#c8a86a', line:'#a98f57' };
-const NIGHT= { sky:'#141d38', far:'#232f52', near:'#1a2542', ground:'#3a3f63', line:'#2e3352' };
+const DAY  = { sky:'#bfe0f2', mtn:'#a8c8dd', mtn2:'#8fb0c8', far:'#8fb6cf', near:'#5e8aa6', ground:'#c8a86a', line:'#a98f57' };
+const NIGHT= { sky:'#141d38', mtn:'#1c2745', mtn2:'#202c4e', far:'#232f52', near:'#1a2542', ground:'#3a3f63', line:'#2e3352' };
 const GRAV = 2700, JUMPV = -640;          // ~470ms airtime, ~76px apex (mobile-tuned)
 const LOGY = GROUND - 57, LOGH = 38;      // fallen yellowwood: must duck or jump (run-through blocked)
 // Spaced for LONG runs — top scores are ~18 500 m, so landmarks run out to 17 500 m
@@ -300,6 +300,32 @@ function backdrop(k){
     ctx.fillStyle='rgba(255,244,214,.9)';
     ctx.beginPath(); ctx.arc(790,64,22,0,7); ctx.fill();
   }
+  // ---- distant mountain ranges: jagged peaks, slowest parallax, hazier with distance ----
+  const offM = trav*.05 % 760;
+  ctx.fillStyle = mix(DAY.mtn,NIGHT.mtn,k);
+  for(let i=-1;i<3;i++){ const bx=i*760-offM;
+    ctx.beginPath(); ctx.moveTo(bx,GROUND);
+    ctx.lineTo(bx+60,178);  ctx.lineTo(bx+108,214); ctx.lineTo(bx+170,132);
+    ctx.lineTo(bx+214,186); ctx.lineTo(bx+268,108); ctx.lineTo(bx+330,176);
+    ctx.lineTo(bx+392,150); ctx.lineTo(bx+455,196); ctx.lineTo(bx+516,120);
+    ctx.lineTo(bx+580,182); ctx.lineTo(bx+648,146); ctx.lineTo(bx+712,200);
+    ctx.lineTo(bx+760,GROUND); ctx.closePath(); ctx.fill(); }
+  const offM2 = trav*.09 % 620;
+  ctx.fillStyle = mix(DAY.mtn2,NIGHT.mtn2,k);
+  for(let i=-1;i<3;i++){ const bx=i*620-offM2;
+    ctx.beginPath(); ctx.moveTo(bx,GROUND);
+    ctx.lineTo(bx+52,208);  ctx.lineTo(bx+112,158); ctx.lineTo(bx+168,222);
+    ctx.lineTo(bx+236,140); ctx.lineTo(bx+300,200); ctx.lineTo(bx+362,170);
+    ctx.lineTo(bx+430,216); ctx.lineTo(bx+498,152); ctx.lineTo(bx+560,206);
+    ctx.lineTo(bx+620,GROUND); ctx.closePath(); ctx.fill(); }
+  if(k<.6){                                   // light catching the high peaks, fades into night
+    ctx.fillStyle = `rgba(255,255,255,${.22*(1-k/.6)})`;
+    for(let i=-1;i<3;i++){ const bx=i*620-offM2;
+      [[112,158],[236,140],[498,152]].forEach(([px,py])=>{
+        ctx.beginPath(); ctx.moveTo(bx+px,py);
+        ctx.lineTo(bx+px+15,py+17); ctx.lineTo(bx+px-15,py+17);
+        ctx.closePath(); ctx.fill(); }); }
+  }
   const off = trav*.15 % 480;
   ctx.fillStyle = mix(DAY.far,NIGHT.far,k);
   for(let i=-1;i<3;i++){ const bx=i*480-off;
@@ -333,42 +359,75 @@ const FALLS = [];
 for (const f of WATERFALLS)
   for (let r = 0; r < 4; r++)
     FALLS.push({ m: f.m + r * FALLS_CYCLE, w: f.w * (1 + r * .1), h: f.h * (1 - r * .04), jets: f.jets });
+// deterministic jitter: each fall's rock shape stays stable frame-to-frame instead of shimmering
+function nse(s){ const x = Math.sin(s*127.1)*43758.5453; return x - Math.floor(x); }
 function drawWaterfalls(k, tNow){
   for(const f of FALLS){
     const sx = 60 + f.m*10 + 210 - trav;        // sits just past its signpost
-    if(sx < -220 || sx > W+180) continue;
-    const baseY = GROUND - 4, topY = baseY - f.h;
+    if(sx < -260 || sx > W+220) continue;
+    const baseY = GROUND - 2, topY = baseY - f.h;
     ctx.save();
-    ctx.fillStyle = mix('#7f8593','#2a3150',k);  // rock face behind the fall
-    ctx.beginPath();
-    ctx.moveTo(sx - f.w*.95, baseY);
-    ctx.lineTo(sx - f.w*.64, topY - 14);
-    ctx.quadraticCurveTo(sx, topY - 32, sx + f.w*.64, topY - 14);
-    ctx.lineTo(sx + f.w*.95, baseY);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = mix('#5b616f','#1d2340',k);  // overhang lip
-    ctx.fillRect(sx - f.w*.6, topY - 7, f.w*1.2, 9);
-    const flow = (tNow/420) % 1;
-    for(let j=0;j<f.jets;j++){                   // falling water
-      const slot = f.w/f.jets, jw = slot*.6;
-      const jx = sx - f.w/2 + (j+.5)*slot;
-      ctx.fillStyle = mix('#dbeef7','#46678c',k);
-      ctx.fillRect(jx - jw/2, topY, jw, f.h - 8);
-      ctx.globalAlpha = .55;
-      ctx.fillStyle = mix('#ffffff','#84a9c9',k);
-      for(let s=0;s<5;s++){
-        const sy = topY + (((s/5) + flow) % 1) * (f.h - 20);
-        ctx.fillRect(jx - jw/2 + 1, sy, jw - 2, 6);
-      }
-      ctx.globalAlpha = 1;
+    // ---- cliff: overlapping boulder masses — no straight edges, no concrete lip ----
+    ctx.fillStyle = mix('#6d7482','#232a47',k);
+    for(let i=0;i<7;i++){
+      const t = i/6;
+      const bx = sx + (nse(f.m*3+i*1.7)-.5)*f.w*0.55*(1-t*0.6);
+      const by = baseY - t*(f.h+16);
+      const rr = f.w*(0.60 - t*0.15) * (0.78 + nse(f.m*5+i*2.3)*0.5);
+      ctx.beginPath(); ctx.ellipse(bx, by, rr, rr*1.12, 0, 0, 7); ctx.fill();
     }
-    ctx.fillStyle = mix('#e8f4f9','#587ea4',k);  // plunge pool
-    ctx.beginPath(); ctx.ellipse(sx, baseY + 5, f.w*1.15, 7, 0, 0, 7); ctx.fill();
-    ctx.fillStyle = `rgba(255,255,255,${.22+.16*Math.sin(tNow/230)})`;
-    for(let i=0;i<7;i++){                        // spray
-      const px = sx + (i-3)*f.w*.26;
-      const py = baseY - 5 - ((tNow/9 + i*41) % 24);
-      ctx.fillRect(px, py, 3, 3);
+    ctx.fillStyle = mix('#565d6b','#1a2038',k);   // rock strata
+    for(let i=0;i<4;i++){
+      const t = 0.18 + i*0.19;
+      const rr = f.w*(0.48 - t*0.09)*(0.7+nse(f.m*9+i*3.1)*0.45);
+      ctx.beginPath();
+      ctx.ellipse(sx + (nse(f.m*17+i)-.5)*f.w*0.42, baseY - t*(f.h+16), rr, rr*0.3, 0, 0, 7); ctx.fill();
+    }
+    ctx.fillStyle = mix('#4e7a44','#1b3326',k);   // moss and ferns on the ledges
+    for(let i=0;i<5;i++){
+      const t = 0.12 + i*0.17;
+      ctx.beginPath();
+      ctx.ellipse(sx + (nse(f.m*23+i*1.3)-.5)*f.w*1.3, baseY - t*(f.h+16),
+        f.w*0.24*(0.55+nse(f.m+i)*0.8), f.w*0.085, 0, 0, 7); ctx.fill();
+    }
+    // ---- water: narrow at the lip, spreading at the base, edges wobbling ----
+    const wob = tNow/300;
+    for(let j=0;j<f.jets;j++){
+      const slot = f.w/f.jets;
+      const jx = sx - f.w/2 + (j+.5)*slot + (nse(f.m+j*7)-.5)*slot*0.3;
+      const wTop = slot*0.30, wBot = slot*0.56;
+      ctx.fillStyle = mix('#e6f4fa','#4a6f96',k);
+      ctx.beginPath();
+      for(let i=0;i<=7;i++){
+        const t=i/7, w=wTop+(wBot-wTop)*t;
+        ctx.lineTo(jx - w/2 + Math.sin(wob + t*3.3 + j*1.7)*f.w*0.055*t, topY + t*(f.h-8));
+      }
+      for(let i=7;i>=0;i--){
+        const t=i/7, w=wTop+(wBot-wTop)*t;
+        ctx.lineTo(jx + w/2 + Math.sin(wob + t*2.9 + j*2.1)*f.w*0.055*t, topY + t*(f.h-8));
+      }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = mix('#ffffff','#86aecd',k);
+      ctx.globalAlpha=.45;
+      for(let s=0;s<5;s++){
+        const t=((s/5)+(tNow/520)%1)%1, w=wTop+(wBot-wTop)*t;
+        ctx.fillRect(jx - w*0.28, topY + t*(f.h-14), w*0.56, 3 + t*5);
+      }
+      ctx.globalAlpha=1;
+    }
+    // ---- plunge pool, boulders, spray ----
+    ctx.fillStyle = mix('#eef7fb','#55799f',k);
+    ctx.beginPath(); ctx.ellipse(sx, baseY + 5, f.w, 6, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = mix('#6d7482','#232a47',k);
+    for(let i=0;i<3;i++){
+      ctx.beginPath();
+      ctx.ellipse(sx + (i-1)*f.w*0.5 + (nse(f.m*31+i)-.5)*f.w*0.22, baseY + 2,
+        f.w*0.17*(0.6+nse(f.m+i*5)*0.7), f.w*0.11, 0, 0, 7); ctx.fill();
+    }
+    ctx.fillStyle = `rgba(255,255,255,${.18+.14*Math.sin(tNow/240)})`;
+    for(let i=0;i<8;i++){
+      const px = sx + (nse(f.m*37+i)*2-1)*f.w*0.85;
+      ctx.fillRect(px, baseY - 3 - ((tNow/10 + i*29) % 26), 2.5, 2.5);
     }
     ctx.restore();
   }
@@ -497,23 +556,57 @@ addEventListener('keyup', e=>{
   if(isTyping(e)) return;
   if(e.code==='ArrowDown'||e.code==='KeyS') slideHeld=false;
 });
-// touch: tap = hop · swipe down OR second finger down = duck
+// ---- unified controls: keyboard, mouse and touch all drive the same two actions ----
+// No touch-counting — that was the bug (a gap in finger timing re-fired jump as a hop).
+// Two pads stack on the right, in the sky band, clear of the boar and the obstacle lane.
+const BTN_R = 30, BTN_X = W - 78, BTN_JUMP_Y = 138, BTN_DUCK_Y = 206;
+const DUCK_BAND = 266;                 // below this canvas-y = duck (mouse fallback)
+const isTouch = (typeof matchMedia === 'function') && matchMedia('(pointer: coarse)').matches;
+let jumpFlash = -1e9;                  // lights the JUMP pad briefly on press
+function toCanvas(e){
+  if(typeof cv.getBoundingClientRect !== 'function') return {x:-1,y:-1};
+  const r = cv.getBoundingClientRect();
+  if(!r.width || !r.height) return {x:-1,y:-1};
+  return { x:(e.clientX-r.left)*(W/r.width), y:(e.clientY-r.top)*(H/r.height) };
+}
+function onPad(p, cy){ const dx=p.x-BTN_X, dy=p.y-cy; return dx*dx + dy*dy <= BTN_R*BTN_R; }
 const touches = new Map();
 cv.addEventListener('pointerdown', e=>{
   e.preventDefault();
-  touches.set(e.pointerId, e.clientY);
-  if(touches.size >= 2) slideHeld = true;
-  else act();
+  const p = toCanvas(e);
+  const rec = { y:e.clientY, duck:false };
+  touches.set(e.pointerId, rec);
+  if(onPad(p, BTN_DUCK_Y) || (p.y >= 0 && p.y > DUCK_BAND)){   // hold to duck
+    slideHeld = true; rec.duck = true; return;
+  }
+  jumpFlash = performance.now();
+  act();                                                        // tap/click to hop
 });
 cv.addEventListener('pointermove', e=>{
-  const y0 = touches.get(e.pointerId);
-  if(y0 !== undefined && e.clientY - y0 > 18) slideHeld = true;
+  const rec = touches.get(e.pointerId);
+  if(rec && e.clientY - rec.y > 18){ slideHeld = true; rec.duck = true; }   // swipe-down still works
 });
 ['pointerup','pointercancel'].forEach(ev =>
   cv.addEventListener(ev, e=>{
     touches.delete(e.pointerId);
-    if(touches.size === 0){ slideHeld = false; }
+    let holding = false;
+    for(const v of touches.values()) if(v.duck) holding = true;  // another finger still ducking?
+    if(!holding) slideHeld = false;
   }));
+function drawControls(){
+  ctx.save();
+  const base = isTouch ? .20 : .12;
+  [[BTN_JUMP_Y,'JUMP', performance.now()-jumpFlash < 130],
+   [BTN_DUCK_Y,'DUCK', slideHeld]].forEach(([cy,label,lit])=>{
+    ctx.beginPath(); ctx.arc(BTN_X, cy, BTN_R, 0, 7);
+    ctx.fillStyle = `rgba(255,255,255,${lit ? base+.28 : base})`; ctx.fill();
+    ctx.strokeStyle = `rgba(255,255,255,${lit ? .8 : .38})`; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = `rgba(255,255,255,${lit ? .96 : .62})`;
+    ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(label, BTN_X, cy + 4);
+  });
+  ctx.restore();
+}
 
 function tick(now){
   const dt = Math.min((now-last)/1000,.05); last=now;
@@ -530,7 +623,7 @@ function tick(now){
       spawn();
       if(obs[obs.length-1].kind==='log'){
         nextGap+=140;
-        if(!logHintShown){ logHintShown=true; toast={s:'Log! Swipe down (or 2nd finger) to duck!',age:0}; }
+        if(!logHintShown){ logHintShown=true; toast={s:'Log! Hold the DUCK pad to slide under!',age:0}; }
       }
       nextGap+=340+Math.random()*340;
     }
@@ -616,6 +709,7 @@ function tick(now){
       ctx.fillRect(fx+Math.sin(now/700+ph)*16, fy+Math.cos(now/900+ph)*10, 2.4, 2.4);
     }
   }
+  drawControls();
   // HUD
   ctx.fillStyle = k>.5?'#cdd6ee':'#23405c';
   ctx.font='bold 16px monospace'; ctx.textAlign='right';
@@ -643,7 +737,7 @@ function tick(now){
       ctx.font='16px system-ui'; ctx.globalAlpha=.85;
       ctx.fillText('404 — '+WANT+' wandered into the mist.', W/2, 136);
       ctx.globalAlpha=pulse;
-      ctx.fillText('tap to hop · swipe down or 2nd finger to duck', W/2, 162);
+      ctx.fillText('click / tap = hop   ·   hold DUCK (or Down arrow) = slide', W/2, 162);
     } else {
       ctx.fillStyle='rgba(20,29,56,.88)';
       const cause = 'You were killed by ' + deathCause + '.';
