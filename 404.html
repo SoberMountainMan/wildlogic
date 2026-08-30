@@ -84,13 +84,25 @@ const DAY  = { sky:'#bfe0f2', far:'#8fb6cf', near:'#5e8aa6', ground:'#c8a86a', l
 const NIGHT= { sky:'#141d38', far:'#232f52', near:'#1a2542', ground:'#3a3f63', line:'#2e3352' };
 const GRAV = 2700, JUMPV = -640;          // ~470ms airtime, ~76px apex (mobile-tuned)
 const LOGY = GROUND - 57, LOGH = 38;      // fallen yellowwood: must duck or jump (run-through blocked)
+// Spaced for LONG runs — top scores are ~18 500 m, so landmarks run out to 17 500 m
+// with widening gaps (the hog is faster later, so gaps grow with him).
 const LANDMARKS = [
-  [60,   'THE EDGE',         'Welkom by die Edge — hou daai voete!'],
-  [150,  '39 STEPS FALLS',   '39 trappies op — moenie afkyk nie!'],
-  [300,  'MADONNA & CHILD',  "Ag nee, hier's weer daai waterval!"],
-  [500,  'DUSK',             'Jislaaik, dis donker soos in die kloof.'],
-  [600,  'THE BIG TREE',     'Daai boom is ouer as Oom self.'],
-  [1000, 'THE LABYRINTH',    'Moenie verdwaal nie, vark.'],
+  [80,    'THE EDGE',         'Welkom by die Edge — hou daai voete!'],
+  [260,   '39 STEPS FALLS',   '39 trappies op — moenie afkyk nie!'],
+  [620,   'MADONNA & CHILD',  "Ag nee, hier's weer daai waterval!"],
+  [1050,  'DUSK',             'Jislaaik, dis donker soos in die kloof.'],
+  [1500,  'KETTLESPOUT',      'Kettlespout — daai pot kook al vandat Oom klein is.'],
+  [2200,  'THE BIG TREE',     'Daai boom is ouer as Oom self.'],
+  [3000,  'ARBORETUM',        'Die Arboretum — Oom ken elke boom op naam.'],
+  [4000,  'TOR DOONE',        'Tor Doone — moenie alleen hier swem nie.'],
+  [5200,  'SWALLOWTAIL',      'Swallowtail — 8 km dieper die kloof in. Sterkte.'],
+  [6500,  'JIKANI',           'Jikani — die pad raak nou dun, vark.'],
+  [8000,  'HOBBITON',         'Hobbiton — klein deure, groot vark.'],
+  [9600,  'STARWAYS',         'Starways — kyk op, die sterre is beter hier.'],
+  [11300, 'CAPE PARROT',      'Cape Parrot — hy lag vir jou, hy weet.'],
+  [13200, 'FAIRY FOREST',     'Fairy Forest — trap nie op die sampioene nie.'],
+  [15200, 'SUMMERTON',        'Summerton — amper by die end van die pad.'],
+  [17500, 'THE LABYRINTH',    'Moenie verdwaal nie, vark.'],
 ];
 const AMBIENT = [
   'Nee man, kyk uit vir die aalwyne!',
@@ -125,12 +137,28 @@ const WANT = (()=>{ try{
 // death-cause reveals — must read grammatically as "You were killed by <line>."
 // and "I died from <line> <m> m into the mist"
 const KILLERS = {
-  aloe:  ['weed (the cops did the actual killing)', 'an aloe — not even the smokable kind', "weed. it was legal. you weren't"],
-  toad:  ['way too many magic mushrooms', 'a mushroom. the fairies saw everything', 'a mushroom that was NOT an edible, boet'],
-  stump: ['a stump. a literal stump', 'firewood. it fought back', 'the yellowwood. it usually wins'],
-  log:   ['a fallen yellowwood (it fell in 1987)', 'skipping duck day', 'oom told you to duck. oom sees everything'],
+  aloe:  ['weed (the cops did the actual killing)', 'an aloe — not even the smokable kind',
+          "weed. it was legal. you weren't", 'a seven-fingered leaf with an attitude',
+          'hemp. tragically, the garden variety', 'a plant. a PLANT, boet',
+          "dagga that didn't even get you high first", 'an aloe vera. moisturising and lethal',
+          'a leaf. it did not move. you did'],
+  toad:  ['way too many magic mushrooms', 'a mushroom. the fairies saw everything',
+          'a mushroom that was NOT an edible, boet', 'a fun guy who was not, in fact, fun',
+          'the red one. you know better', 'a toadstool. it warned you. it was red',
+          'a trip you did not come back from', 'shrooms. should have asked Oom first',
+          'three grams and a poor decision'],
+  stump: ['a stump. a literal stump', 'firewood. it fought back',
+          'the yellowwood. it usually wins', 'a tree that only lost the top half',
+          'a stump — 800 years old and still standing', 'wood. entirely stationary wood',
+          'a stump you have died on before', 'the remainder of a yellowwood',
+          'something that has not moved since 1703'],
+  log:   ['a fallen yellowwood (it fell in 1987)', 'skipping duck day',
+          'oom told you to duck. oom sees everything', 'a log you elected not to duck',
+          'refusing to bend, in the literal sense', 'the one thing Oom said to duck',
+          'a tree trunk at exactly head height', 'not ducking. a bold strategy',
+          'a log. you met it face-first'],
 };
-const HEADS = ['AG NEE','EISH','MOER TOG','YOH','Lekker.'];
+const HEADS = ['AG NEE','EISH','MOER TOG','YOH','Lekker.','HAIBO','JINNE','FOFIES','IS DIT'];
 
 // ---- hog sprite: proper little boar, drawn from shapes (faces right) ----
 const HW = 72, HH = 21;
@@ -289,6 +317,61 @@ function backdrop(k){
   ctx.fillStyle = mix(DAY.line,NIGHT.line,k); ctx.fillRect(0,GROUND,W,2);
   ctx.fillStyle = mix('#b0965c','#333757',k);
   for(let i=0;i<14;i++){ const gx=(i*97 - (trav%97)); ctx.fillRect(gx,GROUND+8+((i*53)%3)*9,7,2); }
+}
+
+// ---- waterfalls: canvas-drawn scenery at the waterfall landmarks (no image assets) ----
+// One entry per waterfall landmark: w = spout width, h = drop height, jets = streams.
+const WATERFALLS = [
+  {m:260,  w:44, h:146, jets:2},   // 39 Steps Falls
+  {m:620,  w:34, h:184, jets:2},   // Madonna & Child
+  {m:1500, w:62, h:116, jets:1},   // Kettlespout
+  {m:5200, w:36, h:206, jets:3},   // Swallowtail
+];
+// Long runs repeat the set so the tail past ~5 km is not empty scenery.
+const FALLS_CYCLE = 6000;
+const FALLS = [];
+for (const f of WATERFALLS)
+  for (let r = 0; r < 4; r++)
+    FALLS.push({ m: f.m + r * FALLS_CYCLE, w: f.w * (1 + r * .1), h: f.h * (1 - r * .04), jets: f.jets });
+function drawWaterfalls(k, tNow){
+  for(const f of FALLS){
+    const sx = 60 + f.m*10 + 210 - trav;        // sits just past its signpost
+    if(sx < -220 || sx > W+180) continue;
+    const baseY = GROUND - 4, topY = baseY - f.h;
+    ctx.save();
+    ctx.fillStyle = mix('#7f8593','#2a3150',k);  // rock face behind the fall
+    ctx.beginPath();
+    ctx.moveTo(sx - f.w*.95, baseY);
+    ctx.lineTo(sx - f.w*.64, topY - 14);
+    ctx.quadraticCurveTo(sx, topY - 32, sx + f.w*.64, topY - 14);
+    ctx.lineTo(sx + f.w*.95, baseY);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = mix('#5b616f','#1d2340',k);  // overhang lip
+    ctx.fillRect(sx - f.w*.6, topY - 7, f.w*1.2, 9);
+    const flow = (tNow/420) % 1;
+    for(let j=0;j<f.jets;j++){                   // falling water
+      const slot = f.w/f.jets, jw = slot*.6;
+      const jx = sx - f.w/2 + (j+.5)*slot;
+      ctx.fillStyle = mix('#dbeef7','#46678c',k);
+      ctx.fillRect(jx - jw/2, topY, jw, f.h - 8);
+      ctx.globalAlpha = .55;
+      ctx.fillStyle = mix('#ffffff','#84a9c9',k);
+      for(let s=0;s<5;s++){
+        const sy = topY + (((s/5) + flow) % 1) * (f.h - 20);
+        ctx.fillRect(jx - jw/2 + 1, sy, jw - 2, 6);
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = mix('#e8f4f9','#587ea4',k);  // plunge pool
+    ctx.beginPath(); ctx.ellipse(sx, baseY + 5, f.w*1.15, 7, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = `rgba(255,255,255,${.22+.16*Math.sin(tNow/230)})`;
+    for(let i=0;i<7;i++){                        // spray
+      const px = sx + (i-3)*f.w*.26;
+      const py = baseY - 5 - ((tNow/9 + i*41) % 24);
+      ctx.fillRect(px, py, 3, 3);
+    }
+    ctx.restore();
+  }
 }
 
 // ---- mist (Hogsback style: brief, soft, and the fairies show you the lane) ----
@@ -511,8 +594,10 @@ function tick(now){
   // ---- render ----
   ctx.save();
   if(shakeT>0){ const m=9*(shakeT/.35); ctx.translate((Math.random()-.5)*m,(Math.random()-.5)*m); }
-  const k=Math.max(0,Math.min(1,(meters-500)/120));
+  // day/night CYCLES every 2400 m (was: ramped to night at 620 m and stayed there forever)
+  const k=.5-.5*Math.cos(meters/2400*6.2832);
   backdrop(k);
+  drawWaterfalls(k, now);
   drawSigns();
   obs.forEach(drawObstacle);
   shrooms.forEach(s=>drawShroom(s, now));
