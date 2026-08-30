@@ -121,6 +121,7 @@ let lmIdx = 0, nextAmb = 170;
 let toast = null, last = performance.now();
 let queuedAt = -1e9;        // buffered jump timestamp
 let logHintShown = false;   // taught once per session, survives restarts
+let potholeHintShown = false;
 let shroomHintShown = false;
 let deathCause = '', deathHead = '', shakeT = 0;
 let floaters = [];          // {x,y,t} '+1' pickup puffs
@@ -153,10 +154,15 @@ const KILLERS = {
           'a stump you have died on before', 'the remainder of a yellowwood',
           'something that has not moved since 1703'],
   log:   ['a fallen yellowwood (it fell in 1987)', 'skipping duck day',
-          'oom told you to duck. oom sees everything', 'a log you elected not to duck',
+          'ignoring oom. he told you to duck', 'a log you elected not to duck',
           'refusing to bend, in the literal sense', 'the one thing Oom said to duck',
           'a tree trunk at exactly head height', 'not ducking. a bold strategy',
           'a log. you met it face-first'],
+  pothole: ['a pothole. welcome to Hogsback', 'a pothole. the municipality knows',
+          'a pothole older than the tar', 'a pothole. no bakkie, no suspension, no chance',
+          'a pothole the size of a plunge pool', 'gravity, via a pothole',
+          'a pothole. even the taxis swerve here', 'the council pothole. a landmark, really',
+          'a pothole. it has a name, you know'],
 };
 const HEADS = ['AG NEE','EISH','MOER TOG','YOH','Lekker.','HAIBO','JINNE','FOFIES','IS DIT'];
 
@@ -211,13 +217,18 @@ function spawn(){
   let roll = Math.random();
   if(meters < 120) roll *= .7;            // fallen logs only after the player has warmed up
   let o;
-  if(roll < .30){
+  if(roll < .24){
     const n = Math.random() < .22 ? 2 : 1;
     o = {kind:'aloe', n, x:W+40, w:n===2?54:34, h:(n===2?22:34)+Math.random()*6};
-  } else if(roll < .55){
+  } else if(roll < .44){
     o = {kind:'stump', x:W+40, w:44+Math.random()*14, h:22+Math.random()*6};
-  } else if(roll < .75){
+  } else if(roll < .60){
     o = {kind:'toad', x:W+40, w:34, h:24+Math.random()*6};
+  } else if(roll < .80){
+    // Hogsback's famous road: a WIDE pothole — same hop as a stump, but you must
+    // jump earlier because the gap is longer. Rebalanced down from stump/toad
+    // (owner: stumps and mushrooms "seem a lot").
+    o = {kind:'pothole', x:W+40, w:64+Math.random()*30, h:10};
   } else {
     o = {kind:'log', x:W+40, w:86, h:LOGH};
   }
@@ -254,6 +265,24 @@ function drawObstacle(o){
     ctx.fillStyle='#5c8a4a';                        // moss along the top
     ctx.fillRect(o.x+6,LOGY-3,o.w*.55,5);
     ctx.beginPath(); ctx.ellipse(o.x+o.w*.78,LOGY-2,14,4,.08,0,7); ctx.fill();
+  } else if(o.kind==='pothole'){
+    const cxp = o.x + o.w/2;
+    ctx.fillStyle = '#4a3b28';                      // the pit
+    ctx.beginPath();
+    ctx.moveTo(o.x, GROUND);
+    ctx.quadraticCurveTo(o.x+o.w*.12, GROUND+7, o.x+o.w*.3, GROUND+7);
+    ctx.quadraticCurveTo(cxp, GROUND+11, o.x+o.w*.7, GROUND+7);
+    ctx.quadraticCurveTo(o.x+o.w*.88, GROUND+7, o.x+o.w, GROUND);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.45)';              // depth
+    ctx.beginPath();
+    ctx.ellipse(cxp, GROUND+5, o.w*.3, 3.5, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = '#8a744f'; ctx.lineWidth = 1.5;   // crumbled tar lip
+    ctx.beginPath();
+    ctx.moveTo(o.x, GROUND);
+    ctx.quadraticCurveTo(cxp, GROUND-3, o.x+o.w, GROUND);
+    ctx.stroke();
+    ctx.lineWidth = 1;
   } else {
     for(let i=0;i<(o.n||1);i++){
       const bx=o.x+i*22+17, bh=o.h-(i?4:0);
@@ -611,14 +640,20 @@ function drawControls(){
 function tick(now){
   const dt = Math.min((now-last)/1000,.05); last=now;
   if(state==='run'){
-    speed=Math.min(speed+8*dt,720); trav+=speed*dt; meters=Math.floor(trav/10);
+    speed=Math.min(speed+8*dt,720);
+    // SPEED WAVE (owner ruling 30 Aug: shifts BOTH ways to break the zone — but every shift
+    // needs a visible cause). Day runs calmer (0.9x), night runs hotter (1.1x); the palette
+    // shows which is which, so the change is legible instead of reading like a bug.
+    const ph=.5-.5*Math.cos(meters/2400*6.2832);
+    const spd=speed*(.9+.2*ph);
+    trav+=spd*dt; meters=Math.floor(trav/10);
     const sliding = slideHeld && !jumping && hogY>=GROUND;
     if(jumping){
       vy += (GRAV + (slideHeld ? 5200 : 0))*dt;   // down = fast-drop
       hogY += vy*dt;
       if(hogY>=GROUND){ hogY=GROUND; jumping=false; }
     }
-    nextGap-=speed*dt;
+    nextGap-=spd*dt;
     if(nextGap<=0){
       // Scenic corridor: never spawn an obstacle where it will overlap a waterfall — the mossy
       // cliff and the small plants read too alike (owner: "too sneaky"). Falls and obstacles
@@ -631,14 +666,18 @@ function tick(now){
       if(fallNearSpawn){ nextGap += 90; }        // wait until the fall clears the spawn lane
       else {
         spawn();
-        if(obs[obs.length-1].kind==='log'){
+        const spawned = obs[obs.length-1];
+        if(spawned.kind==='log'){
           nextGap+=140;
           if(!logHintShown){ logHintShown=true; toast={s:'Log! Hold the DUCK pad to slide under!',age:0}; }
+        }
+        if(spawned.kind==='pothole' && !potholeHintShown){
+          potholeHintShown=true; toast={s:'Pothole! Tap to hop over it!',age:0};
         }
         nextGap+=340+Math.random()*340;
       }
     }
-    for(const o of obs) o.x-=speed*dt;
+    for(const o of obs) o.x-=spd*dt;
     obs=obs.filter(o=>o.x>-140);
     // landmarks & Oom
     while(lmIdx<LANDMARKS.length && meters>=LANDMARKS[lmIdx][0]){
@@ -672,7 +711,7 @@ function tick(now){
         if(!shroomHintShown){ shroomHintShown=true; toast={s:'Goud sampioene maak die mis oop — rooies vermoor jou.',age:0}; }
       }
     }
-    for(const s of shrooms) s.x-=speed*dt;
+    for(const s of shrooms) s.x-=spd*dt;
     shrooms=shrooms.filter(s=>s.x>-30 && !s.got);
     const hcx=hx+hw/2, hcy=sliding ? hogY-8 : hogY-HH/2-4;
     for(const s of shrooms){
