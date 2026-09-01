@@ -111,20 +111,27 @@ const AMBIENT = [
   'Loop, vark, loop!',
   'Die varke is wakker vandag.',
   'Lekker loop, boet!',
+  'Haai, dis mis, dis nie rook nie!',
 ];
-const MISLINE = 'Haai, dis mis, dis nie rook nie!';
 
 let state = 'ready', speed = 330, trav = 0, meters = 0, hi = +(localStorage.getItem('hogback_hi')||0);
 let hogY = GROUND, vy = 0, jumping = false, obs = [], nextGap = 420, deadAt = 0;
-let mistTimer = 12, mist = null; // {age,dur}
+// weather: Hogsback can't make up its mind. clear -> mist -> clear -> rain -> ...
+// mist = {kind:'mist'|'rain', age, dur}; WX_FADE seconds of fade in and out either side.
+const WX_FADE = 1.2;
+let wxTimer = 22, mist = null, wxCount = 0;
 let lmIdx = 0, nextAmb = 170;
 let toast = null, last = performance.now();
 let queuedAt = -1e9;        // buffered jump timestamp
 let logHintShown = false;   // taught once per session, survives restarts
 let potholeHintShown = false;
 let shroomHintShown = false;
+let wxHintShown = false;
 let deathCause = '', deathHead = '', shakeT = 0;
 let floaters = [];          // {x,y,t} '+1' pickup puffs
+let nightRim = 0;           // 0..1 rim-light strength on obstacles (dagga vanishes at night)
+let prevKind = '';          // last obstacle spawned, so gap maths keeps combos survivable
+let bird = null, nextBird = 7;   // Knysna loerie flyover — scenery, never collides
 const API='https://lb.wildlogic.co.za/scores';
 let board=null, boardAt=0, qualify=false, posted=false, lastPostedM=0;
 const stars = Array.from({length:70}, () => [Math.random()*W, Math.random()*GROUND*.65, Math.random()]);
@@ -213,18 +220,24 @@ function drawHog(x, phase, squash){
 }
 
 // ---- obstacles ----
-function spawn(){
+// ramp = 0..1 (distance / 10 km). The mix gets less forgiving as you go: more logs
+// (you must duck) and more potholes (you must commit earlier), fewer plain stumps.
+// Weights always sum to 1.0 whatever ramp is, so the balance stays predictable.
+function spawn(ramp){
+  const r = ramp || 0;
+  const wA = .26 - .08*r, wS = .22 - .02*r, wT = .18 - .02*r, wP = .16 + .06*r, wL = .18 + .06*r;
   let roll = Math.random();
-  if(meters < 120) roll *= .7;            // fallen logs only after the player has warmed up
+  if(meters < 400) roll *= .55;           // warm-up: nothing that needs a duck yet
   let o;
-  if(roll < .24){
+  if(roll < wA){
+    // bigger than they were — Matt: "the small ones are a bit small" / can't see them
     const n = Math.random() < .22 ? 2 : 1;
-    o = {kind:'aloe', n, x:W+40, w:n===2?54:34, h:(n===2?22:34)+Math.random()*6};
-  } else if(roll < .44){
+    o = {kind:'aloe', n, x:W+40, w:n===2?58:38, h:(n===2?28:40)+Math.random()*8};
+  } else if(roll < wA+wS){
     o = {kind:'stump', x:W+40, w:44+Math.random()*14, h:22+Math.random()*6};
-  } else if(roll < .60){
-    o = {kind:'toad', x:W+40, w:34, h:24+Math.random()*6};
-  } else if(roll < .80){
+  } else if(roll < wA+wS+wT){
+    o = {kind:'toad', x:W+40, w:34, h:26+Math.random()*6};
+  } else if(roll < wA+wS+wT+wP){
     // Hogsback's famous road: a WIDE pothole — same hop as a stump, but you must
     // jump earlier because the gap is longer. Rebalanced down from stump/toad
     // (owner: stumps and mushrooms "seem a lot").
@@ -243,6 +256,7 @@ function drawObstacle(o){
     ctx.lineTo(o.x+o.w*.72,gy-o.h*.96);
     ctx.quadraticCurveTo(o.x+o.w*.95,gy-o.h*.9,o.x+o.w,gy);
     ctx.closePath(); ctx.fill();
+    if(nightRim>0){ ctx.strokeStyle=`rgba(226,214,180,${.45*nightRim})`; ctx.lineWidth=1; ctx.stroke(); }
     ctx.strokeStyle='#57432a'; ctx.lineWidth=1.5;
     ctx.beginPath(); ctx.ellipse(o.x+o.w/2,gy-o.h,o.w*.3,3.4,0,0,7); ctx.stroke();
     ctx.fillStyle='#5c8a4a';                       // moss cap
@@ -301,6 +315,8 @@ function drawObstacle(o){
         ctx.quadraticCurveTo(bx+(tx-bx)*.45+px*hw, base+(ty-base)*.45+py*hw, tx,ty);
         ctx.quadraticCurveTo(bx+(tx-bx)*.45-px*hw, base+(ty-base)*.45-py*hw, bx,base);
         ctx.closePath(); ctx.fill();
+        // rim-light: dark green on a night hill is invisible, so edge it once it's dusk
+        if(nightRim>0){ ctx.strokeStyle=`rgba(198,255,212,${.55*nightRim})`; ctx.lineWidth=1; ctx.stroke(); }
         if(Math.abs(t)<.34){
           ctx.strokeStyle='rgba(16,58,28,.6)'; ctx.lineWidth=1;
           ctx.beginPath(); ctx.moveTo(bx,base); ctx.lineTo(bx+(tx-bx)*.8, base+(ty-base)*.8); ctx.stroke();
@@ -462,18 +478,51 @@ function drawWaterfalls(k, tNow){
   }
 }
 
+// ---- weather: Hogsback can't make up its mind. clear -> mist -> clear -> rain -> ...
+// Mushrooms are the answer to bad weather (see the pickup block), which is what finally
+// gives them a job. lvl is 0..1 thickness: fades in and out so it never snaps.
+function wxLevel(){
+  if(!mist) return 0;
+  const a = mist.age, d = mist.dur;
+  if(a < WX_FADE) return a/WX_FADE;
+  if(a > d) return Math.max(0, 1-(a-d)/WX_FADE);
+  return 1;
+}
+const RAIN = Array.from({length:130}, () => [Math.random()*(W+180), Math.random()*GROUND, .6+Math.random()*.8]);
+function drawRain(lvl, dt){
+  if(lvl<=.01) return;
+  ctx.save();
+  ctx.strokeStyle = `rgba(196,218,240,${.40*lvl})`; ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for(const d of RAIN){
+    d[1] += (780 + d[2]*280) * dt;      // falling
+    d[0] -= 140 * dt;                   // ...and blown back at the runner
+    if(d[1] > GROUND+6){ d[1] = -10; d[0] = Math.random()*(W+180); }
+    if(d[0] < -20) d[0] += W+180;
+    ctx.moveTo(d[0], d[1]); ctx.lineTo(d[0]-7, d[1]+16);
+  }
+  ctx.stroke();
+  ctx.fillStyle = `rgba(30,44,78,${.20*lvl})`; ctx.fillRect(0,0,W,H);   // light goes flat
+  ctx.fillStyle = `rgba(224,238,250,${.45*lvl})`;                       // ticks on the track
+  for(let i=0;i<12;i++){
+    const sx = (i*83 + (trav*1.6)%83) % W;
+    const ph = (performance.now()/170 + i*0.37) % 1;
+    ctx.fillRect(sx, GROUND+5+ph*11, 2, 1.6);
+  }
+  ctx.restore();
+}
 // ---- mist (Hogsback style: brief, soft, and the fairies show you the lane) ----
-function drawMist(tNow){
-  if(!mist) return;
+function drawMist(lvl, tNow){
+  if(lvl<=.01) return;
   const p = Math.min(mist.age/mist.dur,1);
   const cxp = W*(1.25 - 1.5*p);
   const g = ctx.createLinearGradient(cxp-W*.33,0,cxp+W*.33,0);
   g.addColorStop(0,'rgba(235,240,244,0)');
-  g.addColorStop(.5,'rgba(235,240,244,.6)');
+  g.addColorStop(.5,`rgba(235,240,244,${.62*lvl})`);
   g.addColorStop(1,'rgba(235,240,244,0)');
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-  ctx.fillStyle=`rgba(230,236,240,${.12*Math.sin(p*Math.PI)})`; ctx.fillRect(0,0,W,H);
-  if(p<1){
+  ctx.fillStyle=`rgba(230,236,240,${.12*lvl*Math.sin(p*Math.PI)})`; ctx.fillRect(0,0,W,H);
+  if(lvl>.3){
     for(const o of obs){
       if(o.x<-20 || o.x>W+40) continue;
       const cy = GROUND-(o.kind==='log'?LOGH+18:o.h)-14;
@@ -508,6 +557,81 @@ function drawShroom(s, tNow){
   ctx.fillStyle='#fff7d9'; ctx.fillRect(s.x+4,y+1,2.6,2.6); ctx.fillRect(s.x+11,y,2.6,2.6);
 }
 
+// ---- Knysna loerie: Hogsback staple and pure scenery. Green bird, and the whole point
+// of it is the crimson flash under the wings when it beats. Never collides with anything.
+// Draw order matters: both wings go BEHIND the green body, so the red on the downstroke
+// only peeks as a flash below the bird rather than covering the body. On the upstroke the
+// wing folds up and mostly disappears behind the body — a thin green strip above.
+function drawLoerie(x, y, tNow){
+  const flap = Math.sin(tNow/95);            // -1 upstroke .. +1 downstroke
+  const down = flap > 0;
+  const wingDrop = 1 + flap * 8;             // where the wing sits this beat
+  const wingFlare = 12 + (down ? flap*4 : 0);
+  ctx.save();
+  ctx.translate(x, y);
+  // long loerie tail (turaco)
+  ctx.strokeStyle='#2f7a41'; ctx.lineWidth=3.6; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(-9,1); ctx.quadraticCurveTo(-26,-2,-36,6); ctx.stroke();
+  // far wing (mostly hidden behind body, peeks as a green edge on the upstroke)
+  ctx.fillStyle = down ? '#255630' : '#2f6b3a';
+  ctx.beginPath(); ctx.ellipse(1, wingDrop-1, wingFlare-2, 3.5, .15 + flap*.3, 0, 7); ctx.fill();
+  // near wing — THIS is the flash. On the downstroke it drops below the body and the
+  // crimson underside is the whole point of the bird.
+  ctx.fillStyle = down ? '#b3242a' : '#2f6b3a';
+  ctx.beginPath(); ctx.ellipse(2, wingDrop+2, wingFlare, 4, .2 + flap*.35, 0, 7); ctx.fill();
+  // body — always on top, always green, this is the main read
+  ctx.fillStyle='#2f7a41';
+  ctx.beginPath(); ctx.ellipse(0,0,11,6.6,-.06,0,7); ctx.fill();
+  // head + crest
+  ctx.fillStyle='#2b7040';
+  ctx.beginPath(); ctx.arc(10,-3,5.4,0,7); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(7,-7); ctx.lineTo(9.2,-12.5); ctx.lineTo(12.2,-7); ctx.closePath(); ctx.fill();
+  // eye (yellow ring + black pupil — loerie has a striking eye)
+  ctx.fillStyle='#e0d24a'; ctx.beginPath(); ctx.arc(11.4,-4,2.5,0,7); ctx.fill();
+  ctx.fillStyle='#1d1f26'; ctx.beginPath(); ctx.arc(11.6,-4,1.2,0,7); ctx.fill();
+  // hooked red bill
+  ctx.fillStyle='#c2352b';
+  ctx.beginPath(); ctx.moveTo(14.2,-3.4); ctx.quadraticCurveTo(19.6,-2.4,15.8,.8); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function loerieCall(){                       // the "kwa-kwa-kwa" you hear before you see him
+  beep(760,430,.16,'triangle');
+  setTimeout(()=>beep(700,400,.15,'triangle'),190);
+  setTimeout(()=>beep(660,360,.18,'triangle'),380);
+}
+// ---- baboon on a log: the other Hogsback staple, and deliberately SCENERY ONLY.
+// Drawn at 0.62x parallax and behind the obstacles, so it can never be in the lane.
+// He sits on his log and watches you go past. That is the entire interaction.
+const BABOON_AT = [];
+for(let r=0;r<4;r++) [1200,3600,6100,8800,11600,14300].forEach(m => BABOON_AT.push(m + r*5800));
+function drawBaboons(k, tNow){
+  for(const m of BABOON_AT){
+    const sx = m*10 - trav*.62;
+    if(sx < -80 || sx > W+80) continue;
+    const base = GROUND - 14;
+    ctx.save(); ctx.translate(sx, base); ctx.scale(.92,.92);
+    ctx.fillStyle = mix('#7a5c3c','#2a2f4a',k);              // his log (scenery, not a hazard)
+    ctx.fillRect(-34,-9,68,9);
+    ctx.beginPath(); ctx.ellipse(34,-4.5,4.5,4.5,0,0,7); ctx.fill();
+    ctx.fillStyle = mix('#4e7a44','#1b3326',k); ctx.fillRect(-30,-11,40,3);
+    const sw = Math.sin(tNow/430)*1.4;                       // tail, slow and unbothered
+    ctx.strokeStyle = mix('#5b4a3a','#232840',k); ctx.lineWidth=2.6; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(-9,-17); ctx.quadraticCurveTo(-21,-24+sw,-18,-36+sw*2); ctx.stroke();
+    ctx.fillStyle = mix('#5b4a3a','#232840',k);              // rump, back, head
+    ctx.beginPath(); ctx.ellipse(-6,-16,7.5,6.5,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0,-22,6.5,8,-.1,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(2,-31,5,4.6,0,0,7); ctx.fill();
+    ctx.fillStyle = mix('#3a2f26','#171b2e',k);              // muzzle
+    ctx.beginPath(); ctx.ellipse(6,-30,3.4,2.8,.15,0,7); ctx.fill();
+    ctx.fillStyle = mix('#8d7a63','#3b4260',k);              // chest ruff
+    ctx.beginPath(); ctx.ellipse(3,-23,3.4,5.2,-.1,0,7); ctx.fill();
+    ctx.strokeStyle = mix('#5b4a3a','#232840',k); ctx.lineWidth=2.2;
+    ctx.beginPath(); ctx.moveTo(1,-25); ctx.quadraticCurveTo(7,-20,5,-16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-1,-25); ctx.quadraticCurveTo(-5,-20,-3,-16); ctx.stroke();
+    ctx.restore();
+  }
+}
+
 // ---- landmarks: wooden signs at real Hogsback spots ----
 function drawSigns(){
   ctx.font='bold 10px monospace'; ctx.textAlign='center';
@@ -538,9 +662,9 @@ function beep(f0,f1,t,type){
 // ---- loop ----
 function reset(){
   state='run'; speed=330; trav=0; meters=0; vy=0; hogY=GROUND; jumping=false;
-  obs=[]; nextGap=420; mist=null; mistTimer=12; lmIdx=0; nextAmb=170; toast=null;
+  obs=[]; nextGap=420; mist=null; wxTimer=22; wxCount=0; lmIdx=0; nextAmb=170; toast=null;
   shrooms=[]; nextShroom=900; sCount=0; queuedAt=-1e9;
-  floaters=[]; deathCause='';
+  floaters=[]; deathCause=''; prevKind=''; bird=null; nextBird=7;
   try{ document.getElementById('sh').hidden = true; document.getElementById('nm').hidden = true; }catch(e){}
 }
 async function fetchBoard(force){
@@ -588,8 +712,18 @@ addEventListener('keyup', e=>{
 // ---- unified controls: keyboard, mouse and touch all drive the same two actions ----
 // No touch-counting — that was the bug (a gap in finger timing re-fired jump as a hop).
 // Two pads stack on the right, in the sky band, clear of the boar and the obstacle lane.
-const BTN_R = 30, BTN_X = W - 78, BTN_JUMP_Y = 138, BTN_DUCK_Y = 206;
-const DUCK_BAND = 266;                 // below this canvas-y = duck (mouse fallback)
+// Pads are 20% bigger (owner 30 Aug) and — the actual fix — the DUCK hit area is far
+// larger than the disc you can see. Matt's finger landing just outside the pad used to
+// fall through to JUMP ("if its not all the way in the duck its higher so counts as a
+// jump"). Now everything in the control column below the split line ducks: the pad, the
+// gap above it, the gap left of it. JUMP stays the catch-all, which he likes.
+// Spacing maths: JUMP disc occupies 82-154, DUCK disc 166-238. DUCK_SPLIT sits centred in
+// that 12px gap, and DUCK's bottom (238) stays 1px clear of the log lane (top 239), so the
+// pad is never drawn over an obstacle you are about to have to duck.
+const BTN_R = 36, BTN_X = W - 78, BTN_JUMP_Y = 118, BTN_DUCK_Y = 202;
+const DUCK_SPLIT = 160;     // canvas-y line; on/below this in the control column = DUCK
+const DUCK_BAND  = 240;     // below this anywhere on the canvas = duck (bottom-of-screen)
+const CTL_X      = W - 172; // left edge of the control column (58px of grace left of pad)
 const isTouch = (typeof matchMedia === 'function') && matchMedia('(pointer: coarse)').matches;
 let jumpFlash = -1e9;                  // lights the JUMP pad briefly on press
 function toCanvas(e){
@@ -598,18 +732,22 @@ function toCanvas(e){
   if(!r.width || !r.height) return {x:-1,y:-1};
   return { x:(e.clientX-r.left)*(W/r.width), y:(e.clientY-r.top)*(H/r.height) };
 }
-function onPad(p, cy){ const dx=p.x-BTN_X, dy=p.y-cy; return dx*dx + dy*dy <= BTN_R*BTN_R; }
+function isDuck(p){
+  if(p.y < 0) return false;                       // sentinel from toCanvas(): no rect
+  if(p.y >= DUCK_BAND) return true;               // bottom of the screen, any x
+  return p.y >= DUCK_SPLIT && p.x >= CTL_X;       // the duck pad plus its grace margin
+}
 const touches = new Map();
 cv.addEventListener('pointerdown', e=>{
   e.preventDefault();
   const p = toCanvas(e);
   const rec = { y:e.clientY, duck:false };
   touches.set(e.pointerId, rec);
-  if(onPad(p, BTN_DUCK_Y) || (p.y >= 0 && p.y > DUCK_BAND)){   // hold to duck
+  if(isDuck(p)){                                  // hold to duck
     slideHeld = true; rec.duck = true; return;
   }
   jumpFlash = performance.now();
-  act();                                                        // tap/click to hop
+  act();                                          // tap/click to hop
 });
 cv.addEventListener('pointermove', e=>{
   const rec = touches.get(e.pointerId);
@@ -640,7 +778,17 @@ function drawControls(){
 function tick(now){
   const dt = Math.min((now-last)/1000,.05); last=now;
   if(state==='run'){
-    speed=Math.min(speed+8*dt,720);
+    // DIFFICULTY RAMP. Top runners are past 20 km but the curve used to flat-line at
+    // ~2.4 km — the moment speed capped — and that plateau is why good runs never end.
+    // Two separate curves, because they saturate for different reasons:
+    //   ramp    = mix shift. Saturates at 12 km (you can't make it more than ~half
+    //             logs+potholes without the track reading as one long duck).
+    //   tighten = gap shrink. Keeps creeping to 20 km so a strong runner never reaches
+    //             a distance where nothing changes any more.
+    // KNOBs: the 12000, the 20000, and the .30.
+    const ramp    = Math.min(meters/12000, 1);
+    const tighten = Math.min(meters/20000, 1);
+    speed=Math.min(speed+8*dt, 720+80*tighten);
     // SPEED WAVE (owner ruling 30 Aug: shifts BOTH ways to break the zone — but every shift
     // needs a visible cause). Day runs calmer (0.9x), night runs hotter (1.1x); the palette
     // shows which is which, so the change is legible instead of reading like a bug.
@@ -665,16 +813,23 @@ function tick(now){
       });
       if(fallNearSpawn){ nextGap += 90; }        // wait until the fall clears the spawn lane
       else {
-        spawn();
+        spawn(ramp);
         const spawned = obs[obs.length-1];
-        if(spawned.kind==='log'){
-          nextGap+=140;
-          if(!logHintShown){ logHintShown=true; toast={s:'Log! Hold the DUCK pad to slide under!',age:0}; }
+        if(spawned.kind==='log' && !logHintShown){
+          logHintShown=true; toast={s:'Log! Hold the DUCK pad to slide under!',age:0};
         }
         if(spawned.kind==='pothole' && !potholeHintShown){
           potholeHintShown=true; toast={s:'Pothole! Tap to hop over it!',age:0};
         }
-        nextGap+=340+Math.random()*340;
+        // Gap tightens with the ramp but never past a floor: a jump has to fit, and a
+        // duck-then-jump sequence needs room to stand up in.
+        let gapAdd = (340+Math.random()*340) * (1 - .30*tighten);
+        if(spawned.kind==='log') gapAdd += 140;      // a log needs a longer read
+        else if(prevKind==='log') gapAdd += 120;     // ...and room to un-duck after one
+        // nextGap has already gone negative by up to one frame's travel, so a flat 300
+        // floor would actually deliver ~288 px. Add the overshoot back to keep it honest.
+        nextGap += Math.max(306 + spd*dt, gapAdd);
+        prevKind = spawned.kind;
       }
     }
     for(const o of obs) o.x-=spd*dt;
@@ -687,12 +842,33 @@ function tick(now){
       toast={s:AMBIENT[Math.floor(Math.random()*AMBIENT.length)],age:0};
       nextAmb=meters+160+Math.random()*160;
     }
-    mistTimer-=dt;
-    if(!mist && mistTimer<=0){
-      mist={age:0,dur:2.4};
-      if(Math.random()<.5 && !toast) toast={s:MISLINE,age:0};
+    // ---- weather: clear -> mist -> clear -> rain -> ... Mushrooms are the counter, so
+    // bad weather is a problem you can actually solve rather than a thing you endure.
+    wxTimer-=dt;
+    if(!mist && wxTimer<=0){
+      wxCount++;
+      const kind = (wxCount===1 || Math.random()<.5) ? 'mist' : 'rain';  // first is always mist
+      mist={kind, age:0, dur: kind==='mist' ? 3.4 : 5.6};
+      if(!wxHintShown){                       // first event teaches the mushroom link
+        wxHintShown=true;
+        toast={s:'Goud sampioene maak die weer oop — rooies vermoor jou.',age:0};
+      } else {
+        toast={ s: kind==='mist' ? 'Die mis kom af — hou jou kop!' : 'Hier kom die reën.', age:0 };
+      }
+      if(kind==='rain') beep(240,150,.5,'sine'); else beep(420,300,.45,'sine');
     }
-    if(mist){ mist.age+=dt; if(mist.age>mist.dur+1.6){ mist=null; mistTimer=18+Math.random()*4; } }
+    if(mist){
+      mist.age+=dt;
+      if(mist.age > mist.dur + WX_FADE){ mist=null; wxTimer=16+Math.random()*10; }
+    }
+    // loerie flyover: pure scenery, crosses above the ridge every 13-26 s
+    if(bird){
+      bird.age+=dt;
+      if(bird.age>bird.dur){ bird=null; nextBird=13+Math.random()*13; }
+    } else if((nextBird-=dt)<=0){
+      bird={age:0, dur:5.5+Math.random()*2.5, y:44+Math.random()*70};
+      loerieCall();
+    }
     // collision: forgiving AABB insets (squashed box while sliding)
     const hx = 70 + 8, hw = (sliding ? HW - 8 : HW - 28);
     const htop = sliding ? hogY - 15 : hogY - HH - 10, hh = sliding ? 13 : HH + 8;
@@ -708,7 +884,7 @@ function tick(now){
       if(obs.some(o=>Math.abs(o.x-sx)<80)) nextShroom=trav+180;
       else {
         shrooms.push({x:sx,y:sy}); nextShroom=trav+1100+Math.random()*800;
-        if(!shroomHintShown){ shroomHintShown=true; toast={s:'Goud sampioene maak die mis oop — rooies vermoor jou.',age:0}; }
+        if(!shroomHintShown){ shroomHintShown=true; toast={s:'Goud sampioene is goed — rooies vermoor jou.',age:0}; }
       }
     }
     for(const s of shrooms) s.x-=spd*dt;
@@ -716,11 +892,17 @@ function tick(now){
     const hcx=hx+hw/2, hcy=sliding ? hogY-8 : hogY-HH/2-4;
     for(const s of shrooms){
       if(Math.abs(s.x+9-hcx)<26 && Math.abs(s.y+5-hcy)<32){
-        s.got=true; sCount++; beep(1040,1320,.08,'sine');
+        s.got=true; beep(1040,1320,.08,'sine');
         floaters.push({x:s.x+9,y:s.y-6,t:0});
-        if(mist && sCount>=3){
-          sCount-=3; mist=null; mistTimer=18+Math.random()*4;
-          toast={s:'Die fairies maak die mis oop!',age:0}; beep(880,1400,.15,'sine');
+        const before = sCount;
+        sCount = Math.min(sCount+1, 3);
+        if(mist && sCount>=3){                       // spent right now — the weather opens
+          sCount-=3; const was=mist.kind; mist=null; wxTimer=18+Math.random()*8;
+          toast={ s: was==='rain' ? 'Die fairies stop die reën!' : 'Die fairies maak die mis oop!', age:0 };
+          beep(880,1400,.15,'sine');
+        } else if(sCount===3 && before<3){           // bank is full — held for the next one
+          toast={ s:'Drie gebêre — die fairies skuld jou.', age:0 };
+          beep(660,880,.12,'sine');
         }
       }
     }
@@ -739,13 +921,18 @@ function tick(now){
   if(shakeT>0){ const m=9*(shakeT/.35); ctx.translate((Math.random()-.5)*m,(Math.random()-.5)*m); }
   // day/night CYCLES every 2400 m (was: ramped to night at 620 m and stayed there forever)
   const k=.5-.5*Math.cos(meters/2400*6.2832);
+  nightRim = Math.max(0, Math.min(1, (k-.35)/.3));
+  const wxl = wxLevel();
   backdrop(k);
   drawWaterfalls(k, now);
   drawSigns();
+  drawBaboons(k, now);                    // mid-ground, drawn behind the lane
   obs.forEach(drawObstacle);
   shrooms.forEach(s=>drawShroom(s, now));
   drawHog(70, trav*.045, slideHeld && !jumping && hogY>=GROUND);
-  drawMist(now);
+  if(bird) drawLoerie(W+70 - (bird.age/bird.dur)*(W+260), bird.y, now);
+  drawMist(mist ? wxl * (mist.kind==='mist' ? 1 : .3) : 0, now);
+  drawRain(mist && mist.kind==='rain' ? wxl : 0, dt);
   for(const f of floaters){
     ctx.globalAlpha=1-f.t/.8; ctx.fillStyle='#ffd75e'; ctx.font='bold 13px monospace';
     ctx.fillText('+1', f.x, f.y - f.t*38);
@@ -766,7 +953,8 @@ function tick(now){
   ctx.fillText(String(Math.floor(trav/10)).padStart(4,'0')+' m', W-16, 30);
   ctx.font='12px monospace'; ctx.globalAlpha=.7;
   ctx.fillText('HI '+String(hi).padStart(4,'0'), W-16, 48);
-  if(sCount>0){ ctx.font='13px monospace'; ctx.fillText('🍄 '+sCount+'/3', W-16, 66); }
+  ctx.font='13px monospace'; ctx.globalAlpha = sCount>0 ? .95 : .4;
+  ctx.fillText('🍄 '+sCount+'/3', W-16, 66);      // always up: it is a resource, not a bonus
   ctx.globalAlpha=1; ctx.textAlign='left';
 
   if(toast){
