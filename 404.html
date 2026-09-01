@@ -234,7 +234,7 @@ function spawn(ramp){
     const n = Math.random() < .22 ? 2 : 1;
     o = {kind:'aloe', n, x:W+40, w:n===2?58:38, h:(n===2?28:40)+Math.random()*8};
   } else if(roll < wA+wS){
-    o = {kind:'stump', x:W+40, w:44+Math.random()*14, h:22+Math.random()*6};
+    o = {kind:'stump', variant: Math.random()<.5?'cut':'snag', x:W+40, w:44+Math.random()*14, h:22+Math.random()*6};
   } else if(roll < wA+wS+wT){
     o = {kind:'toad', x:W+40, w:34, h:26+Math.random()*6};
   } else if(roll < wA+wS+wT+wP){
@@ -247,21 +247,81 @@ function spawn(ramp){
   }
   obs.push(o);
 }
+// ---- stumps: two Hogsback forest flavours, randomly chosen at spawn ----
+//  'cut'  = a sawn-off tree stump: flared trunk, sawn top with growth rings
+//  'snag' = a snapped-off broken tree: jagged splintered crown + branch stub
+function drawStump(o, gy){
+  const w=o.w, h=o.h, left=o.x, right=o.x+w, cx=o.x+w/2, top=gy-h;
+  const cut = o.variant!=='snag';
+  ctx.beginPath();
+  if(cut){
+    ctx.moveTo(left+2, gy);
+    ctx.quadraticCurveTo(left, gy-h*.5, cx-w*.20, top+3);
+    ctx.lineTo(cx+w*.20, top+3);
+    ctx.quadraticCurveTo(right, gy-h*.5, right-2, gy);
+  } else {
+    ctx.moveTo(left+4, gy);
+    ctx.lineTo(left+w*.40, top+7);
+    ctx.lineTo(left+w*.48, top-6);
+    ctx.lineTo(left+w*.56, top+3);
+    ctx.lineTo(left+w*.64, top-7);
+    ctx.lineTo(left+w*.72, top+4);
+    ctx.lineTo(left+w*.80, top-3);
+    ctx.lineTo(right-4, gy);
+  }
+  ctx.closePath();
+  ctx.fillStyle='#6e5638'; ctx.fill();
+  if(nightRim>0){ ctx.strokeStyle=`rgba(226,214,180,${.45*nightRim})`; ctx.lineWidth=1; ctx.stroke(); }
+  else { ctx.strokeStyle='#4a3826'; ctx.lineWidth=1; ctx.stroke(); }
+  if(cut){
+    // bark streaks down the trunk
+    ctx.strokeStyle='#57432a'; ctx.lineWidth=1;
+    for(let i=0;i<3;i++){ const xx=left+7+i*(w-14)/2; ctx.beginPath(); ctx.moveTo(xx,gy-2); ctx.lineTo(xx-2,top+5); ctx.stroke(); }
+    // sawn top: a pale wood face big enough to actually read at this scale,
+    // a darker heartwood dot, bold concentric rings, and a dark rim.
+    ctx.fillStyle='#d8b889'; ctx.beginPath(); ctx.ellipse(cx, top+3, w*.26, 4.6, 0, 0, 7); ctx.fill();
+    ctx.fillStyle='#a88054'; ctx.beginPath(); ctx.ellipse(cx, top+3, w*.10, 1.8, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle='#5e4220'; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.ellipse(cx, top+3, w*.20, 3.4, 0, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, top+3, w*.13, 2.2, 0, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, top+3, w*.06, 1.0, 0, 0, 7); ctx.stroke();
+    ctx.strokeStyle='#3a2a18'; ctx.lineWidth=1.2; ctx.beginPath(); ctx.ellipse(cx, top+3, w*.26, 4.6, 0, 0, 7); ctx.stroke();
+    // small moss patch on the back of the sawn face (not covering the rings)
+    ctx.fillStyle='#5c8a4a';
+    ctx.beginPath(); ctx.ellipse(left+w*.18, top+1, w*.18, 3.6, -.15, 0, 7); ctx.fill();
+  } else {
+    // pale splintered wood facing out of the break — big enough to read
+    ctx.fillStyle='#cfa97a';
+    ctx.beginPath();
+    ctx.moveTo(left+w*.40, top+7);
+    ctx.lineTo(left+w*.48, top-6);
+    ctx.lineTo(left+w*.52, top+1);
+    ctx.lineTo(left+w*.56, top+3);
+    ctx.lineTo(left+w*.60, top);
+    ctx.lineTo(left+w*.64, top-7);
+    ctx.lineTo(left+w*.68, top+1);
+    ctx.lineTo(left+w*.72, top+4);
+    ctx.lineTo(left+w*.76, top);
+    ctx.closePath(); ctx.fill();
+    // dark crevice in the deepest jag so it reads as 'broken'
+    ctx.fillStyle='#3a2a18';
+    ctx.beginPath(); ctx.moveTo(left+w*.56, top+3); ctx.lineTo(left+w*.60, top); ctx.lineTo(left+w*.64, top-7); ctx.lineTo(left+w*.60, top+2); ctx.closePath(); ctx.fill();
+    // bark streaks on the lower trunk
+    ctx.strokeStyle='#57432a'; ctx.lineWidth=.9;
+    for(let i=0;i<2;i++){ const xx=left+12+i*(w-24)/1.5; ctx.beginPath(); ctx.moveTo(xx,gy-3); ctx.lineTo(xx-2,top+10); ctx.stroke(); }
+    // a short broken branch stub
+    ctx.strokeStyle='#5d4529'; ctx.lineWidth=2; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(left+w*.34, top+12); ctx.lineTo(left+w*.18, top+3); ctx.stroke();
+    ctx.lineCap='butt';
+    // moss near the base of the break
+    ctx.fillStyle='#5c8a4a';
+    ctx.beginPath(); ctx.ellipse(left+w*.30, top+6, w*.16, 3.2, -.1, 0, 7); ctx.fill();
+  }
+}
 function drawObstacle(o){
   const gy = GROUND;
   if(o.kind==='stump'){
-    ctx.fillStyle='#6e5638';
-    ctx.beginPath(); ctx.moveTo(o.x,gy);
-    ctx.quadraticCurveTo(o.x+o.w*.06,gy-o.h,o.x+o.w*.3,gy-o.h);
-    ctx.lineTo(o.x+o.w*.72,gy-o.h*.96);
-    ctx.quadraticCurveTo(o.x+o.w*.95,gy-o.h*.9,o.x+o.w,gy);
-    ctx.closePath(); ctx.fill();
-    if(nightRim>0){ ctx.strokeStyle=`rgba(226,214,180,${.45*nightRim})`; ctx.lineWidth=1; ctx.stroke(); }
-    ctx.strokeStyle='#57432a'; ctx.lineWidth=1.5;
-    ctx.beginPath(); ctx.ellipse(o.x+o.w/2,gy-o.h,o.w*.3,3.4,0,0,7); ctx.stroke();
-    ctx.fillStyle='#5c8a4a';                       // moss cap
-    ctx.beginPath(); ctx.ellipse(o.x+o.w*.34,gy-o.h-1,o.w*.26,4.5,-.12,0,7); ctx.fill();
-    ctx.lineWidth=1;
+    drawStump(o, gy);
   } else if(o.kind==='toad'){
     const ch=o.h;
     ctx.fillStyle='#efe4c8'; ctx.fillRect(o.x+13,gy-ch*.62,8,ch*.62);   // stem
