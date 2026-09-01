@@ -150,7 +150,7 @@ const KILLERS = {
           'hemp. tragically, the garden variety', 'a plant. a PLANT, boet',
           "dagga that didn't even get you high first", 'an aloe vera. moisturising and lethal',
           'a leaf. it did not move. you did'],
-  toad:  ['way too many magic mushrooms', 'a mushroom. the fairies saw everything',
+  toadstool:  ['way too many magic mushrooms', 'a mushroom. the fairies saw everything',
           'a mushroom that was NOT an edible, boet', 'a fun guy who was not, in fact, fun',
           'the red one. you know better', 'a toadstool. it warned you. it was red',
           'a trip you did not come back from', 'shrooms. should have asked Oom first',
@@ -236,7 +236,7 @@ function spawn(ramp){
   } else if(roll < wA+wS){
     o = {kind:'stump', variant: Math.random()<.5?'cut':'snag', x:W+40, w:44+Math.random()*14, h:22+Math.random()*6};
   } else if(roll < wA+wS+wT){
-    o = {kind:'toad', x:W+40, w:34, h:26+Math.random()*6};
+    o = {kind:'toadstool', x:W+40, w:34, h:26+Math.random()*6};
   } else if(roll < wA+wS+wT+wP){
     // Hogsback's famous road: a WIDE pothole — same hop as a stump, but you must
     // jump earlier because the gap is longer. Rebalanced down from stump/toad
@@ -322,7 +322,7 @@ function drawObstacle(o){
   const gy = GROUND;
   if(o.kind==='stump'){
     drawStump(o, gy);
-  } else if(o.kind==='toad'){
+  } else if(o.kind==='toadstool'){
     const ch=o.h;
     ctx.fillStyle='#efe4c8'; ctx.fillRect(o.x+13,gy-ch*.62,8,ch*.62);   // stem
     ctx.fillStyle='#c23b2e';                                            // red cap
