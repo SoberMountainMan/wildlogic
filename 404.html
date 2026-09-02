@@ -298,8 +298,52 @@ function drawHog(x, phase, squash){
 // ramp = 0..1 (distance / 10 km). The mix gets less forgiving as you go: more logs
 // (you must duck) and more potholes (you must commit earlier), fewer plain stumps.
 // Weights always sum to 1.0 whatever ramp is, so the balance stays predictable.
-function spawn(ramp){
+
+// ============================ v4.4 SIZE GROWTH =============================
+// Every other difficulty curve plateaus: `ramp` (the mix) at 30 km, and `tighten` — which
+// drives the gap and the speed cap — at 60 km. Past 60 km the game was literally constant:
+// same gaps, same speed, same obstacle sizes. That plateau is how one run reached 78 km.
+// `grow` never plateaus. It is asymptotic, so it keeps creeping tighter forever without
+// ever arriving, which means the game can always get harder and can never cross into
+// literally-unclearable.
+//
+// WHY HEIGHT, AND NOT WIDTH OR SPEED:
+//   * HEIGHT does not change the horizontal footprint, so the landing sequence between two
+//     obstacles is untouched. WIDTH does: it eats the clear ground you have to land on, and
+//     at the 0.66 s gap floor a wide enough obstacle makes pothole->pothole unlandable.
+//   * SPEED makes the game EASIER, not harder. The hog must stay above (h-6) for the whole
+//     time it overlaps the box, and overlap is (hogW + w - 10)/spd — so a faster game gives
+//     you MORE clearance. Raising the 800 px/s cap would loosen the late game further.
+// The headroom is real: at speed every jumpable clears up to ~79 px against a 75.85 px apex,
+// but the tallest thing the game spawns is 48 px. _clearance_budget.js tabulates it.
+//
+// THE KNOB THAT MATTERS is not the height, it is the TIMING SLACK: how early or late you can
+// press jump and still clear. slack = timeAbove(h-6) - overlap, in seconds. The late game sat
+// at 0.22-0.29 s — 13 to 17 frames of leniency. These factors pull it to ~0.11 s, which is
+// still looser than the opening already is (the 330 px/s start is the tightest part of the
+// game, at 0.09 s, because a slow hog spends longer over the box). _verify_growth.js proves
+// the floor at every distance; turn GROW_FLOOR up to tighten further.
+//
+// WHAT DOES NOT GROW, AND WHY:
+//   * pothole — drawPothole never reads o.h; the pit depth is hardcoded (GROUND+7/+11).
+//     Growing the height would tighten the hitbox with NO visible change, which is exactly
+//     the "too sneaky" trap the owner rejected for the waterfalls.
+//   * log — duck-by-design, and its height is the log's thickness, not a jump target.
+//   * toadstool width — the cap is drawn with hardcoded 34 px offsets (o.x+2 .. o.x+32), so
+//     widening it would desync the art from the hitbox. Height only, and capped at 0.85 so
+//     a 34 px cap does not end up on a 68 px stem.
+// ===========================================================================
+const GROW_START = 30000;    // m. Below this the opening is untouched, exactly as authored.
+const GROW_SCALE = 40000;    // m. e-folding distance — smaller tightens faster.
+const GROW_FLOOR = 0.075;    // s. Hard floor on timing slack; the gate asserts it everywhere.
+// Max growth at the asymptote, per kind. Solved by _verify_growth.js to land every kind at
+// ~0.11 s of slack, except the toadstool which is held back so the art stays in proportion.
+const GROW_ALOE1 = 0.40, GROW_ALOE2 = 0.74, GROW_CUT = 0.66, GROW_SNAG = 0.41, GROW_TOAD = 0.85;
+const growAt = m => m <= GROW_START ? 0 : 1 - Math.exp(-(m - GROW_START) / GROW_SCALE);
+
+function spawn(ramp, grow){
   const r = ramp || 0;
+  const g = grow || 0;
   // Difficulty now comes from WHAT spawns, not from impossible spacing. With a hard
   // 0.66 s floor on the gap there is only so much room to squeeze the rhythm, so the
   // late game leans much harder on logs (must duck) and potholes (must commit early)
@@ -313,7 +357,8 @@ function spawn(ramp){
   if(roll < wA){
     // bigger than they were — Matt: "the small ones are a bit small" / can't see them
     const n = Math.random() < .22 ? 2 : 1;
-    o = {kind:'aloe', n, x:W+40, w:n===2?58:38, h:(n===2?28:40)+Math.random()*8};
+    o = {kind:'aloe', n, x:W+40, w:n===2?58:38,
+         h:((n===2?28:40)+Math.random()*8)*(1+(n===2?GROW_ALOE2:GROW_ALOE1)*g)};
   } else if(roll < wA+wS){
     // Old 44-58 wide x 22-28 tall read as flower pots. Stumps are roughly 1:1 in cross-section
     // (a sawn base) or clearly taller than wide (a snapped-off trunk). Snag is taller still.
@@ -326,9 +371,10 @@ function spawn(ramp){
     const isSnag = Math.random()<.5;
     o = {kind:'stump', variant: isSnag?'snag':'cut', x:W+40,
          w: isSnag ? 26+Math.random()*8  : 30+Math.random()*10,
-         h: isSnag ? 40+Math.random()*8  : 32+Math.random()*8};
+         h: isSnag ? (40+Math.random()*8)*(1+GROW_SNAG*g)
+                    : (32+Math.random()*8)*(1+GROW_CUT*g)};
   } else if(roll < wA+wS+wT){
-    o = {kind:'toadstool', x:W+40, w:34, h:26+Math.random()*6};
+    o = {kind:'toadstool', x:W+40, w:34, h:(26+Math.random()*6)*(1+GROW_TOAD*g)};
   } else if(roll < wA+wS+wT+wP){
     // Hogsback's famous road: a WIDE pothole — same hop as a stump, but you must
     // jump earlier because the gap is longer. Rebalanced down from stump/toad
@@ -975,6 +1021,10 @@ function tick(now){
     // KNOBs: the 30000, the 60000, the weight slopes, and the .20.
     const ramp    = Math.min(meters/30000, 1);
     const tighten = Math.min(meters/60000, 1);
+    // grow = obstacle SIZE. This is the only curve that never saturates — see the block
+    // above spawn() for why it is size and not width or speed. Handed to spawn() as the
+    // second argument; the opening below GROW_START is unaffected.
+    const grow    = growAt(meters);
     speed=Math.min(speed+8*dt, 720+80*tighten);
     // SPEED WAVE (owner ruling 30 Aug: shifts BOTH ways to break the zone — but every shift
     // needs a visible cause). Day runs calmer (0.9x), night runs hotter (1.1x); the palette
@@ -1000,7 +1050,7 @@ function tick(now){
       });
       if(fallNearSpawn){ nextGap += 90; }        // wait until the fall clears the spawn lane
       else {
-        spawn(ramp);
+        spawn(ramp, grow);
         const spawned = obs[obs.length-1];
         if(spawned.kind==='log' && !logHintShown){
           logHintShown=true; toast={s:'Log! Hold the DUCK pad to slide under!',age:0};
