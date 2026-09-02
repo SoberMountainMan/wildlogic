@@ -135,9 +135,28 @@ const GRAV = 2700, JUMPV = -640;          // ~470ms airtime, ~76px apex (mobile-
 // The fallen yellowwood is the one obstacle you DUCK. It is also jumpable, but only
 // once you are past ~400 px/s: clearing it needs 51 px of the 75.85 px apex, and at the
 // 330 px/s opening the hog is over the 120 px of overlap longer than it is above 51 px.
-// Below that speed it is duck-only. (Reported by _verify_jumpable.js — not a bug, but
-// the old comment said "must duck or jump" as if both worked at any speed.)
+// Below that speed it is duck-only — and above it the log was the single most comfortable
+// jump in the game (133 ms of slack at top speed, MORE than any v4.4-grown jumpable), so
+// from ~1 km onward the one obstacle meant to force a duck forced nothing. See RIDER_BOX.
 const LOGY = GROUND - 57, LOGH = 38;
+// ---- riders: the collision box their art already draws (v4.5, owner call 2 Sep 2026) ----
+// Owner: "we need to lift them, or we need the random baboon and toads to not be jumpable.
+// then its more random on what your decision gonna be when it arrives."
+// LIFTING WAS REJECTED because it is binary: overlap is inversely proportional to speed, so
+// slower is always the harder case — any lift that beats the arc at the 880 px/s wave peak
+// beats it at every speed, and a partial lift gives the INVERSE curve (duck-only early,
+// free late). There is no setting that bites late and spares early.
+// So the RIDERS get boxes instead. Measured off drawRider() by _rider_bbox.js, in px
+// relative to the rider's draw origin (o.x + o.w*.45) and to the log's top surface:
+//   baboon  reaches 36.9 px up  ->  GROUND-91.9  ->  89.9 px of clearance needed, which is
+//           ABOVE the 75.85 px apex, so a baboon log is UNCLEARABLE and MUST be ducked.
+//           (The head-and-rump mass alone reaches 32.8 px = 85.8 px needed, so the verdict
+//            does not hinge on the thin swept tail — it is not a pixel-corner cheat.)
+//   toad    reaches 14.9 px up  ->  GROUND-69.9  ->  67.9 px needed: clearable, but only
+//           63-79 ms of slack between 720 and 880 px/s. A genuinely risky jump.
+//   bare log unchanged, still the free 133 ms jump it has always been.
+// Guarded by _verify_rider_box.js, which re-measures the art and fails if these drift.
+const RIDER_BOX = { baboon:{top:36.9, x0:-20.5, x1:8.6}, toad:{top:14.9, x0:-10.9, x1:10.5} };
 // Minimum spacing between obstacles, expressed in SECONDS of play rather than pixels.
 // A jump alone costs 2*|JUMPV|/GRAV = 0.474 s of air time, so anything tighter than
 // that is literally unlandable — you are still airborne when the next one arrives.
@@ -381,11 +400,16 @@ function spawn(ramp, grow){
     // (owner: stumps and mushrooms "seem a lot").
     o = {kind:'pothole', x:W+40, w:64+Math.random()*30, h:10};
   } else {
-    // The fallen yellowwood is the ONLY thing you must duck, so it's the natural
-    // perch: a rare rider sits on top and watches you slide underneath. Pure
-    // decoration — it never changes the collision box.
+    // The fallen yellowwood is the ONLY thing you must duck, so it's the natural perch.
+    // The rider USED to be pure decoration, which is exactly why the duck was never forced:
+    // the bare log was freely jumpable, and the log is ~45% of spawns once the ramp clamps,
+    // so 0% of the late game actually demanded a duck and the whole endgame was one rhythm.
+    // Now the rider carries the collision box it is already drawn in (see RIDER_BOX): a
+    // baboon log cannot be jumped at all, a toad log is a tight one, a bare log is free.
+    // Baboon was 20% and is now 50% — at 20% it only forced a duck on 9% of late spawns,
+    // which was not enough to close the 70k exploit. Owner call, 2 Sep 2026.
     const rr = Math.random();
-    const rider = rr < .20 ? 'baboon' : rr < .32 ? 'toad' : null;
+    const rider = rr < .50 ? 'baboon' : rr < .70 ? 'toad' : null;
     o = {kind:'log', x:W+40, w:86, h:LOGH, rider};
   }
   obs.push(o);
@@ -471,9 +495,10 @@ function drawStump(o, gy){
     ctx.beginPath(); ctx.ellipse(left+w*.72, top+15, w*.16, 3.2, .1, 0, 7); ctx.fill();
   }
 }
-// ---- rare riders on the fallen yellowwood (decoration only — no collision) ----
-// The log is the one obstacle you must DUCK, so a rider on top is never in the
-// way: you slide underneath it while it sits there judging you.
+// ---- riders on the fallen yellowwood. NOT decoration: they carry a collision box ----
+// Measured by _rider_bbox.js and mirrored into RIDER_BOX; the gate fails if the two drift.
+// The baboon's silhouette reaches higher than the hog can jump, so a baboon log is the one
+// thing in the game you cannot clear — you slide under it while it sits there judging you.
 function drawRider(kind, x, k){
   const base = LOGY + 2;                    // feet on the log's top surface
   const t = performance.now();
@@ -1119,6 +1144,15 @@ function tick(now){
       if(o.kind==='log'){ ox=o.x+4; ow=o.w-8; otop=LOGY+4; oh=LOGH-8; }
       else { ox=o.x+5; ow=o.w-10; otop=GROUND-o.h+4; oh=o.h-4; }
       if(hx < ox+ow && hx+hw > ox && htop < otop+oh && htop+hh > otop){ die(o.kind, o.variant); break; }
+      // TWO boxes, not one: the hog has to clear the log AND whatever is sitting on it.
+      // The rider box is the rectangle the art already draws (RIDER_BOX), and its bottom
+      // joins the log's collision top so there is no seam to slip through.
+      if(o.rider){
+        const rb = RIDER_BOX[o.rider], rx = o.x + o.w*.45, rtop = LOGY + 2 - rb.top;
+        if(hx < rx+rb.x1 && hx+hw > rx+rb.x0 && htop < rtop+rb.top+2 && htop+hh > rtop){
+          die(o.kind, o.variant); break;
+        }
+      }
     }
     // pine mushrooms: hop through them; 3 = fairies open the mist
     if(trav > nextShroom){
