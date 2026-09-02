@@ -84,6 +84,14 @@ const DAY  = { sky:'#bfe0f2', mtn:'#a8c8dd', mtn2:'#8fb0c8', far:'#8fb6cf', near
 const NIGHT= { sky:'#141d38', mtn:'#1c2745', mtn2:'#202c4e', far:'#232f52', near:'#1a2542', ground:'#3a3f63', line:'#2e3352' };
 const GRAV = 2700, JUMPV = -640;          // ~470ms airtime, ~76px apex (mobile-tuned)
 const LOGY = GROUND - 57, LOGH = 38;      // fallen yellowwood: must duck or jump (run-through blocked)
+// Minimum spacing between obstacles, expressed in SECONDS of play rather than pixels.
+// A jump alone costs 2*|JUMPV|/GRAV = 0.474 s of air time, so anything tighter than
+// that is literally unlandable — you are still airborne when the next one arrives.
+// 0.66 s = air time + ~0.19 s to touch down, see the next obstacle and act.
+// Pixels can't express this: 306 px is a comfortable 0.93 s at the 330 px/s opening
+// and a fatal 0.43 s once you're doing 720. Scaling with speed means the floor only
+// bites when you're going fast — which is exactly where Matt hit it (~6-10 km).
+const MIN_GAP_T = 0.66;
 // Spaced for LONG runs — top scores are ~18 500 m, so landmarks run out to 17 500 m
 // with widening gaps (the hog is faster later, so gaps grow with him).
 const LANDMARKS = [
@@ -225,7 +233,13 @@ function drawHog(x, phase, squash){
 // Weights always sum to 1.0 whatever ramp is, so the balance stays predictable.
 function spawn(ramp){
   const r = ramp || 0;
-  const wA = .26 - .08*r, wS = .22 - .02*r, wT = .18 - .02*r, wP = .16 + .06*r, wL = .18 + .06*r;
+  // Difficulty now comes from WHAT spawns, not from impossible spacing. With a hard
+  // 0.66 s floor on the gap there is only so much room to squeeze the rhythm, so the
+  // late game leans much harder on logs (must duck) and potholes (must commit early)
+  // instead. Weights sum to 1.0 at both r=0 and r=1 — the mix check asserts that.
+  // STEEPENED for v4.2 (owner: "getting more difficult as the game progresses is good").
+  // Total hard share at r=1 is .80 (was .58). At r=0 the opening is unchanged.
+  const wA = .26 - .20*r, wS = .22 - .17*r, wT = .18 - .17*r, wP = .16 + .27*r, wL = .18 + .27*r;
   let roll = Math.random();
   if(meters < 400) roll *= .55;           // warm-up: nothing that needs a duck yet
   let o;
@@ -234,7 +248,12 @@ function spawn(ramp){
     const n = Math.random() < .22 ? 2 : 1;
     o = {kind:'aloe', n, x:W+40, w:n===2?58:38, h:(n===2?28:40)+Math.random()*8};
   } else if(roll < wA+wS){
-    o = {kind:'stump', variant: Math.random()<.5?'cut':'snag', x:W+40, w:44+Math.random()*14, h:22+Math.random()*6};
+    // Old 44-58 wide x 22-28 tall read as flower pots. Stumps are roughly 1:1 in cross-section
+    // (a sawn base) or clearly taller than wide (a snapped-off trunk). Snag is taller still.
+    const isSnag = Math.random()<.5;
+    o = {kind:'stump', variant: isSnag?'snag':'cut', x:W+40,
+         w: isSnag ? 36+Math.random()*14 : 32+Math.random()*12,
+         h: isSnag ? 54+Math.random()*14 : 36+Math.random()*10};
   } else if(roll < wA+wS+wT){
     o = {kind:'toadstool', x:W+40, w:34, h:26+Math.random()*6};
   } else if(roll < wA+wS+wT+wP){
@@ -243,7 +262,12 @@ function spawn(ramp){
     // (owner: stumps and mushrooms "seem a lot").
     o = {kind:'pothole', x:W+40, w:64+Math.random()*30, h:10};
   } else {
-    o = {kind:'log', x:W+40, w:86, h:LOGH};
+    // The fallen yellowwood is the ONLY thing you must duck, so it's the natural
+    // perch: a rare rider sits on top and watches you slide underneath. Pure
+    // decoration — it never changes the collision box.
+    const rr = Math.random();
+    const rider = rr < .20 ? 'baboon' : rr < .32 ? 'toad' : null;
+    o = {kind:'log', x:W+40, w:86, h:LOGH, rider};
   }
   obs.push(o);
 }
@@ -255,18 +279,22 @@ function drawStump(o, gy){
   const cut = o.variant!=='snag';
   ctx.beginPath();
   if(cut){
-    ctx.moveTo(left+2, gy);
-    ctx.quadraticCurveTo(left, gy-h*.5, cx-w*.20, top+3);
-    ctx.lineTo(cx+w*.20, top+3);
-    ctx.quadraticCurveTo(right, gy-h*.5, right-2, gy);
+    // STRAIGHT vertical sides. A sawn tree base is a cylinder, not a vase —
+    // the flare I had on this made it read as a pot. Flanks stay parallel.
+    ctx.moveTo(left+3, gy);
+    ctx.lineTo(left+3, top+3);
+    ctx.lineTo(right-3, top+3);
+    ctx.lineTo(right-3, gy);
   } else {
+    // Straight trunk sides too — only the BREAK on top is jagged.
     ctx.moveTo(left+4, gy);
-    ctx.lineTo(left+w*.40, top+7);
-    ctx.lineTo(left+w*.48, top-6);
-    ctx.lineTo(left+w*.56, top+3);
-    ctx.lineTo(left+w*.64, top-7);
-    ctx.lineTo(left+w*.72, top+4);
-    ctx.lineTo(left+w*.80, top-3);
+    ctx.lineTo(left+4, top+8);
+    ctx.lineTo(left+w*.18, top-4);
+    ctx.lineTo(left+w*.31, top+5);
+    ctx.lineTo(left+w*.45, top-7);
+    ctx.lineTo(left+w*.59, top+3);
+    ctx.lineTo(left+w*.73, top-5);
+    ctx.lineTo(right-4, top+8);
     ctx.lineTo(right-4, gy);
   }
   ctx.closePath();
@@ -290,33 +318,87 @@ function drawStump(o, gy){
     ctx.fillStyle='#5c8a4a';
     ctx.beginPath(); ctx.ellipse(left+w*.18, top+1, w*.18, 3.6, -.15, 0, 7); ctx.fill();
   } else {
-    // pale splintered wood facing out of the break — big enough to read
+    // pale splintered wood along the break — follows the jagged top band only,
+    // so the bark below stays dark and the break reads as freshly snapped.
     ctx.fillStyle='#cfa97a';
     ctx.beginPath();
-    ctx.moveTo(left+w*.40, top+7);
-    ctx.lineTo(left+w*.48, top-6);
-    ctx.lineTo(left+w*.52, top+1);
-    ctx.lineTo(left+w*.56, top+3);
-    ctx.lineTo(left+w*.60, top);
-    ctx.lineTo(left+w*.64, top-7);
-    ctx.lineTo(left+w*.68, top+1);
-    ctx.lineTo(left+w*.72, top+4);
-    ctx.lineTo(left+w*.76, top);
+    ctx.moveTo(left+4, top+8);
+    ctx.lineTo(left+w*.18, top-4);
+    ctx.lineTo(left+w*.24, top+2);
+    ctx.lineTo(left+w*.31, top+5);
+    ctx.lineTo(left+w*.38, top+1);
+    ctx.lineTo(left+w*.45, top-7);
+    ctx.lineTo(left+w*.52, top+2);
+    ctx.lineTo(left+w*.59, top+3);
+    ctx.lineTo(left+w*.66, top);
+    ctx.lineTo(left+w*.73, top-5);
+    ctx.lineTo(right-4, top+8);
+    ctx.lineTo(right-4, top+10);
+    ctx.lineTo(left+4, top+10);
     ctx.closePath(); ctx.fill();
-    // dark crevice in the deepest jag so it reads as 'broken'
+    // dark crevices in the two deepest notches so it reads as 'broken'
     ctx.fillStyle='#3a2a18';
-    ctx.beginPath(); ctx.moveTo(left+w*.56, top+3); ctx.lineTo(left+w*.60, top); ctx.lineTo(left+w*.64, top-7); ctx.lineTo(left+w*.60, top+2); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(left+w*.31, top+5); ctx.lineTo(left+w*.38, top+1); ctx.lineTo(left+w*.40, top+9); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(left+w*.59, top+3); ctx.lineTo(left+w*.66, top); ctx.lineTo(left+w*.68, top+8); ctx.closePath(); ctx.fill();
     // bark streaks on the lower trunk
     ctx.strokeStyle='#57432a'; ctx.lineWidth=.9;
-    for(let i=0;i<2;i++){ const xx=left+12+i*(w-24)/1.5; ctx.beginPath(); ctx.moveTo(xx,gy-3); ctx.lineTo(xx-2,top+10); ctx.stroke(); }
-    // a short broken branch stub
+    for(let i=0;i<2;i++){ const xx=left+12+i*(w-24)/1.5; ctx.beginPath(); ctx.moveTo(xx,gy-3); ctx.lineTo(xx,top+12); ctx.stroke(); }
+    // a short broken branch stub, off the bark below the break
     ctx.strokeStyle='#5d4529'; ctx.lineWidth=2; ctx.lineCap='round';
-    ctx.beginPath(); ctx.moveTo(left+w*.34, top+12); ctx.lineTo(left+w*.18, top+3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(left+w*.32, top+18); ctx.lineTo(left+w*.15, top+10); ctx.stroke();
     ctx.lineCap='butt';
-    // moss near the base of the break
+    // moss on the bark, below the break (kept clear of the splinters)
     ctx.fillStyle='#5c8a4a';
-    ctx.beginPath(); ctx.ellipse(left+w*.30, top+6, w*.16, 3.2, -.1, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(left+w*.72, top+15, w*.16, 3.2, .1, 0, 7); ctx.fill();
   }
+}
+// ---- rare riders on the fallen yellowwood (decoration only — no collision) ----
+// The log is the one obstacle you must DUCK, so a rider on top is never in the
+// way: you slide underneath it while it sits there judging you.
+function drawRider(kind, x, k){
+  const base = LOGY + 2;                    // feet on the log's top surface
+  const t = performance.now();
+  ctx.save(); ctx.translate(x, base);
+  if(kind==='baboon'){
+    ctx.scale(.92,.92);
+    const sw = Math.sin(t/430)*1.4;         // tail, slow and unbothered
+    ctx.strokeStyle = mix('#5b4a3a','#232840',k); ctx.lineWidth=2.6; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(-9,-17); ctx.quadraticCurveTo(-21,-24+sw,-18,-36+sw*2); ctx.stroke();
+    ctx.fillStyle = mix('#5b4a3a','#232840',k);                // rump, back, head
+    ctx.beginPath(); ctx.ellipse(-6,-16,7.5,6.5,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0,-22,6.5,8,-.1,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(2,-31,5,4.6,0,0,7); ctx.fill();
+    ctx.fillStyle = mix('#3a2f26','#171b2e',k);                // muzzle
+    ctx.beginPath(); ctx.ellipse(6,-30,3.4,2.8,.15,0,7); ctx.fill();
+    ctx.fillStyle = mix('#8d7a63','#3b4260',k);                // chest ruff
+    ctx.beginPath(); ctx.ellipse(3,-23,3.4,5.2,-.1,0,7); ctx.fill();
+    ctx.strokeStyle = mix('#5b4a3a','#232840',k); ctx.lineWidth=2.2;
+    ctx.beginPath(); ctx.moveTo(1,-25); ctx.quadraticCurveTo(7,-20,5,-16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-1,-25); ctx.quadraticCurveTo(-5,-20,-3,-16); ctx.stroke();
+    ctx.fillStyle = mix('#f0e0b0','#c9b06a',k);                // eye — sells "that's an animal"
+    ctx.beginPath(); ctx.arc(6,-32,1.3,0,7); ctx.fill();
+  } else {
+    // Hogsback toad — squat, warty, entirely unimpressed with you
+    ctx.fillStyle = mix('#6b7a3a','#2a3a24',k);
+    ctx.beginPath(); ctx.ellipse(0,-7,10,7,0,0,7); ctx.fill();          // body
+    ctx.fillStyle = mix('#8a9a4a','#3a4a2c',k);
+    ctx.beginPath(); ctx.ellipse(-2,-9,7,4.4,-.08,0,7); ctx.fill();     // back highlight
+    ctx.fillStyle = mix('#5b6a30','#22301e',k);                          // haunches
+    ctx.beginPath(); ctx.ellipse(-7,-3,4,3.2,.3,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(6,-3,4,3.2,-.3,0,7); ctx.fill();
+    ctx.fillStyle = mix('#6b7a3a','#2a3a24',k);
+    ctx.beginPath(); ctx.ellipse(6,-11,4.5,3.6,0,0,7); ctx.fill();       // head
+    ctx.fillStyle = mix('#d8c860','#8a7a34',k);                          // eyes
+    ctx.beginPath(); ctx.arc(7,-12.6,1.8,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(4,-12.6,1.8,0,7); ctx.fill();
+    ctx.fillStyle='#14140e';
+    ctx.beginPath(); ctx.arc(7.4,-12.6,.9,0,7); ctx.fill();
+    ctx.beginPath(); ctx.arc(4.4,-12.6,.9,0,7); ctx.fill();
+    ctx.strokeStyle = mix('#4a5a28','#1a2416',k); ctx.lineWidth=1;       // front toes
+    ctx.beginPath(); ctx.moveTo(1,-1); ctx.lineTo(1,1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(9,-1); ctx.lineTo(9,1); ctx.stroke();
+  }
+  ctx.restore();
 }
 function drawObstacle(o){
   const gy = GROUND;
@@ -339,6 +421,7 @@ function drawObstacle(o){
     ctx.fillStyle='#5c8a4a';                        // moss along the top
     ctx.fillRect(o.x+6,LOGY-3,o.w*.55,5);
     ctx.beginPath(); ctx.ellipse(o.x+o.w*.78,LOGY-2,14,4,.08,0,7); ctx.fill();
+    if(o.rider) drawRider(o.rider, o.x + o.w*.45, nightRim);
   } else if(o.kind==='pothole'){
     const cxp = o.x + o.w/2;
     ctx.fillStyle = '#4a3b28';                      // the pit
@@ -659,39 +742,6 @@ function loerieCall(){                       // the "kwa-kwa-kwa" you hear befor
   setTimeout(()=>beep(700,400,.15,'triangle'),190);
   setTimeout(()=>beep(660,360,.18,'triangle'),380);
 }
-// ---- baboon on a log: the other Hogsback staple, and deliberately SCENERY ONLY.
-// Drawn at 0.62x parallax and behind the obstacles, so it can never be in the lane.
-// He sits on his log and watches you go past. That is the entire interaction.
-const BABOON_AT = [];
-for(let r=0;r<4;r++) [1200,3600,6100,8800,11600,14300].forEach(m => BABOON_AT.push(m + r*5800));
-function drawBaboons(k, tNow){
-  for(const m of BABOON_AT){
-    const sx = m*10 - trav*.62;
-    if(sx < -80 || sx > W+80) continue;
-    const base = GROUND - 14;
-    ctx.save(); ctx.translate(sx, base); ctx.scale(.92,.92);
-    ctx.fillStyle = mix('#7a5c3c','#2a2f4a',k);              // his log (scenery, not a hazard)
-    ctx.fillRect(-34,-9,68,9);
-    ctx.beginPath(); ctx.ellipse(34,-4.5,4.5,4.5,0,0,7); ctx.fill();
-    ctx.fillStyle = mix('#4e7a44','#1b3326',k); ctx.fillRect(-30,-11,40,3);
-    const sw = Math.sin(tNow/430)*1.4;                       // tail, slow and unbothered
-    ctx.strokeStyle = mix('#5b4a3a','#232840',k); ctx.lineWidth=2.6; ctx.lineCap='round';
-    ctx.beginPath(); ctx.moveTo(-9,-17); ctx.quadraticCurveTo(-21,-24+sw,-18,-36+sw*2); ctx.stroke();
-    ctx.fillStyle = mix('#5b4a3a','#232840',k);              // rump, back, head
-    ctx.beginPath(); ctx.ellipse(-6,-16,7.5,6.5,0,0,7); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(0,-22,6.5,8,-.1,0,7); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(2,-31,5,4.6,0,0,7); ctx.fill();
-    ctx.fillStyle = mix('#3a2f26','#171b2e',k);              // muzzle
-    ctx.beginPath(); ctx.ellipse(6,-30,3.4,2.8,.15,0,7); ctx.fill();
-    ctx.fillStyle = mix('#8d7a63','#3b4260',k);              // chest ruff
-    ctx.beginPath(); ctx.ellipse(3,-23,3.4,5.2,-.1,0,7); ctx.fill();
-    ctx.strokeStyle = mix('#5b4a3a','#232840',k); ctx.lineWidth=2.2;
-    ctx.beginPath(); ctx.moveTo(1,-25); ctx.quadraticCurveTo(7,-20,5,-16); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-1,-25); ctx.quadraticCurveTo(-5,-20,-3,-16); ctx.stroke();
-    ctx.restore();
-  }
-}
-
 // ---- landmarks: wooden signs at real Hogsback spots ----
 function drawSigns(){
   ctx.font='bold 10px monospace'; ctx.textAlign='center';
@@ -841,13 +891,15 @@ function tick(now){
     // DIFFICULTY RAMP. Top runners are past 20 km but the curve used to flat-line at
     // ~2.4 km — the moment speed capped — and that plateau is why good runs never end.
     // Two separate curves, because they saturate for different reasons:
-    //   ramp    = mix shift. Saturates at 12 km (you can't make it more than ~half
-    //             logs+potholes without the track reading as one long duck).
-    //   tighten = gap shrink. Keeps creeping to 20 km so a strong runner never reaches
-    //             a distance where nothing changes any more.
-    // KNOBs: the 12000, the 20000, and the .30.
-    const ramp    = Math.min(meters/12000, 1);
-    const tighten = Math.min(meters/20000, 1);
+    //   ramp    = mix shift. v4 saturated at 12 km (felt too gentle past 20). v4.2
+    //             (owner: "getting more difficult as the game progresses is good")
+    //             stretches to 30 km so the kind mix keeps shifting past the old
+    //             plateau. Steepened weights too (.80 hard at r=1 vs .58).
+    //   tighten = gap shrink. v4 saturated at 20 km. v4.2 stretches to 60 km so a
+    //             strong runner still sees the gaps tighten past the old plateau.
+    // KNOBs: the 30000, the 60000, the weight slopes, and the .20.
+    const ramp    = Math.min(meters/30000, 1);
+    const tighten = Math.min(meters/60000, 1);
     speed=Math.min(speed+8*dt, 720+80*tighten);
     // SPEED WAVE (owner ruling 30 Aug: shifts BOTH ways to break the zone — but every shift
     // needs a visible cause). Day runs calmer (0.9x), night runs hotter (1.1x); the palette
@@ -883,12 +935,17 @@ function tick(now){
         }
         // Gap tightens with the ramp but never past a floor: a jump has to fit, and a
         // duck-then-jump sequence needs room to stand up in.
-        let gapAdd = (340+Math.random()*340) * (1 - .30*tighten);
-        if(spawned.kind==='log') gapAdd += 140;      // a log needs a longer read
-        else if(prevKind==='log') gapAdd += 120;     // ...and room to un-duck after one
-        // nextGap has already gone negative by up to one frame's travel, so a flat 300
-        // floor would actually deliver ~288 px. Add the overshoot back to keep it honest.
-        nextGap += Math.max(306 + spd*dt, gapAdd);
+        // The rhythm is authored in SECONDS and only then converted to pixels, because
+        // what the player experiences is time-to-react, not distance. Randomised so gaps
+        // aren't all identical, and shrunk with `tighten` so the late game crowds you.
+        let gapSec = (0.72 + Math.random()*0.42) * (1 - .20*tighten);
+        if(spawned.kind==='log') gapSec += 0.20;     // a log needs a longer read
+        else if(prevKind==='log') gapSec += 0.17;    // ...and room to un-duck after one
+        // MIN_GAP_T is a hard backstop underneath that dice roll: it only bites on the
+        // tightest ~quarter of rolls late on, so variety survives and nothing unlandable
+        // can be rolled. nextGap has already gone negative by up to one frame's travel,
+        // so add that overshoot back to keep the floor honest.
+        nextGap += Math.max(MIN_GAP_T, gapSec) * spd + spd*dt;
         prevKind = spawned.kind;
       }
     }
@@ -986,7 +1043,6 @@ function tick(now){
   backdrop(k);
   drawWaterfalls(k, now);
   drawSigns();
-  drawBaboons(k, now);                    // mid-ground, drawn behind the lane
   obs.forEach(drawObstacle);
   shrooms.forEach(s=>drawShroom(s, now));
   drawHog(70, trav*.045, slideHeld && !jumping && hogY>=GROUND);
