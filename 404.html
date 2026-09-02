@@ -30,7 +30,7 @@
 <div id="wrap"><canvas id="cv"></canvas></div>
 <button id="sh" hidden>⚔️ Challenge a chommie</button>
 <div id="nm" hidden>
-  <span>On the board? Name yourself:</span>
+  <span id="nl">On the board? Name yourself:</span>
   <input id="ni" maxlength="14" placeholder="your name" autocomplete="off">
   <button id="ns">Yebo</button>
 </div>
@@ -52,16 +52,53 @@ document.getElementById('sh').addEventListener('click', e=>{
     else shareFallback(msg,done);
   }catch(err){ shareFallback(msg,done); }
 });
+// ---- one player, one slot ------------------------------------------------------
+// The board used to key rows on the NAME, so every alias minted a brand new row: the live
+// all-time board had 6 of its 10 slots held by one person under 6 names, with 4 real people
+// pinned underneath. The game now mints a device token once, keeps it, and sends it with
+// every score — the Worker keys the row on that token, so submitting a new name RENAMES
+// your existing entry instead of adding a second one.
+// Honest limits: clearing site data, a private window or a second device all mint a new
+// token, and the token is not secret. This removes accidental and casual aliasing. It is
+// not identity, and it can be defeated on purpose. Real identity needs accounts, which is
+// far too much friction for a 404 easter egg.
+const PID_KEY='hogback_pid', NAME_KEY='hogback_name';
+function getPid(){
+  try{
+    let p=localStorage.getItem(PID_KEY);
+    if(!p){
+      p=Array.from(crypto.getRandomValues(new Uint8Array(16)))
+             .map(b=>b.toString(16).padStart(2,'0')).join('');
+      localStorage.setItem(PID_KEY,p);
+    }
+    return p;
+  }catch(e){ return null; }   // storage blocked / private mode -> fall back to name-keyed
+}
+const PID=getPid();
+const savedName=(()=>{ try{ return localStorage.getItem(NAME_KEY)||''; }catch(e){ return ''; } })();
+// The label has to SAY what renaming does. Without this, Matt types a new name, sees no new
+// row appear on the board, and files it as a bug — the rename is invisible from his side.
+function prefillName(){
+  const ni=document.getElementById('ni');
+  if(ni.value) return;
+  if(savedName){
+    ni.value=savedName;
+    document.getElementById('nl').textContent='On the board as '+savedName+' — a new name just renames that entry';
+  }
+}
 document.getElementById('ns').addEventListener('click', submitName);
 document.getElementById('ni').addEventListener('keydown', e=>{ if(e.key==='Enter') submitName(); });
 function submitName(){
   const name=(document.getElementById('ni').value||'').trim();
   if(!name) return;
+  const body={name:name,meters:meters,cause:deathCause};
+  if(PID) body.pid=PID;                     // no token -> Worker falls back to name-keyed
   fetch(API,{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({name:name,meters:meters,cause:deathCause})})
+    body:JSON.stringify(body)})
     .then(r=>r.json()).then(res=>{
       if(res.ok){
         posted=true; lastPostedM=meters;
+        try{ localStorage.setItem(NAME_KEY,name); }catch(e){}
         document.getElementById('nm').hidden=true;
         toast = res.weeklyRank
           ? {s:'Yebo — you are #'+res.weeklyRank+' this week!',age:0}
@@ -173,6 +210,19 @@ const KILLERS = {
           'a stump — 800 years old and still standing', 'wood. entirely stationary wood',
           'a stump you have died on before', 'the remainder of a yellowwood',
           'something that has not moved since 1703'],
+  // 'stump:snag' = the SHARP one: a snapped-off trunk with a splintered crown. It gets its
+  // own pool because the owner asked for spitbraai lines for the spikes specifically, and a
+  // sawn stump is a blunt object — "spitbraai" makes no sense on a flat sawn top.
+  // Reaching this pool needs the VARIANT, not just the kind, so die() takes a 2nd arg.
+  'stump:snag': ['a spitbraai. the hog was the meat',
+          'a spitbraai. you supplied the pork',
+          'a spitbraai. oom brought the basting sauce',
+          'a spitbraai. turned every hour, like they do',
+          'a spitbraai. pap and sauce sold separately',
+          'a spitbraai. the coals were going nicely too',
+          'a spitbraai. slow-roasted, and not on purpose',
+          'a spitbraai. someone brought toothpicks',
+          'the sharp end of a snapped-off yellowwood'],
   log:   ['a fallen yellowwood (it fell in 1987)', 'skipping duck day',
           'ignoring oom. he told you to duck', 'a log you elected not to duck',
           'refusing to bend, in the literal sense', 'the one thing Oom said to duck',
@@ -797,11 +847,13 @@ function refreshQualify(b){
   const w=(b && b.weekly)||[];
   const nm=document.getElementById('nm');
   qualify = w.length<10 || meters > ((w[w.length-1]||{m:0}).m);
-  if(state==='dead' && qualify && !(posted && meters<=lastPostedM)) nm.hidden=false;
+  if(state==='dead' && qualify && !(posted && meters<=lastPostedM)){ nm.hidden=false; prefillName(); }
   else nm.hidden=true;
 }
-function die(kind){
-  const lines = KILLERS[kind];
+function die(kind, variant){
+  // Variant-aware: the snag (sharp splintered crown) has its own 'stump:snag' pool.
+  // Every other obstacle falls through to its kind pool.
+  const lines = (variant && KILLERS[kind+':'+variant]) || KILLERS[kind];
   deathCause = lines ? lines[Math.floor(Math.random()*lines.length)] : 'the mist';
   deathHead = HEADS[Math.floor(Math.random()*HEADS.length)];
   state='dead'; deadAt=performance.now(); shakeT=.35; beep(160,70,.28,'sawtooth');
@@ -1004,7 +1056,7 @@ function tick(now){
       let ox, ow, otop, oh;
       if(o.kind==='log'){ ox=o.x+4; ow=o.w-8; otop=LOGY+4; oh=LOGH-8; }
       else { ox=o.x+5; ow=o.w-10; otop=GROUND-o.h+4; oh=o.h-4; }
-      if(hx < ox+ow && hx+hw > ox && htop < otop+oh && htop+hh > otop){ die(o.kind); break; }
+      if(hx < ox+ow && hx+hw > ox && htop < otop+oh && htop+hh > otop){ die(o.kind, o.variant); break; }
     }
     // pine mushrooms: hop through them; 3 = fairies open the mist
     if(trav > nextShroom){
