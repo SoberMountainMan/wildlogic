@@ -104,8 +104,20 @@ function submitName(){
           ? {s:'Yebo — you are #'+res.weeklyRank+' this week!',age:0}
           : {s:"Didn't crack the top 10 this time — go again, boet.",age:0};
         fetchBoard(true).then(refreshQualify);
+      }else{
+        // A REFUSED save used to be completely silent — no toast, no error, the name box just
+        // sat there. From the player's side that is indistinguishable from a broken button,
+        // which is exactly how Matt reported it when his 77827 m run tripped the server's
+        // distance ceiling ("it won't let me save my name"). Say what happened, and leave the
+        // box up so the run can be retried once the cause is fixed.
+        toast = res.error==='suspicious meters'
+          ? {s:'Not saved — that distance looks impossible to the server.',age:0}
+          : {s:'Not saved — '+(res.error||'the server refused it')+'.',age:0};
       }
-    }).catch(()=>{});
+    }).catch(()=>{
+      // Network/offline. Also silent before, so a run could vanish with no explanation.
+      toast = {s:'No signal to the leaderboard — run not saved. Try again.',age:0};
+    });
 }
 /* PURPOSE: wildlogic.co.za custom 404 easter egg — "Hog's Back Run", a dino-class
    endless runner starring the WildLogic hog along his own ridge. Vanilla canvas,
