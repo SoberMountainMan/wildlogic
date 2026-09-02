@@ -83,7 +83,12 @@ cv.width = W * DPR; cv.height = H * DPR; ctx.scale(DPR, DPR);
 const DAY  = { sky:'#bfe0f2', mtn:'#a8c8dd', mtn2:'#8fb0c8', far:'#8fb6cf', near:'#5e8aa6', ground:'#c8a86a', line:'#a98f57' };
 const NIGHT= { sky:'#141d38', mtn:'#1c2745', mtn2:'#202c4e', far:'#232f52', near:'#1a2542', ground:'#3a3f63', line:'#2e3352' };
 const GRAV = 2700, JUMPV = -640;          // ~470ms airtime, ~76px apex (mobile-tuned)
-const LOGY = GROUND - 57, LOGH = 38;      // fallen yellowwood: must duck or jump (run-through blocked)
+// The fallen yellowwood is the one obstacle you DUCK. It is also jumpable, but only
+// once you are past ~400 px/s: clearing it needs 51 px of the 75.85 px apex, and at the
+// 330 px/s opening the hog is over the 120 px of overlap longer than it is above 51 px.
+// Below that speed it is duck-only. (Reported by _verify_jumpable.js — not a bug, but
+// the old comment said "must duck or jump" as if both worked at any speed.)
+const LOGY = GROUND - 57, LOGH = 38;
 // Minimum spacing between obstacles, expressed in SECONDS of play rather than pixels.
 // A jump alone costs 2*|JUMPV|/GRAV = 0.474 s of air time, so anything tighter than
 // that is literally unlandable — you are still airborne when the next one arrives.
@@ -250,10 +255,16 @@ function spawn(ramp){
   } else if(roll < wA+wS){
     // Old 44-58 wide x 22-28 tall read as flower pots. Stumps are roughly 1:1 in cross-section
     // (a sawn base) or clearly taller than wide (a snapped-off trunk). Snag is taller still.
+    // HEIGHT IS CAPPED BY PHYSICS, NOT TASTE. The hog must stay above (h-6) for the whole
+    // time it overlaps the box, and overlap lasts (hogW + w-10)/speed — so the SLOWEST
+    // speed is the worst case, same trap as the old pixel gap floor. At the 330 px/s
+    // opening a 34 px-wide snag tops out near 67 px, which is why the first attempt at
+    // this (54-68 tall) was literally unclearable — the owner found it by playing.
+    // _verify_jumpable.js asserts every variant clears with >=12 px spare at EVERY speed.
     const isSnag = Math.random()<.5;
     o = {kind:'stump', variant: isSnag?'snag':'cut', x:W+40,
-         w: isSnag ? 36+Math.random()*14 : 32+Math.random()*12,
-         h: isSnag ? 54+Math.random()*14 : 36+Math.random()*10};
+         w: isSnag ? 26+Math.random()*8  : 30+Math.random()*10,
+         h: isSnag ? 40+Math.random()*8  : 32+Math.random()*8};
   } else if(roll < wA+wS+wT){
     o = {kind:'toadstool', x:W+40, w:34, h:26+Math.random()*6};
   } else if(roll < wA+wS+wT+wP){
