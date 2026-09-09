@@ -155,8 +155,14 @@ const LOGY = GROUND - 57, LOGH = 38;
 //   toad    reaches 14.9 px up  ->  GROUND-69.9  ->  67.9 px needed: clearable, but only
 //           63-79 ms of slack between 720 and 880 px/s. A genuinely risky jump.
 //   bare log unchanged, still the free 133 ms jump it has always been.
-// Guarded by _verify_rider_box.js, which re-measures the art and fails if these drift.
-const RIDER_BOX = { baboon:{top:36.9, x0:-20.5, x1:8.6}, toad:{top:14.9, x0:-10.9, x1:10.5} };
+// v5.0 OWNER RULING (09 Sep 2026): "no riders may be jumpable, with a frog or baboon you
+// must duck, so size of rider doesnt matter, if you dont duck you die." BOTH boxes now
+// reach 89.9 px above the log surface — above the 75.85 px apex — so ANY rider log is
+// duck-only. The art scale-up in drawRider is readability only; the verdict is identical
+// for frog and baboon. Bare log stays the free 133 ms jump.
+// NOTE: _verify_rider_box.js re-measures the ART and will fail against these owner-ruled
+// numbers — re-pin it if you touch either side.
+const RIDER_BOX = { baboon:{top:89.9, x0:-25.6, x1:10.8}, toad:{top:89.9, x0:-13.0, x1:12.0} };
 // Minimum spacing between obstacles, expressed in SECONDS of play rather than pixels.
 // A jump alone costs 2*|JUMPV|/GRAV = 0.474 s of air time, so anything tighter than
 // that is literally unlandable — you are still airborne when the next one arrives.
@@ -165,25 +171,41 @@ const RIDER_BOX = { baboon:{top:36.9, x0:-20.5, x1:8.6}, toad:{top:14.9, x0:-10.
 // and a fatal 0.43 s once you're doing 720. Scaling with speed means the floor only
 // bites when you're going fast — which is exactly where Matt hit it (~6-10 km).
 const MIN_GAP_T = 0.66;
-// Spaced for LONG runs — top scores are ~18 500 m, so landmarks run out to 17 500 m
-// with widening gaps (the hog is faster later, so gaps grow with him).
+// Spaced for LONG runs — v5.0 map: the run leaves the VILLAGE (dense, funny, every 300-500 m),
+// climbs the MOUNTAIN, follows the waterfall trail, then the deep field thins out to the
+// Gaikas Kop permit fence at 170 000 m — the actual END of the run (owner: the 1M ceiling
+// becomes lore; the forestry land needs a permit, so the game escorts you back to the start).
+// RESTART STOPS are the landmarks at Fibonacci distances (owner ruling 09 Sep 2026):
+// each one is a rest point you can continue from for mushrooms (see STOPS below).
 const LANDMARKS = [
-  [80,    'THE EDGE',         'Welkom by die Edge — hou daai voete!'],
-  [260,   '39 STEPS FALLS',   '39 trappies op — moenie afkyk nie!'],
-  [620,   'MADONNA & CHILD',  "Ag nee, hier's weer daai waterval!"],
-  [1050,  'DUSK',             'Jislaaik, dis donker soos in die kloof.'],
-  [1500,  'KETTLESPOUT',      'Kettlespout — daai pot kook al vandat Oom klein is.'],
-  [2200,  'THE BIG TREE',     'Daai boom is ouer as Oom self.'],
-  [3000,  'ARBORETUM',        'Die Arboretum — Oom ken elke boom op naam.'],
-  [4000,  'TOR DOONE',        'Tor Doone — moenie alleen hier swem nie.'],
-  [5200,  'SWALLOWTAIL',      'Swallowtail — 8 km dieper die kloof in. Sterkte.'],
-  [6500,  'JIKANI',           'Jikani — die pad raak nou dun, vark.'],
-  [8000,  'HOBBITON',         'Hobbiton — klein deure, groot vark.'],
-  [9600,  'STARWAYS',         'Starways — kyk op, die sterre is beter hier.'],
-  [11300, 'CAPE PARROT',      'Cape Parrot — hy lag vir jou, hy weet.'],
-  [13200, 'FAIRY FOREST',     'Fairy Forest — trap nie op die sampioene nie.'],
-  [15200, 'SUMMERTON',        'Summerton — amper by die end van die pad.'],
-  [17500, 'THE LABYRINTH',    'Moenie verdwaal nie, vark.'],
+  [80,     'THE EDGE',               'Welkom by die Edge — hou daai voete!'],
+  [420,    'CANNACOPIA',             'Cannacopia — nee boet, nie vir varke nie.'],
+  [650,    'HAPPY HOGS',             'Happy Hogs — gelukkige varke, gelukkige lewe.'],
+  [950,    'ST PATRICK CHAPEL',      'St Patrick — bid vir jou tone, vark.'],
+  [1300,   'REDCLAY CAFE',           'RedClay — koffie vir mense, modder vir varke.'],
+  [1700,   'HOGSBACK INN',           'Hogsback Inn — jy kan hier slaap. Jy gaan nie.'],
+  [2100,   "KING'S LODGE",           "King's Lodge — te fancy vir 'n vark. Loop. "],
+  [2500,   'THE HOG & DRAGON',       'Die Hog & Dragon — eerste rondte is op Oom.'],
+  [2900,   'ARMINEL',                'Arminel — moenie die tennisbaan op eet nie.'],
+  [3300,   'SAVEMORE SPAR',          'Savemore Spar — vark wipes is agter in rak 5.'],
+  [3700,   'INTABA CRAFTERS',        'Intaba — handgemaakte goed, handgemaakte valle.'],
+  [4100,   'MAGICAL TEE PEES',       'Magical Tee Pees — wie se projek is hierdie?'],
+  [4600,   'TERRA-KHAYA',            'Terra-Khaya — earth, Hogsback style.'],
+  [5200,   'ECO-SHRINE',             'Eco-Shrine — die bailers kyk vir jou.'],
+  [5800,   'TOR DOONE',              'Tor Doone — moenie alleen hier swem nie.'],
+  [6765,   'THE BIG TREE',           'Daai boom is ouer as Oom self.'],
+  [7600,   'THE THREE HOGS',         'Drie varke op die berg. Een is jy.'],
+  [10946,  'THE ARBORETUM',          'Die Arboretum — Oom ken elke boom op naam.'],
+  [17711,  '39 STEPS WATERFALL',     '39 trappies op — moenie afkyk nie!'],
+  [28657,  'MADONNA & CHILD',        "Ag nee, hier's weer daai waterval!"],
+  [46368,  'KETTLESPOUT',            'Kettlespout — daai pot kook al vandat Oom klein is.'],
+  [75025,  'SWALLOWTAIL WATERFALL',  'Swallowtail — 8 km dieper die kloof in. Sterkte.'],
+  [56000,  'STARWAYS',               'Starways — kyk op, die sterre is beter hier.'],
+  [92000,  'HOBBITON',               'Hobbiton — klein deure, groot vark.'],
+  [110000, 'CAPE PARROT PROJECT',    'Cape Parrot — hy lag vir jou, hy weet.'],
+  [121393, 'THE SECRET WATERFALL',   'Die geheime waterval — jy weet waar, jy sal nie se nie.'],
+  [140000, 'THE LABYRINTH',          'Moenie verdwaal nie, vark.'],
+  [170000, 'GAIKAS KOP',             'Gaikas Kop — sonder permit kom jy nie hier verby nie.'],
 ];
 const AMBIENT = [
   'Nee man, kyk uit vir die aalwyne!',
@@ -196,6 +218,9 @@ const AMBIENT = [
 ];
 
 let state = 'ready', speed = 330, trav = 0, meters = 0, hi = +(localStorage.getItem('hogback_hi')||0);
+let runStart = 0;           // v5.0: world offset — 0 for a ranked run, stop.m for a tour run
+let tourRun = false;        // tour runs never POST and never write hi
+let spawnGrace = 0;         // v5.0: 2 s obstacle-free runway after a continue spawn
 let hogY = GROUND, vy = 0, jumping = false, obs = [], nextGap = 420, deadAt = 0;
 // weather: Hogsback can't make up its mind. clear -> mist -> clear -> rain -> ...
 // mist = {kind:'mist'|'rain', age, dur}; WX_FADE seconds of fade in and out either side.
@@ -217,7 +242,11 @@ const API='https://lb.wildlogic.co.za/scores';
 let board=null, boardAt=0, qualify=false, posted=false, lastPostedM=0;
 const stars = Array.from({length:70}, () => [Math.random()*W, Math.random()*GROUND*.65, Math.random()]);
 const flies = Array.from({length:9}, () => [Math.random()*W, 60+Math.random()*(GROUND-90), Math.random()*7]);
-let shrooms = [], nextShroom = 900, sCount = 0;   // 3 picked = the fairies open the mist
+let shrooms = [], nextShroom = 900, sCount = 0;   // sCount = pocket display; see STOPS
+// v5.0: mushrooms are SAVE CURRENCY (owner: "mushrooms no longer change weather, weather is
+// now just part of the scenery"). Pickup = +1 persistent wallet, instantly. STOPS above
+// price continue-from-rest-point runs. Weather below still cycles but nothing clears it —
+// it is visibility texture, timed exactly as before.
 const WANT = (()=>{ try{
   const p = decodeURIComponent(location.pathname).replace(/[^a-zA-Z0-9\/\-. ]/g,'').slice(1,26).trim();
   if(p==='hogs-back-run') return "HOG'S BACK RUN";
@@ -245,15 +274,20 @@ const KILLERS = {
   // own pool because the owner asked for spitbraai lines for the spikes specifically, and a
   // sawn stump is a blunt object — "spitbraai" makes no sense on a flat sawn top.
   // Reaching this pool needs the VARIANT, not just the kind, so die() takes a 2nd arg.
-  'stump:snag': ['a spitbraai. the hog was the meat',
-          'a spitbraai. you supplied the pork',
-          'a spitbraai. oom brought the basting sauce',
-          'a spitbraai. turned every hour, like they do',
-          'a spitbraai. pap and sauce sold separately',
-          'a spitbraai. the coals were going nicely too',
-          'a spitbraai. slow-roasted, and not on purpose',
-          'a spitbraai. someone brought toothpicks',
+  'stump:snag': ['a sharp broken snag. braaied like a spitbraai, boet',
+          'a splintered yellowwood — impaled, spitbraai-style, no spice',
+          'a sharp broken tree. the coals were going nicely too',
+          'a snag. you were the meat on it', 'a splintered trunk. spitbraai seasoning optional',
+          'a sharp broken tree. basting sauce sold separately',
+          'a snag. turned every hour, like they do at a spitbraai',
+          'a splintered yellowwood. slow-roasted, and not on purpose',
           'the sharp end of a snapped-off yellowwood'],
+  'rider:toad': ['a frog that did not hop for you', 'a Hogsback toad with right of way',
+          'kissed a frog. no prince. just dead', 'a toad. it sat there. you flew at it',
+          'the frog. it was obviously sitting there', 'an amphibian with a grudge'],
+  'rider:baboon': ['a baboon with right of way', 'the troop sent a delegate',
+          'a baboon. it judged you on the way down', 'simian right of way, enforced',
+          'the baboon did not move. baboons never move', "a baboon's log. you were warned"],
   log:   ['a fallen yellowwood (it fell in 1987)', 'skipping duck day',
           'ignoring oom. he told you to duck', 'a log you elected not to duck',
           'refusing to bend, in the literal sense', 'the one thing Oom said to duck',
@@ -266,6 +300,40 @@ const KILLERS = {
           'a pothole. it has a name, you know'],
 };
 const HEADS = ['AG NEE','EISH','MOER TOG','YOH','Lekker.','HAIBO','JINNE','FOFIES','IS DIT'];
+
+// ============================ v5.0 REST STOPS ==============================
+// Owner: "maybe the places should be the stops? you woke up at the inn? you stopped for a
+// beer at happy hogs?" The restart points ARE landmarks, and the landmark distances are
+// Fibonacci numbers (Miki's list — "not a joke, important message from elsewhere").
+// Death screen offers exactly TWO choices: run from 0 (posts to the board, Iron Hog rules)
+// or ONE continue button for the deepest stop the wallet can pay for (never posts).
+// Wallet persists across deaths in localStorage — an early grind funds deep doors later.
+// Spawn thinned to ~1 per 450-850 m (was 110-190) so the numbers stay honest: a 20 km run
+// banks roughly 25-35 if you take the risky ones.
+const STOPS = [
+  {m:420,    label:'CANNACOPIA',          line:'woke up behind Cannacopia',        cost:1},
+  {m:2500,   label:'THE HOG & DRAGON',    line:'slept it off at the Hog & Dragon', cost:2},
+  {m:6765,   label:'THE BIG TREE',        line:'camped under the Big Tree',        cost:4},
+  {m:10946,  label:'THE ARBORETUM',       line:'rested at the Arboretum',          cost:6},
+  {m:17711,  label:'39 STEPS WATERFALL',  line:'slept behind 39 Steps Falls',      cost:9},
+  {m:28657,  label:'MADONNA & CHILD',     line:'rested at Madonna & Child',        cost:15},
+  {m:46368,  label:'KETTLESPOUT',         line:'sheltered at Kettlespout',         cost:24},
+  {m:75025,  label:'SWALLOWTAIL',         line:'slept at Swallowtail',             cost:38},
+  {m:121393, label:'THE SECRET WATERFALL',line:'hid at the Secret Waterfall',      cost:61},
+];
+const PERMIT_M = 170000;   // Gaikas Kop: forestry land, no permit, escorted back to start
+const MAYOR_M  = 1000000;  // the one and only win condition: crowned Mayor of Hogsback
+const WALLET_KEY = 'hogback_wallet';
+let pocket = (()=>{ try{ return Math.max(0, Math.floor(+localStorage.getItem(WALLET_KEY)||0)); }catch(e){ return 0; } })();
+function savePocket(){ try{ localStorage.setItem(WALLET_KEY, String(pocket)); }catch(e){} }
+function addPocket(n){ pocket += n; savePocket(); }
+// deepest stop the wallet can pay for, given how far the run got (you can only continue
+// from a stop you actually PASSED this run)
+function bestStop(runMeters){
+  let best = null;
+  for(const s of STOPS) if(runMeters >= s.m && pocket >= s.cost) best = s;
+  return best;
+}
 
 // ---- hog sprite: proper little boar, drawn from shapes (faces right) ----
 const HW = 72, HH = 21;
@@ -504,7 +572,7 @@ function drawRider(kind, x, k){
   const t = performance.now();
   ctx.save(); ctx.translate(x, base);
   if(kind==='baboon'){
-    ctx.scale(.92,.92);
+    ctx.scale(1.15,1.15);                   // v5.0: owner — riders must read at a glance
     const sw = Math.sin(t/430)*1.4;         // tail, slow and unbothered
     ctx.strokeStyle = mix('#5b4a3a','#232840',k); ctx.lineWidth=2.6; ctx.lineCap='round';
     ctx.beginPath(); ctx.moveTo(-9,-17); ctx.quadraticCurveTo(-21,-24+sw,-18,-36+sw*2); ctx.stroke();
@@ -523,6 +591,7 @@ function drawRider(kind, x, k){
     ctx.beginPath(); ctx.arc(6,-32,1.3,0,7); ctx.fill();
   } else {
     // Hogsback toad — squat, warty, entirely unimpressed with you
+    ctx.scale(1.25,1.25);                   // v5.0: readability — owner call
     ctx.fillStyle = mix('#6b7a3a','#2a3a24',k);
     ctx.beginPath(); ctx.ellipse(0,-7,10,7,0,0,7); ctx.fill();          // body
     ctx.fillStyle = mix('#8a9a4a','#3a4a2c',k);
@@ -680,13 +749,14 @@ function backdrop(k){
 // ---- waterfalls: canvas-drawn scenery at the waterfall landmarks (no image assets) ----
 // One entry per waterfall landmark: w = spout width, h = drop height, jets = streams.
 const WATERFALLS = [
-  {m:260,  w:44, h:146, jets:2},   // 39 Steps Falls
-  {m:620,  w:34, h:184, jets:2},   // Madonna & Child
-  {m:1500, w:62, h:116, jets:1},   // Kettlespout
-  {m:5200, w:36, h:206, jets:3},   // Swallowtail
+  {m:17711,  w:44, h:146, jets:2},   // 39 Steps Falls (also a rest stop)
+  {m:28657,  w:34, h:184, jets:2},   // Madonna & Child (also a rest stop)
+  {m:46368,  w:62, h:116, jets:1},   // Kettlespout (also a rest stop)
+  {m:75025,  w:36, h:206, jets:3},   // Swallowtail (also a rest stop)
+  {m:130393, w:30, h:170, jets:2},   // Secret Falls (past the Labyrinth, deep field)
 ];
-// Long runs repeat the set so the tail past ~5 km is not empty scenery.
-const FALLS_CYCLE = 6000;
+// Long runs repeat the set so the tail past ~130 km is not empty scenery.
+const FALLS_CYCLE = 160000;
 const FALLS = [];
 for (const f of WATERFALLS)
   for (let r = 0; r < 4; r++)
@@ -914,11 +984,23 @@ function beep(f0,f1,t,type){
 }
 
 // ---- loop ----
-function reset(){
-  state='run'; speed=330; trav=0; meters=0; vy=0; hogY=GROUND; jumping=false;
+// v5.0: fromStop = a STOPS entry (continue run, tour rules) or null (ranked run from 0).
+function reset(fromStop){
+  tourRun = !!fromStop;
+  if(fromStop){
+    runStart = fromStop.m;            // world position = the stop; distance counts from 0
+    trav = fromStop.m*10;             // trav is decimetres-ish px domain: 10 px per metre
+  } else { runStart = 0; trav = 0; }
+  meters = 0;
+  state='run'; speed=tourRun ? 330*.85 : 330;   // continue spawn: slight ease-in tween
+  vy=0; hogY=GROUND; jumping=false;
   obs=[]; nextGap=420; mist=null; wxTimer=22; wxCount=0; lmIdx=0; nextAmb=170; toast=null;
   shrooms=[]; nextShroom=900; sCount=0; queuedAt=-1e9;
+  spawnGrace = tourRun ? 2.0 : 0.45;          // 2 s clear runway on a continue, brief warm-up from 0
   floaters=[]; deathCause=''; prevKind=''; bird=null; nextBird=7;
+  // fast-forward the landmark/weather cursors so the tour run starts in the right scenery:
+  while(lmIdx<LANDMARKS.length && LANDMARKS[lmIdx][0] <= runStart) lmIdx++;
+  wxTimer = 10+Math.random()*8;               // first weather arrives late — spawn is calm
   try{ document.getElementById('sh').hidden = true; document.getElementById('nm').hidden = true; }catch(e){}
 }
 async function fetchBoard(force){
@@ -934,16 +1016,22 @@ function refreshQualify(b){
   else nm.hidden=true;
 }
 function die(kind, variant){
-  // Variant-aware: the snag (sharp splintered crown) has its own 'stump:snag' pool.
-  // Every other obstacle falls through to its kind pool.
-  const lines = (variant && KILLERS[kind+':'+variant]) || KILLERS[kind];
+  // v5.0 death-cause resolution: riders get their OWN pools ('rider:toad'/'rider:baboon') —
+  // owner: "youre killed by a sharp broken tree, impaled like a spitbraai, not killed by a
+  // spitbraai" and "can you now also die from hitting a frog or a baboon? new death notes".
+  const lines = kind==='log' && variant
+    ? KILLERS['rider:'+variant] || KILLERS[variant] || KILLERS.log
+    : (variant && KILLERS[kind+':'+variant]) || KILLERS[kind];
   deathCause = lines ? lines[Math.floor(Math.random()*lines.length)] : 'the mist';
   deathHead = HEADS[Math.floor(Math.random()*HEADS.length)];
   state='dead'; deadAt=performance.now(); shakeT=.35; beep(160,70,.28,'sawtooth');
-  if(meters>hi){ hi=meters; localStorage.setItem('hogback_hi',hi); }
+  if(!tourRun && meters>hi){ hi=meters; localStorage.setItem('hogback_hi',hi); }
+  // continue option for the death screen: deepest affordable stop this run passed
+  contStops = tourRun ? null : bestStop(meters);
   try{ document.getElementById('sh').hidden = false; }catch(e){}
   fetchBoard().then(refreshQualify).catch(()=>{});
 }
+let contStops = null;         // set by die(); the one continue button on the death screen
 function jump(){
   if(state!=='run') return;
   if(!jumping && !slideHeld){ vy=JUMPV; jumping=true; beep(440,660,.09); }
@@ -951,13 +1039,33 @@ function jump(){
 }
 function act(){
   if(state==='ready') reset();
-  else if(state==='dead' && performance.now()-deadAt>450) reset();
+  else if(state==='dead'){
+    // continue button: keyboard Enter or a tap on the painted button zone. Anywhere else =
+    // run from 0. (Owner: "buttons to chose how far back you can restart" — resolved to ONE
+    // button for the deepest affordable stop; a menu is clutter on a phone.)
+    if(contStops && performance.now()-deadAt>450){
+      if(continueHit && pointerIn(continueHit)){ payAndContinue(); return; }
+    }
+    if(performance.now()-deadAt>450) reset();
+  }
   else jump();
 }
+function payAndContinue(){
+  pocket -= contStops.cost; savePocket();
+  reset(contStops);
+  toast={s:contStops.line+' — '+contStops.cost+' 🍄. Jy is by '+contStops.label+'.',age:0};
+}
+// pointer helpers for the death-screen continue button
+let continueHit = null;       // {x0,y0,x1,y1} canvas-space rect of the continue button
+function pointerIn(r){
+  return r && pointerLast.x>=r.x0 && pointerLast.x<=r.x1 && pointerLast.y>=r.y0 && pointerLast.y<=r.y1;
+}
+let pointerLast = {x:-1,y:-1};
 let slideHeld=false;
 const isTyping = e => e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA');
 addEventListener('keydown', e=>{
   if(isTyping(e)) return;
+  if(state==='dead' && e.code==='Enter' && contStops && performance.now()-deadAt>450){ payAndContinue(); return; }
   if(e.code==='Space'||e.code==='ArrowUp'){ e.preventDefault(); act(); }
   if(e.code==='ArrowDown'||e.code==='KeyS'){ e.preventDefault(); slideHeld=true; }
 });
@@ -997,6 +1105,7 @@ const touches = new Map();
 cv.addEventListener('pointerdown', e=>{
   e.preventDefault();
   const p = toCanvas(e);
+  pointerLast = p;                                // v5.0: death-screen button hit-testing
   const rec = { y:e.clientY, duck:false };
   touches.set(e.pointerId, rec);
   if(isDuck(p)){                                  // hold to duck
@@ -1034,6 +1143,7 @@ function drawControls(){
 function tick(now){
   const dt = Math.min((now-last)/1000,.05); last=now;
   if(state==='run'){
+    if(spawnGrace>0) spawnGrace-=dt;            // v5.0: clear runway after a continue spawn
     // DIFFICULTY RAMP. Top runners are past 20 km but the curve used to flat-line at
     // ~2.4 km — the moment speed capped — and that plateau is why good runs never end.
     // Two separate curves, because they saturate for different reasons:
@@ -1044,13 +1154,19 @@ function tick(now){
     //   tighten = gap shrink. v4 saturated at 20 km. v4.2 stretches to 60 km so a
     //             strong runner still sees the gaps tighten past the old plateau.
     // KNOBs: the 30000, the 60000, the weight slopes, and the .20.
-    const ramp    = Math.min(meters/30000, 1);
-    const tighten = Math.min(meters/60000, 1);
+    // v5.0: curves key off the ABSOLUTE world position (runStart+meters) so a continue
+    // from 17 711 m spawns at 17 711 m difficulty — that is the whole point.
+    const worldM = runStart + meters;
+    const ramp    = Math.min(worldM/30000, 1);
+    const tighten = Math.min(worldM/60000, 1);
     // grow = obstacle SIZE. This is the only curve that never saturates — see the block
     // above spawn() for why it is size and not width or speed. Handed to spawn() as the
     // second argument; the opening below GROW_START is unaffected.
-    const grow    = growAt(meters);
+    const grow    = growAt(worldM);
     speed=Math.min(speed+8*dt, 720+80*tighten);
+    // v5.0 continue spawn: 85% -> 100% speed over the grace runway (owner: "slight easier
+    // restart difficulty is fine")
+    if(tourRun && speed < 720+80*tighten && spawnGrace>0) speed = Math.min(speed+8*dt, 330 + (720+80*tighten-330)*(1-spawnGrace/2));
     // SPEED WAVE (owner ruling 30 Aug: shifts BOTH ways to break the zone — but every shift
     // needs a visible cause). Day runs calmer (0.9x), night runs hotter (1.1x); the palette
     // shows which is which, so the change is legible instead of reading like a bug.
@@ -1064,7 +1180,7 @@ function tick(now){
       if(hogY>=GROUND){ hogY=GROUND; jumping=false; }
     }
     nextGap-=spd*dt;
-    if(nextGap<=0){
+    if(nextGap<=0 && spawnGrace<=0){
       // Scenic corridor: never spawn an obstacle where it will overlap a waterfall — the mossy
       // cliff and the small plants read too alike (owner: "too sneaky"). Falls and obstacles
       // both scroll at `speed`, so relative position is FIXED: a clear gap at spawn time stays
@@ -1101,27 +1217,46 @@ function tick(now){
     }
     for(const o of obs) o.x-=spd*dt;
     obs=obs.filter(o=>o.x>-140);
-    // landmarks & Oom
-    while(lmIdx<LANDMARKS.length && meters>=LANDMARKS[lmIdx][0]){
+    // ---- v5.0: the permit wall and the Mayor (the two ways a run "ends" now) ----
+    if(!tourRun && runStart+meters >= PERMIT_M){
+      // Gaikas Kop: forestry land, permit required. Escorted back to the village. Wallet
+      // kept — that is the loop, not a punishment. The run does NOT post (you never
+      // actually "died"; and a 170 km board row is exactly what this gate exists to cap).
+      pocket = pocket; savePocket();
+      deathCause='caught at Gaikas Kop with no permit. back to the village with you';
+      deathHead='NO PERMIT';
+      state='dead'; deadAt=performance.now(); shakeT=.35; beep(220,110,.4,'triangle');
+      contStops=null; tourRun=true;    // mark so nothing re-posts and hi stays untouched
+      try{ document.getElementById('sh').hidden = true; }catch(e){}
+      return;                          // skip the rest; render handles the special screen
+    }
+    if(!tourRun && runStart+meters >= MAYOR_M){
+      // 1 000 000 m: the board's ceiling. You are crowned and the run saves. (Worker accepts
+      // meters up to exactly 1 000 000, so this POSTS clean.)
+      deathCause='covered every metre of Hogsback. crowned MAYOR.';
+      deathHead='MAYOR!';
+      state='dead'; deadAt=performance.now(); shakeT=.35;
+      beep(660,1320,.5,'sine');
+      contStops=null;
+      try{ document.getElementById('sh').hidden = false; }catch(e){}
+      fetchBoard().then(refreshQualify).catch(()=>{});
+      return;
+    }
+    // landmarks & Oom (worldM: the tour run still SEES the landmarks past its offset)
+    while(lmIdx<LANDMARKS.length && runStart+meters>=LANDMARKS[lmIdx][0]){
       toast={s:LANDMARKS[lmIdx][2],age:0}; beep(880,880,.09,'sine'); lmIdx++;
     }
     if(meters>=nextAmb){
       toast={s:AMBIENT[Math.floor(Math.random()*AMBIENT.length)],age:0};
       nextAmb=meters+160+Math.random()*160;
     }
-    // ---- weather: clear -> mist -> clear -> rain -> ... Mushrooms are the counter, so
-    // bad weather is a problem you can actually solve rather than a thing you endure.
+    // ---- weather: scenery only (v5.0 owner ruling — mushrooms no longer clear it) ----
     wxTimer-=dt;
     if(!mist && wxTimer<=0){
       wxCount++;
       const kind = (wxCount===1 || Math.random()<.5) ? 'mist' : 'rain';  // first is always mist
       mist={kind, age:0, dur: kind==='mist' ? 3.4 : 5.6};
-      if(!wxHintShown){                       // first event teaches the mushroom link
-        wxHintShown=true;
-        toast={s:'Goud sampioene maak die weer oop — rooies vermoor jou.',age:0};
-      } else {
-        toast={ s: kind==='mist' ? 'Die mis kom af — hou jou kop!' : 'Hier kom die reën.', age:0 };
-      }
+      toast={ s: kind==='mist' ? 'Die mis kom af — hou jou kop!' : 'Hier kom die reën.', age:0 };
       if(kind==='rain') beep(240,150,.5,'sine'); else beep(420,300,.45,'sine');
     }
     if(mist){
@@ -1154,13 +1289,15 @@ function tick(now){
         }
       }
     }
-    // pine mushrooms: hop through them; 3 = fairies open the mist
+    // pine mushrooms: v5.0 SAVE CURRENCY. Pickup = +1 persistent wallet (survives death —
+    // that is the whole economy: an early grind funds deep continues later). Spawn thinned
+    // to ~1 per 450-850 m (was 110-190; owner caught the maths) so the stop prices bite.
     if(trav > nextShroom){
       const sx=W+30, sy=GROUND-46-Math.random()*54;
       if(obs.some(o=>Math.abs(o.x-sx)<80)) nextShroom=trav+180;
       else {
-        shrooms.push({x:sx,y:sy}); nextShroom=trav+1100+Math.random()*800;
-        if(!shroomHintShown){ shroomHintShown=true; toast={s:'Goud sampioene is goed — rooies vermoor jou.',age:0}; }
+        shrooms.push({x:sx,y:sy}); nextShroom=trav+4500+Math.random()*4000;
+        if(!shroomHintShown){ shroomHintShown=true; toast={s:'Goud sampioene = spaarveroorge. Rooies vermoor jou.',age:0}; }
       }
     }
     for(const s of shrooms) s.x-=spd*dt;
@@ -1170,16 +1307,7 @@ function tick(now){
       if(Math.abs(s.x+9-hcx)<26 && Math.abs(s.y+5-hcy)<32){
         s.got=true; beep(1040,1320,.08,'sine');
         floaters.push({x:s.x+9,y:s.y-6,t:0});
-        const before = sCount;
-        sCount = Math.min(sCount+1, 3);
-        if(mist && sCount>=3){                       // spent right now — the weather opens
-          sCount-=3; const was=mist.kind; mist=null; wxTimer=18+Math.random()*8;
-          toast={ s: was==='rain' ? 'Die fairies stop die reën!' : 'Die fairies maak die mis oop!', age:0 };
-          beep(880,1400,.15,'sine');
-        } else if(sCount===3 && before<3){           // bank is full — held for the next one
-          toast={ s:'Drie gebêre — die fairies skuld jou.', age:0 };
-          beep(660,880,.12,'sine');
-        }
+        addPocket(1);                             // straight to the wallet, no cap
       }
     }
     // buffered jump: tapped slightly early still hops on landing
@@ -1228,8 +1356,8 @@ function tick(now){
   ctx.fillText(String(Math.floor(trav/10)).padStart(4,'0')+' m', W-16, 30);
   ctx.font='12px monospace'; ctx.globalAlpha=.7;
   ctx.fillText('HI '+String(hi).padStart(4,'0'), W-16, 48);
-  ctx.font='13px monospace'; ctx.globalAlpha = sCount>0 ? .95 : .4;
-  ctx.fillText('🍄 '+sCount+'/3', W-16, 66);      // always up: it is a resource, not a bonus
+  ctx.font='13px monospace'; ctx.globalAlpha = pocket>0 ? .95 : .4;
+  ctx.fillText('🍄 '+pocket, W-16, 66);           // v5.0: persistent wallet, not a 0-3 meter
   ctx.globalAlpha=1; ctx.textAlign='left';
 
   if(toast){
@@ -1263,8 +1391,26 @@ function tick(now){
       ctx.fillText(cause, W/2, 144);
       ctx.fillStyle='#cdd6ee'; ctx.font='16px monospace';
       ctx.fillText(`${meters} m   ·   HI ${hi} m`, W/2, 168);
-      ctx.font='15px system-ui'; ctx.globalAlpha=pulse;
-      ctx.fillText('tap to try again', W/2, 190);
+      // v5.0 death screen: ONE continue button (deepest affordable stop) + tap anywhere.
+      // Tour runs get no button — you already paid to be here. Permit/mayor endings skip.
+      continueHit = null;
+      if(contStops && !tourRun && state==='dead' && deathHead!=='NO PERMIT' && deathHead!=='MAYOR!'){
+        const bl = contStops.line+' · '+contStops.cost+' 🍄';
+        ctx.font='13px system-ui';
+        const bw = Math.max(300, ctx.measureText(bl).width+36);
+        const bx = W/2-bw/2, by=184, bh=30;
+        ctx.fillStyle='rgba(58,48,64,.95)'; ctx.fillRect(bx,by,bw,bh);
+        ctx.strokeStyle='rgba(200,160,220,.9)'; ctx.lineWidth=1.5; ctx.strokeRect(bx+.5,by+.5,bw-1,bh-1);
+        ctx.fillStyle='#f0dcff'; ctx.fillText(bl, W/2, by+20);
+        continueHit = {x0:bx, y0:by, x1:bx+bw, y1:by+bh};
+        ctx.fillStyle='#9ab0c4'; ctx.font='11px monospace';
+        ctx.fillText('tour only — does not count for the board', W/2, by+44);
+        ctx.font='15px system-ui'; ctx.globalAlpha=pulse;
+        ctx.fillText('tap the button to continue · tap anywhere else to run from 0', W/2, by+64);
+      } else {
+        ctx.font='15px system-ui'; ctx.globalAlpha=pulse;
+        ctx.fillText(tourRun ? 'tap to head back to the last stop' : 'tap to try again', W/2, 190);
+      }
       drawBoard();
     }
     ctx.globalAlpha=1; ctx.textAlign='left';
