@@ -311,15 +311,15 @@ const HEADS = ['AG NEE','EISH','MOER TOG','YOH','Lekker.','HAIBO','JINNE','FOFIE
 // Spawn thinned to ~1 per 450-850 m (was 110-190) so the numbers stay honest: a 20 km run
 // banks roughly 25-35 if you take the risky ones.
 const STOPS = [
-  {m:420,    label:'CANNACOPIA',          line:'woke up behind Cannacopia',        cost:1},
-  {m:2500,   label:'THE HOG & DRAGON',    line:'slept it off at the Hog & Dragon', cost:2},
-  {m:6765,   label:'THE BIG TREE',        line:'camped under the Big Tree',        cost:4},
-  {m:10946,  label:'THE ARBORETUM',       line:'rested at the Arboretum',          cost:6},
-  {m:17711,  label:'39 STEPS WATERFALL',  line:'slept behind 39 Steps Falls',      cost:9},
-  {m:28657,  label:'MADONNA & CHILD',     line:'rested at Madonna & Child',        cost:15},
-  {m:46368,  label:'KETTLESPOUT',         line:'sheltered at Kettlespout',         cost:24},
-  {m:75025,  label:'SWALLOWTAIL',         line:'slept at Swallowtail',             cost:38},
-  {m:121393, label:'THE SECRET WATERFALL',line:'hid at the Secret Waterfall',      cost:61},
+  {m:420,    label:'CANNACOPIA',          line:'You wake up behind Cannacopia',        cost:1},
+  {m:2500,   label:'THE HOG & DRAGON',    line:'You sleep it off at the Hog & Dragon', cost:2},
+  {m:6765,   label:'THE BIG TREE',        line:'You camp under the Big Tree',          cost:4},
+  {m:10946,  label:'THE ARBORETUM',       line:'You rest at the Arboretum',            cost:6},
+  {m:17711,  label:'39 STEPS WATERFALL',  line:'You sleep behind 39 Steps Falls',      cost:9},
+  {m:28657,  label:'MADONNA & CHILD',     line:'You rest at Madonna & Child',          cost:15},
+  {m:46368,  label:'KETTLESPOUT',         line:'You shelter at Kettlespout',           cost:24},
+  {m:75025,  label:'SWALLOWTAIL',         line:'You sleep at Swallowtail',             cost:38},
+  {m:121393, label:'THE SECRET WATERFALL',line:'You hide at the Secret Waterfall',     cost:61},
 ];
 const PERMIT_M = 170000;   // Gaikas Kop: forestry land, no permit, escorted back to start
 const MAYOR_M  = 1000000;  // the one and only win condition: crowned Mayor of Hogsback
@@ -1113,7 +1113,7 @@ function payAndContinue(){
   pocket -= contStops.cost; savePocket();
   lastTourStop = contStops;          // v5.0.1: remembered so a tour death returns for free
   reset(contStops);
-  toast={s:contStops.line+' — '+contStops.cost+' 🍄. Jy is by '+contStops.label+'.',age:0};
+  toast={s:contStops.line+'. '+contStops.cost+' 🍄 spent. Jy is by '+contStops.label+'.',age:0};
 }
 // pointer helpers for the death-screen continue button
 let continueHit = null;       // {x0,y0,x1,y1} canvas-space rect of the continue button
@@ -1458,29 +1458,30 @@ function tick(now){
       ctx.fillText(cause, W/2, 144);
       ctx.fillStyle='#cdd6ee'; ctx.font='16px monospace';
       ctx.fillText(`${meters} m   ·   HI ${hi} m`, W/2, 168);
-      // wallet line ON the death panel — teaches the economy where the eyes are
-      ctx.fillStyle='#d8b84a'; ctx.font='13px monospace';
-      ctx.fillText('🍄 '+pocket+' in the pocket — gold shrooms buy rest-stop restarts', W/2, 182);
+      // wallet line ON the death panel — teaches the economy where the eyes are (bright
+      // enough to read on the night palette — owner shot 2 showed the old gold washing out)
+      ctx.fillStyle='#ffd75e'; ctx.font='bold 13px monospace';
+      ctx.fillText('🍄 '+pocket+' saved up — they buy restarts from rest stops', W/2, 182);
       // v5.0.1: ONE continue button (deepest affordable stop) + tap anywhere. Painted ABOVE
       // the board, never under it — the owner's screenshot showed the TOP-10 panel painted
       // straight over the button text and eating its clicks. Board itself moved down.
       continueHit = null;
       if(contStops && !tourRun && state==='dead' && deathHead!=='NO PERMIT' && deathHead!=='MAYOR!'){
-        const bl = contStops.line+' · '+contStops.cost+' 🍄';
-        ctx.font='13px system-ui';
-        const bw = Math.max(300, ctx.measureText(bl).width+36);
-        const bx = W/2-bw/2, by=200, bh=28;
-        ctx.fillStyle='rgba(58,48,64,.95)'; ctx.fillRect(bx,by,bw,bh);
-        ctx.strokeStyle='rgba(200,160,220,.9)'; ctx.lineWidth=1.5; ctx.strokeRect(bx+.5,by+.5,bw-1,bh-1);
-        ctx.fillStyle='#f0dcff'; ctx.fillText(bl, W/2, by+19);
+        const bl = 'TAP HERE: wake up at '+contStops.label+' ('+contStops.cost+' 🍄)';
+        ctx.font='bold 14px system-ui';
+        const bw = Math.max(320, ctx.measureText(bl).width+40);
+        const bx = W/2-bw/2, by=200, bh=30;
+        ctx.fillStyle='rgba(88,60,110,.97)'; ctx.fillRect(bx,by,bw,bh);
+        ctx.strokeStyle='#e8c8ff'; ctx.lineWidth=2; ctx.strokeRect(bx+1,by+1,bw-2,bh-2);
+        ctx.fillStyle='#ffffff'; ctx.fillText(bl, W/2, by+20);
         continueHit = {x0:bx, y0:by, x1:bx+bw, y1:by+bh};
-        ctx.fillStyle='#ffe9a8'; ctx.font='bold 12px monospace';
-        ctx.fillText('🍄 '+pocket+' in the pocket · tap to continue from '+contStops.label, W/2, by+42);
-        ctx.fillStyle='#9ab0c4'; ctx.font='10px monospace';
-        ctx.fillText('tour only — the board only counts runs from 0', W/2, by+55);
+        ctx.fillStyle='#ffffff'; ctx.font='bold 12px monospace';
+        ctx.fillText('you restart from '+contStops.label+' ('+contStops.m+' m) — this run is NOT SAVED', W/2, by+45);
+        ctx.fillStyle='#cdd6ee'; ctx.font='11px monospace';
+        ctx.fillText('want a score on the board? tap anywhere else to run from 0', W/2, by+60);
       } else {
         ctx.font='14px system-ui'; ctx.globalAlpha=pulse;
-        ctx.fillText(tourRun ? 'tap to head back to the last stop' : 'tap to try again', W/2, 190);
+        ctx.fillText(tourRun ? 'tap to wake up at the same stop (free)' : 'tap to try again', W/2, 190);
       }
       drawBoard();
     }
