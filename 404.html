@@ -1087,6 +1087,7 @@ function die(kind, variant){
   fetchBoard().then(refreshQualify).catch(()=>{});
 }
 let contStops = null;         // set by die(); the one continue button on the death screen
+let lastTourStop = null;      // v5.0.1: the stop a tour run started from — free return on death
 function jump(){
   if(state!=='run') return;
   if(!jumping && !slideHeld){ vy=JUMPV; jumping=true; beep(440,660,.09); }
@@ -1095,9 +1096,12 @@ function jump(){
 function act(){
   if(state==='ready') reset();
   else if(state==='dead'){
+    // v5.0.1: tour-run death — "tap to head back to the last stop" must be TRUE. The visit
+    // was already paid for, so returning to the same stop is free. (Owner playtest: the old
+    // text promised a tour restart but tap gave a ranked 0-run.)
+    if(tourRun && lastTourStop && performance.now()-deadAt>450){ reset(lastTourStop); return; }
     // continue button: keyboard Enter or a tap on the painted button zone. Anywhere else =
-    // run from 0. (Owner: "buttons to chose how far back you can restart" — resolved to ONE
-    // button for the deepest affordable stop; a menu is clutter on a phone.)
+    // run from 0.
     if(contStops && performance.now()-deadAt>450){
       if(continueHit && pointerIn(continueHit)){ payAndContinue(); return; }
     }
@@ -1107,6 +1111,7 @@ function act(){
 }
 function payAndContinue(){
   pocket -= contStops.cost; savePocket();
+  lastTourStop = contStops;          // v5.0.1: remembered so a tour death returns for free
   reset(contStops);
   toast={s:contStops.line+' — '+contStops.cost+' 🍄. Jy is by '+contStops.label+'.',age:0};
 }
@@ -1244,7 +1249,13 @@ function tick(now){
         const sx = 60 + f.m*10 + 210 - trav;
         return sx > W-340 && sx < W+340;
       });
-      if(fallNearSpawn){ nextGap += 90; }        // wait until the fall clears the spawn lane
+      // v5.0.1 (owner playtest shot 3): the same corridor rule for MUSHROOMS. The shroom
+      // spawner avoided obstacles, but the obstacle spawner never avoided shrooms — so a
+      // stump could materialise right on top of one, and a stump+shroom wall is unjumpable
+      // (grabbing the shroom puts you inside the stump's hitbox). Hold the spawn while a
+      // shroom sits in the spawn lane; the shroom then passes collectible.
+      const shroomNearSpawn = shrooms.some(s => s.x > W-160);
+      if(fallNearSpawn || shroomNearSpawn){ nextGap += 90; }   // wait until the lane clears
       else {
         spawn(ramp, grow);
         const spawned = obs[obs.length-1];
@@ -1447,24 +1458,28 @@ function tick(now){
       ctx.fillText(cause, W/2, 144);
       ctx.fillStyle='#cdd6ee'; ctx.font='16px monospace';
       ctx.fillText(`${meters} m   ·   HI ${hi} m`, W/2, 168);
-      // v5.0 death screen: ONE continue button (deepest affordable stop) + tap anywhere.
-      // Tour runs get no button — you already paid to be here. Permit/mayor endings skip.
+      // wallet line ON the death panel — teaches the economy where the eyes are
+      ctx.fillStyle='#d8b84a'; ctx.font='13px monospace';
+      ctx.fillText('🍄 '+pocket+' in the pocket — gold shrooms buy rest-stop restarts', W/2, 182);
+      // v5.0.1: ONE continue button (deepest affordable stop) + tap anywhere. Painted ABOVE
+      // the board, never under it — the owner's screenshot showed the TOP-10 panel painted
+      // straight over the button text and eating its clicks. Board itself moved down.
       continueHit = null;
       if(contStops && !tourRun && state==='dead' && deathHead!=='NO PERMIT' && deathHead!=='MAYOR!'){
         const bl = contStops.line+' · '+contStops.cost+' 🍄';
         ctx.font='13px system-ui';
         const bw = Math.max(300, ctx.measureText(bl).width+36);
-        const bx = W/2-bw/2, by=184, bh=30;
+        const bx = W/2-bw/2, by=200, bh=28;
         ctx.fillStyle='rgba(58,48,64,.95)'; ctx.fillRect(bx,by,bw,bh);
         ctx.strokeStyle='rgba(200,160,220,.9)'; ctx.lineWidth=1.5; ctx.strokeRect(bx+.5,by+.5,bw-1,bh-1);
-        ctx.fillStyle='#f0dcff'; ctx.fillText(bl, W/2, by+20);
+        ctx.fillStyle='#f0dcff'; ctx.fillText(bl, W/2, by+19);
         continueHit = {x0:bx, y0:by, x1:bx+bw, y1:by+bh};
-        ctx.fillStyle='#9ab0c4'; ctx.font='11px monospace';
-        ctx.fillText('tour only — does not count for the board', W/2, by+44);
-        ctx.font='15px system-ui'; ctx.globalAlpha=pulse;
-        ctx.fillText('tap the button to continue · tap anywhere else to run from 0', W/2, by+64);
+        ctx.fillStyle='#ffe9a8'; ctx.font='bold 12px monospace';
+        ctx.fillText('🍄 '+pocket+' in the pocket · tap to continue from '+contStops.label, W/2, by+42);
+        ctx.fillStyle='#9ab0c4'; ctx.font='10px monospace';
+        ctx.fillText('tour only — the board only counts runs from 0', W/2, by+55);
       } else {
-        ctx.font='15px system-ui'; ctx.globalAlpha=pulse;
+        ctx.font='14px system-ui'; ctx.globalAlpha=pulse;
         ctx.fillText(tourRun ? 'tap to head back to the last stop' : 'tap to try again', W/2, 190);
       }
       drawBoard();
@@ -1478,15 +1493,18 @@ function drawBoard(){
   if(!board || !board.weekly || !board.weekly.length) return;
   const list=board.weekly;
   ctx.textAlign='center';
+  // v5.0.1: moved down (was y=200) — it was painting over the death screen's continue
+  // button and the tap hint. The panel now starts below ALL death-screen UI.
+  const by0 = 268;
   ctx.fillStyle='rgba(20,29,56,.82)';
-  ctx.fillRect(W/2-160,200,320,24+list.length*13);
-  ctx.fillStyle='#ffe9a8'; ctx.font='bold 12px monospace';
-  ctx.fillText('TOP 10 · '+board.week, W/2, 216);
-  ctx.font='12px monospace';
+  ctx.fillRect(W/2-160,by0,320,22+list.length*12);
+  ctx.fillStyle='#ffe9a8'; ctx.font='bold 11px monospace';
+  ctx.fillText('TOP 10 · '+board.week, W/2, by0+15);
+  ctx.font='11px monospace';
   list.forEach((r,i)=>{
     const nm=r.n.length>14?r.n.slice(0,13)+'…':r.n;
     ctx.fillStyle = i===0?'#ffd75e':'#cdd6ee';
-    ctx.fillText((i+1)+'. '+nm+' — '+r.m+' m', W/2, 232+i*13);
+    ctx.fillText((i+1)+'. '+nm+' — '+r.m+' m', W/2, by0+29+i*12);
   });
 }
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) last=performance.now(); });
