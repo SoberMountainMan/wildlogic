@@ -835,9 +835,64 @@ function drawWaterfalls(k, tNow){
   }
 }
 
-// ---- weather: Hogsback can't make up its mind. clear -> mist -> clear -> rain -> ...
-// Mushrooms are the answer to bad weather (see the pickup block), which is what finally
-// gives them a job. lvl is 0..1 thickness: fades in and out so it never snaps.
+// ---- the Big Tree (v5.0, owner: "big tree getting a big tree would also be cool") ----
+// THE BIG TREE is a rest stop at 6,765 m, so it gets scenery worthy of a 1,000-year-old
+// yellowwood: a colossal trunk on the LEFT of the track and a canopy that arcs overhead —
+// you run BENEATH it. Same contract as the falls: deterministic jitter (nse), scrolls at
+// `speed`, drawn behind the obstacles. Repeats with the same cycle so deep runs still see it.
+const BIGTREE_CYCLE = 160000;
+function drawBigTree(k, tNow){
+  for(let r=0; r<4; r++){
+    const m = 6765 + r*BIGTREE_CYCLE;
+    const sx = 60 + m*10 - trav;               // trunk sits at its signpost
+    if(sx < -420 || sx > W+180) continue;
+    const sway = Math.sin(tNow/900 + r*1.3)*4; // slow canopy sway — it is alive
+    ctx.save();
+    // ---- trunk: massive, buttressed, leaning slightly over the road ----
+    ctx.fillStyle = mix('#5d4529','#241f33',k);
+    ctx.beginPath();
+    ctx.moveTo(sx-46, GROUND+4);                          // left root flare
+    ctx.quadraticCurveTo(sx-30, GROUND-90, sx-18+8, GROUND-170);
+    ctx.quadraticCurveTo(sx-14+10, GROUND-235, sx+2+12, GROUND-262);
+    ctx.lineTo(sx+26+12, GROUND-262);
+    ctx.quadraticCurveTo(sx+30+6, GROUND-210, sx+34-2, GROUND-140);
+    ctx.quadraticCurveTo(sx+38-8, GROUND-60, sx+52-18, GROUND+4);   // right root flare
+    ctx.closePath(); ctx.fill();
+    // bark ridges
+    ctx.strokeStyle = mix('#43311d','#1a1626',k); ctx.lineWidth = 2.2;
+    for(let i=0;i<5;i++){
+      const bx = sx - 30 + i*9 + (nse(m*7+i)-.5)*5;
+      ctx.beginPath(); ctx.moveTo(bx, GROUND-4);
+      ctx.quadraticCurveTo(bx + 6, GROUND-110, bx + 14, GROUND-215); ctx.stroke();
+    }
+    // a low bough reaching over the track (the branch the tourists photograph)
+    ctx.fillStyle = mix('#5d4529','#241f33',k);
+    ctx.beginPath();
+    ctx.moveTo(sx+8, GROUND-225);
+    ctx.quadraticCurveTo(sx+95, GROUND-255+sway, sx+150, GROUND-235+sway);
+    ctx.quadraticCurveTo(sx+95, GROUND-240+sway, sx+10, GROUND-208);
+    ctx.closePath(); ctx.fill();
+    // ---- canopy: overlapping ellipse masses arcing over the whole road ----
+    const LEAF = ['#4e7a44','#5c8a4a','#43683c','#639257'];
+    for(let i=0;i<11;i++){
+      const t = i/10;
+      const cx = sx - 120 + t*(W*0.95) + (nse(m*11+i)-.5)*40;
+      const cy = GROUND - 285 + Math.sin(t*3.1+r)*16 + (nse(m*13+i)-.5)*18 + sway*(.4+.6*t);
+      const rr = 55 + nse(m*17+i)*42;
+      ctx.fillStyle = mix(LEAF[i%4], '#1b3326', k);
+      ctx.beginPath(); ctx.ellipse(cx, cy, rr, rr*.62, (nse(m*19+i)-.5)*.4, 0, 7); ctx.fill();
+    }
+    // dappled light holes near the top edge (sky poking through)
+    ctx.fillStyle = mix('#bfe0f2','#141d38',k); ctx.globalAlpha = .5;
+    for(let i=0;i<6;i++){
+      const cx = sx - 60 + i*(W*0.14) + (nse(m*23+i)-.5)*50;
+      const cy = GROUND - 300 + (nse(m*29+i)-.5)*24 + sway;
+      ctx.beginPath(); ctx.arc(cx, cy, 9+nse(m*31+i)*13, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+}
 function wxLevel(){
   if(!mist) return 0;
   const a = mist.age, d = mist.dur;
@@ -1328,6 +1383,7 @@ function tick(now){
   nightRim = Math.max(0, Math.min(1, (k-.35)/.3));
   const wxl = wxLevel();
   backdrop(k);
+  drawBigTree(k, now);
   drawWaterfalls(k, now);
   drawSigns();
   obs.forEach(drawObstacle);
