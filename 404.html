@@ -93,15 +93,15 @@ function submitName(){
   if(!name) return;
   // v5.1: a tour run's score IS the world distance reached (stop + metres). That world
   // distance is what posts — the mushroom cost already gated the restart, so the board
-  // stays honest without the old points-at-0 rule.
-  const body={name:name,meters:runStart+meters,cause:deathCause};
+  // stays honest without the old points-at-0 rule. v5.2: Mayor fires at 1,020,000 (six
+  // laps) but the board's ceiling is 1,000,000 — clamp to the cap so the save is accepted.
+  const body={name:name,meters:Math.min(runStart+meters,1000000),cause:deathCause};
   if(PID) body.pid=PID;                     // no token -> Worker falls back to name-keyed
   fetch(API,{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify(body)})
     .then(r=>r.json()).then(res=>{
       if(res.ok){
-        posted=true; lastPostedM=meters;
-        try{ localStorage.setItem(NAME_KEY,name); }catch(e){}
+        posted=true; lastPostedM=meters;        try{ localStorage.setItem(NAME_KEY,name); }catch(e){}
         document.getElementById('nm').hidden=true;
         toast = res.weeklyRank
           ? {s:'Yebo — you are #'+res.weeklyRank+' this week!',age:0}
@@ -176,8 +176,8 @@ const RIDER_BOX = { baboon:{top:89.9, x0:-25.6, x1:10.8}, toad:{top:89.9, x0:-13
 const MIN_GAP_T = 0.66;
 // Spaced for LONG runs — v5.0 map: the run leaves the VILLAGE (dense, funny, every 300-500 m),
 // climbs the MOUNTAIN, follows the waterfall trail, then the deep field thins out to the
-// Gaikas Kop permit fence at 170 000 m — the actual END of the run (owner: the 1M ceiling
-// becomes lore; the forestry land needs a permit, so the game escorts you back to the start).
+// Gaikas Kop fence at 170 000 m — NOT a wall, one full lap of Hogsback (owner ruling 10 Sep:
+// each lap costs a 100 🍄 permit for the next one; six laps = 1,020,000 = crowned Mayor).
 // RESTART STOPS are the landmarks at Fibonacci distances (owner ruling 09 Sep 2026):
 // each one is a rest point you can continue from for mushrooms (see STOPS below).
 const LANDMARKS = [
@@ -208,7 +208,7 @@ const LANDMARKS = [
   [110000, 'CAPE PARROT PROJECT',    'Cape Parrot — hy lag vir jou, hy weet.'],
   [121393, 'THE SECRET WATERFALL',   'Die geheime waterval — jy weet waar, jy sal nie se nie.'],
   [140000, 'THE LABYRINTH',          'Moenie verdwaal nie, vark.'],
-  [170000, 'GAIKAS KOP',             'Gaikas Kop — sonder permit kom jy nie hier verby nie.'],
+  [170000, 'GAIKAS KOP',             'Gaikas Kop — the fence. 100 🍄 buys the next lap, or its back down the mountain.'],
 ];
 const AMBIENT = [
   'Nee man, kyk uit vir die aalwyne!',
@@ -324,9 +324,9 @@ const STOPS = [
   {m:75025,  label:'SWALLOWTAIL',         line:'You sleep at Swallowtail',             cost:38},
   {m:121393, label:'THE SECRET WATERFALL',line:'You hide at the Secret Waterfall',     cost:61},
 ];
-const PERMIT_M = 170000;   // Gaikas Kop: forestry land. The office sells a permit for 100 🍄.
-const PERMIT_COST = 100;   // without it you are escorted back to the village (the loop)
-const MAYOR_M  = 1000000;  // the one and only win condition: crowned Mayor of Hogsback
+const PERMIT_M = 170000;   // Gaikas Kop: forestry land — one lap of Hogsback. A permit (100 🍄)
+const PERMIT_COST = 100;   // opens the gate for the NEXT lap; without it you're escorted back.
+const MAYOR_M  = 1020000;  // six full laps of 170,000 — the one and only win: crowned Mayor
 const WALLET_KEY = 'hogback_wallet';
 let pocket = (()=>{ try{ return Math.max(0, Math.floor(+localStorage.getItem(WALLET_KEY)||0)); }catch(e){ return 0; } })();
 function savePocket(){ try{ localStorage.setItem(WALLET_KEY, String(pocket)); }catch(e){} }
@@ -1056,7 +1056,7 @@ function reset(fromStop){
   obs=[]; nextGap=420; mist=null; wxTimer=22; wxCount=0; lmIdx=0; nextAmb=170; toast=null;
   shrooms=[]; nextShroom=900; sCount=0; queuedAt=-1e9;
   spawnGrace = tourRun ? 2.0 : 0.45;          // 2 s clear runway on a continue, brief warm-up from 0
-  floaters=[]; deathCause=''; prevKind=''; bird=null; nextBird=7; permitBought=false;
+  floaters=[]; deathCause=''; prevKind=''; bird=null; nextBird=7; permits=0;
   // fast-forward the landmark/weather cursors so the tour run starts in the right scenery:
   while(lmIdx<LANDMARKS.length && LANDMARKS[lmIdx][0] <= runStart) lmIdx++;
   wxTimer = 10+Math.random()*8;               // first weather arrives late — spawn is calm
@@ -1090,7 +1090,7 @@ function die(kind, variant){
   try{ document.getElementById('sh').hidden = false; }catch(e){}
   fetchBoard().then(refreshQualify).catch(()=>{});
 }
-let permitBought = false;   // v5.1: passed the Gaikas Kop fence this run (paid 100 🍄)
+let permits = 0;            // v5.2: laps paid for this run — the fence checks worldNow/PERMIT_M against this
 let contStops = null;         // set by die(); the one continue button on the death screen
 let lastTourStop = null;      // v5.0.1: the stop a tour run started from — free return on death
 function jump(){
@@ -1288,32 +1288,31 @@ function tick(now){
     }
     for(const o of obs) o.x-=spd*dt;
     obs=obs.filter(o=>o.x>-140);
-    // ---- v5.1: the permit wall and the Mayor (the two ways a run "ends" now) ----
-    // Tour runs POST TOO now (owner ruling: the score IS the world distance reached, and the
-    // mushroom cost is the anti-spam gate) — so both endings apply to every run.
-    if(runStart+meters >= PERMIT_M && !permitBought){
-      // Gaikas Kop: forestry land. If the wallet covers a permit you pass through; if not,
-      // escorted back to the village — the loop is lore, and the wall caps the board.
-      // NOTE: no runStart step — worldM = runStart+meters keeps counting naturally past
-      // the fence; permitBought guards this block from re-firing every frame.
+    // ---- v5.2: the Gaikas Kop fence = the loop, and the Mayor (the two ways a run "ends") ----
+    // 170,000 m is NOT a wall — it's one lap of Hogsback. Each time you reach the fence you buy
+    // the NEXT lap's permit (100 🍄) or you're escorted back to the village. Six laps = Mayor.
+    const worldNow = runStart + meters;
+    if(worldNow >= PERMIT_M && permits < Math.floor(worldNow / PERMIT_M)){
+      // need a permit for the lap you are ENTERING
       if(pocket >= PERMIT_COST){
         pocket -= PERMIT_COST; savePocket();
-        toast={s:'Permit bought at the fence — 100 🍄. Gaikas Kop is open, boet.',age:0};
-        permitBought = true;
+        permits = Math.floor(worldNow / PERMIT_M);
+        const lap = permits;   // laps completed
+        toast={s:'Lap '+(lap)+' done — permit bought, 100 🍄. On to lap '+(lap+1)+'.',age:0};
         beep(660,990,.3,'sine');
       } else {
-        deathCause='caught at Gaikas Kop with no permit ('+PERMIT_COST+' 🍄). back to the village with you';
+        deathCause='finished lap '+(Math.floor(worldNow/PERMIT_M))+' at Gaikas Kop with no permit ('+PERMIT_COST+' 🍄). back to the village with you';
         deathHead='NO PERMIT';
         state='dead'; deadAt=performance.now(); shakeT=.35; beep(220,110,.4,'triangle');
-        contStops=bestStop(runStart+meters-1);   // last stop you actually passed
+        contStops=bestStop(worldNow-1);   // last stop you actually passed
         try{ document.getElementById('sh').hidden = false; }catch(e){}
         fetchBoard().then(refreshQualify).catch(()=>{});
         return;
       }
     }
-    if(runStart+meters >= MAYOR_M){
-      // 1 000 000 m: the board's ceiling. You are crowned and the run saves.
-      deathCause='covered every metre of Hogsback. crowned MAYOR.';
+    if(worldNow >= MAYOR_M){
+      // 1,020,000 m = six full laps. The board's ceiling is 1,000,000, so this posts at the cap.
+      deathCause='six laps of Hogsback, every permit paid. crowned MAYOR.';
       deathHead='MAYOR!';
       state='dead'; deadAt=performance.now(); shakeT=.35;
       beep(660,1320,.5,'sine');
@@ -1475,7 +1474,7 @@ function tick(now){
       // wallet line ON the death panel — teaches the economy where the eyes are (bright
       // enough to read on the night palette — owner shot 2 showed the old gold washing out)
       ctx.fillStyle='#ffd75e'; ctx.font='bold 13px monospace';
-      ctx.fillText('🍄 '+pocket+' saved up — they buy restarts and the Gaikas Kop permit', W/2, 182);
+      ctx.fillText('🍄 '+pocket+' saved up — they buy restarts and the next lap permit', W/2, 182);
       // v5.0.1: ONE continue button (deepest affordable stop) + tap anywhere. Painted ABOVE
       // the board, never under it — the owner's screenshot showed the TOP-10 panel painted
       // straight over the button text and eating its clicks. Board itself moved down.
