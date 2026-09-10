@@ -116,12 +116,13 @@ function submitName(){
   // indistinguishable from a dead button, and the run just stayed unsaved with no explanation
   // — the same "it didn't register" feeling, from a different cause.
   if(!name){ toast={s:'Type a name first, boet — then Yebo saves the run.',age:0}; return; }
-  // v5.6 (owner ruling): ONE score, used everywhere — the distance you actually RAN this
-  // leg (`meters`), not the world-accumulated runStart+meters. A continue buys you deeper
-  // terrain for 🍄, it does not buy you credit for metres you never ran (Matt's HUD read
-  // 150 582 from a Swallowtail continue + 75 557 m — that is the world position, not a
-  // best run). Leaderboard and local HI are now the same number. The 1,000,000 clamp is
-  // the board's ceiling (v4.3.1) so a huge run is still accepted by the Worker.
+  // v5.10 (owner ruling, 10 Sep): ONE score, used everywhere — the DISTANCE FROM THE VILLAGE.
+  // `meters` IS that number (it is the odometer), so the board, the local HI, the HUD and the
+  // death panel all post and show the same value with no offset. A continue RESUMES it at the
+  // stop you paid for: die at 131 929 m, wake at the Secret Waterfall (121 393 m) and your score
+  // is 121 393 — you forfeit the metres since the stop, not the whole run. ("The point is not to
+  // have to start from 0.") The 1,000,000 clamp is the board's ceiling (v4.3.1) so a huge run
+  // is still accepted by the Worker.
   const body={name:name,meters:Math.min(meters,1000000),cause:deathCause};
   if(PID) body.pid=PID;                     // no token -> Worker falls back to name-keyed
   fetch(API,{method:'POST',headers:{'content-type':'application/json'},
@@ -229,8 +230,8 @@ const LANDMARKS = [
   [17711,  '39 STEPS WATERFALL',     '39 trappies op — moenie afkyk nie!'],
   [28657,  'MADONNA & CHILD',        "Ag nee, hier's weer daai waterval!"],
   [46368,  'KETTLESPOUT',            'Kettlespout — daai pot kook al vandat Oom klein is.'],
-  [75025,  'SWALLOWTAIL WATERFALL',  'Swallowtail — 8 km dieper die kloof in. Sterkte.'],
   [56000,  'STARWAYS',               'Starways — kyk op, die sterre is beter hier.'],
+  [75025,  'SWALLOWTAIL WATERFALL',  'Swallowtail — 8 km dieper die kloof in. Sterkte.'],
   [92000,  'HOBBITON',               'Hobbiton — klein deure, groot vark.'],
   [110000, 'CAPE PARROT PROJECT',    'Cape Parrot — hy lag vir jou, hy weet.'],
   [121393, 'THE SECRET WATERFALL',   'Die geheime waterval — jy weet waar, jy sal nie se nie.'],
@@ -251,6 +252,8 @@ const AMBIENT = [
 // (runStart+meters), so a deep continue left it inflated — Matt's read 150 582 for a
 // 75 557 m run. The number can never be beaten under the new rule, so wipe it once,
 // per device, and let it re-derive from the next honest run. Flagged so it fires once.
+// v5.10 note: the rule is now "distance from the village" again, which for a ranked run is the
+// same quantity — so this clear is moot for new players but harmless (the flag is already set).
 try{
   if(!localStorage.getItem('hogback_hi_v56')){
     localStorage.removeItem('hogback_hi');
@@ -266,7 +269,7 @@ let hogY = GROUND, vy = 0, jumping = false, obs = [], nextGap = 420, deadAt = 0;
 // mist = {kind:'mist'|'rain', age, dur}; WX_FADE seconds of fade in and out either side.
 const WX_FADE = 1.2;
 let wxTimer = 22, mist = null, wxCount = 0;
-let lmIdx = 0, nextAmb = 170;
+let lmIdx = 0, nextAmb = 170, lastLap = 0;   // v5.10: lastLap wraps the landmark cursor each lap
 let toast = null, last = performance.now();
 let queuedAt = -1e9;        // buffered jump timestamp
 let logHintShown = false;   // taught once per session, survives restarts
@@ -372,6 +375,22 @@ const WALLET_KEY = 'hogback_wallet';
 let pocket = (()=>{ try{ return Math.max(0, Math.floor(+localStorage.getItem(WALLET_KEY)||0)); }catch(e){ return 0; } })();
 function savePocket(){ try{ localStorage.setItem(WALLET_KEY, String(pocket)); }catch(e){} }
 function addPocket(n){ pocket += n; savePocket(); }
+
+// ======================== v5.10: THE MOUNTAIN LOOPS ========================
+// Owner, 10 Sep: "why doesnt the map just loop? its the same lap. You reach Gaikas Kop, says you
+// have no permit, return to The Edge, but you keep the 170000 and start lap 2, repeat to million."
+// So: 170 000 m is ONE lap of Hogsback and every lap is the same mountain. Scenery is therefore
+// placed at (lapStart + m) and each layer draws the CURRENT lap and the NEXT one, so the next
+// lap's signpost is already on screen as you cross the fence and the world never runs out.
+//
+// What this replaced — the reason laps 2-6 were a bare mountain: the falls and the Big Tree baked
+// in their own copies every 160 000 m. That is the wrong phase for a 170 000 m lap, so they drifted
+// 7 711 m further out of step every lap, and they simply stopped existing at 610 km. The signposts
+// and every other landmark had no repetition at all, so past 170 000 m there was nothing to see.
+// One lap of data drawn every lap is the whole fix.
+const LAP_M = PERMIT_M;                                    // one lap of the mountain
+const lapStartOf = m => Math.floor(m / LAP_M) * LAP_M;     // where this position's lap begins
+const lapBasesInView = () => { const b = lapStartOf(trav/10); return [b, b + LAP_M]; };
 // v5.3: up to THREE restart options, deepest first — stops the run passed. Affordable ones
 // are live buttons; deeper ones are GREYED with the shortfall ("need N more 🍄") so players
 // learn the economy: restart higher next time if you bank more mushrooms. (Owner: "i want
@@ -804,16 +823,20 @@ const WATERFALLS = [
   {m:130393, w:30, h:170, jets:2},   // Secret Falls (past the Labyrinth, deep field)
 ];
 // Long runs repeat the set so the tail past ~130 km is not empty scenery.
-const FALLS_CYCLE = 160000;
-const FALLS = [];
-for (const f of WATERFALLS)
-  for (let r = 0; r < 4; r++)
-    FALLS.push({ m: f.m + r * FALLS_CYCLE, w: f.w * (1 + r * .1), h: f.h * (1 - r * .04), jets: f.jets });
+// v5.10: ONE lap of falls. The repetition is the lap loop's job now — this used to bake in four
+// copies every FALLS_CYCLE = 160 000 m, which was the wrong phase for a 170 000 m lap (they drifted
+// 7 711 m per lap) and ran out at 610 km. The per-lap size growth is applied at draw time from the
+// lap index, and `m` stays the BASE metre so a fall's rock jitter is the same shape every lap.
+const FALLS = WATERFALLS.map(f => ({ m: f.m, w: f.w, h: f.h, jets: f.jets }));
 // deterministic jitter: each fall's rock shape stays stable frame-to-frame instead of shimmering
 function nse(s){ const x = Math.sin(s*127.1)*43758.5453; return x - Math.floor(x); }
 function drawWaterfalls(k, tNow){
-  for(const f of FALLS){
-    const sx = 60 + f.m*10 + 210 - trav;        // sits just past its signpost
+  for(const base of lapBasesInView()){
+  const lapR = base / LAP_M;                     // lap index — falls grow a little each lap
+  for(const f0 of FALLS){
+    // per-lap view of the fall; `m` stays the base metre so the jitter is identical every lap
+    const f = lapR ? { m:f0.m, w:f0.w*(1+lapR*.1), h:f0.h*(1-lapR*.04), jets:f0.jets } : f0;
+    const sx = 60 + (base + f.m)*10 + 210 - trav;   // sits just past its signpost
     if(sx < -260 || sx > W+220) continue;
     const baseY = GROUND - 2, topY = baseY - f.h;
     ctx.save();
@@ -881,17 +904,19 @@ function drawWaterfalls(k, tNow){
     }
     ctx.restore();
   }
+  }
 }
 
 // ---- the Big Tree (v5.0, owner: "big tree getting a big tree would also be cool") ----
 // THE BIG TREE is a rest stop at 6,765 m, so it gets scenery worthy of a 1,000-year-old
 // yellowwood: a colossal trunk on the LEFT of the track and a canopy that arcs overhead —
 // you run BENEATH it. Same contract as the falls: deterministic jitter (nse), scrolls at
-// `speed`, drawn behind the obstacles. Repeats with the same cycle so deep runs still see it.
-const BIGTREE_CYCLE = 160000;
+// `speed`, drawn behind the obstacles. v5.10: repeats every LAP (see lapBasesInView) instead
+// of on its own 160 000 m cycle, which had drifted out of phase with the 170 000 m lap.
 function drawBigTree(k, tNow){
-  for(let r=0; r<4; r++){
-    const m = 6765 + r*BIGTREE_CYCLE;
+  for(const base of lapBasesInView()){
+    const r = base / LAP_M;                    // lap index — sway phase shifts a little each lap
+    const m = base + 6765;                     // the Big Tree is at 6 765 m in EVERY lap
     const sx = 60 + m*10 - trav;               // trunk sits at its signpost
     if(sx < -420 || sx > W+180) continue;
     const sway = Math.sin(tNow/900 + r*1.3)*4; // slow canopy sway — it is alive
@@ -1062,8 +1087,10 @@ function loerieCall(){                       // the "kwa-kwa-kwa" you hear befor
 // ---- landmarks: wooden signs at real Hogsback spots ----
 function drawSigns(){
   ctx.font='bold 10px monospace'; ctx.textAlign='center';
+  // v5.10: the map loops, so the signposts repeat every lap — draw the current lap and the next
+  for(const base of lapBasesInView())
   for(const [m,label] of LANDMARKS){
-    const sx = 60 + m*10 - trav;
+    const sx = 60 + (base + m)*10 - trav;
     if(sx < -110 || sx > W+30) continue;
     ctx.fillStyle='#5a4630'; ctx.fillRect(sx+50,GROUND-46,5,46);
     ctx.fillStyle='#c9b184'; ctx.fillRect(sx,GROUND-64,106,22);
@@ -1126,13 +1153,22 @@ function beep(f0,f1,t,type){
 function reset(fromStop){
   tourRun = !!fromStop;
   if(fromStop){
-    runStart = fromStop.m;            // world position = the stop; distance counts from 0
+    runStart = fromStop.m;            // world position = the stop
     trav = fromStop.m*10;             // trav is decimetres-ish px domain: 10 px per metre
   } else { runStart = 0; trav = 0; }
-  meters = 0;
+  // v5.10 (owner, 10 Sep): THE SCORE IS THE DISTANCE FROM THE VILLAGE, and a continue RESUMES it.
+  // "if i die at 131929m with 123 mushrooms, and choose to spend 61 mushrooms to wake up at
+  // Secret Waterfall, I should lose the 131929m and be at 121393m... The point is not to have to
+  // start from 0. I lose the 10000m and the mushrooms." So waking at a stop sets the score to
+  // that stop's distance — you forfeit the metres since the stop, not the whole run.
+  // (v5.6 briefly ruled the opposite — "metres actually run" — but that edit was a no-op because
+  // the odometer line in tick() still wrote the world position, so the leg rule never once ran
+  // and the owner never saw it. v5.9 made it real for a few hours; this reverts it.)
+  meters = fromStop ? fromStop.m : 0;
   state='run'; speed=tourRun ? 330*.85 : 330;   // continue spawn: slight ease-in tween
   vy=0; hogY=GROUND; jumping=false;
-  obs=[]; nextGap=420; mist=null; wxTimer=22; wxCount=0; lmIdx=0; nextAmb=170; toast=null;
+  obs=[]; nextGap=420 + (tourRun ? 0 : 900);  // v5.10: a longer clear runway from the village
+  mist=null; wxTimer=22; wxCount=0; lmIdx=0; nextAmb=170; toast=null;
   // v5.8: `posted`/`lastPostedM` MUST be cleared at the top of every run. They were only ever
   // set (in submitName's success handler) and never reset, so within one page session the pair
   // latched onto the LAST run you saved — and refreshQualify then hid the name box for every
@@ -1145,9 +1181,14 @@ function reset(fromStop){
   shrooms=[]; nextShroom=900; sCount=0; queuedAt=-1e9;
   spawnGrace = tourRun ? 2.0 : 0.45;          // 2 s clear runway on a continue, brief warm-up from 0
   floaters=[]; deathCause=''; prevKind=''; bird=null; nextBird=7; permits=0;
-  // fast-forward the landmark/weather cursors so the tour run starts in the right scenery:
-  while(lmIdx<LANDMARKS.length && LANDMARKS[lmIdx][0] <= runStart) lmIdx++;
-  wxTimer = 10+Math.random()*8;               // first weather arrives late — spawn is calm
+  // v5.10: fast-forward the landmark cursor to where this run resumes. The map loops, so the
+  // cursor is indexed WITHIN the lap — a continue at 177 711 m is 7 711 m into lap 2, so it
+  // should already have passed The Edge, Cannacopia and Happy Hogs and be waiting for St Patrick.
+  lastLap = Math.floor(meters / LAP_M);
+  while(lmIdx<LANDMARKS.length && (meters - lastLap*LAP_M) >= LANDMARKS[lmIdx][0]) lmIdx++;
+  wxTimer = 19+Math.random()*7;               // v5.10: first weather arrives later — the opening
+                                              // stays calm for ~19-26 s (was 10-18 s, which put the
+                                              // first mist at 330-594 m and read as an ambush)
   try{ document.getElementById('sh').hidden = true; document.getElementById('nm').hidden = true; document.body.classList.remove('has-nm'); }catch(e){}
 }
 async function fetchBoard(force){
@@ -1187,7 +1228,7 @@ function die(kind, variant){
   // ones this leg ran past. `meters` is the leg distance, so a continue that ran 5 km from the
   // Secret Waterfall would otherwise be offered CANNACOPIA (420 m) and teleport you backwards
   // up the mountain. Same reason the NO PERMIT branch below uses worldNow-1.
-  contOptions = contOptionsFor(runStart + meters);
+  contOptions = contOptionsFor(meters);
   contStops = contOptions.find(o=>o.afford)?.stop || null;
   try{ document.getElementById('sh').hidden = false; }catch(e){}
   fetchBoard().then(refreshQualify).catch(()=>{});
@@ -1338,9 +1379,10 @@ function tick(now){
     //   tighten = gap shrink. v4 saturated at 20 km. v4.2 stretches to 60 km so a
     //             strong runner still sees the gaps tighten past the old plateau.
     // KNOBs: the 30000, the 60000, the weight slopes, and the .20.
-    // v5.0: curves key off the ABSOLUTE world position (runStart+meters) so a continue
-    // from 17 711 m spawns at 17 711 m difficulty — that is the whole point.
-    const worldM = runStart + meters;
+    // v5.0: curves key off the ABSOLUTE world position so a continue from 17 711 m spawns at
+    // 17 711 m difficulty — that is the whole point. v5.10: `meters` IS that absolute position
+    // (distance from the village), so there is no runStart offset to add here any more.
+    const worldM = meters;
     const ramp    = Math.min(worldM/30000, 1);
     const tighten = Math.min(worldM/60000, 1);
     // grow = obstacle SIZE. This is the only curve that never saturates — see the block
@@ -1356,24 +1398,18 @@ function tick(now){
     // shows which is which, so the change is legible instead of reading like a bug.
     const ph=.5-.5*Math.cos(meters/2400*6.2832);
     const spd=speed*(.9+.2*ph);
-    trav+=spd*dt; meters=Math.floor(trav/10)-runStart;
-    // ^ v5.9: THE ONE LINE THAT MADE THE SECRET WATERFALL UNPLAYABLE.
-    // `trav` is the odometer and it is ABSOLUTE — reset(fromStop) seeds it with `fromStop.m*10`,
-    // and this line used to write `meters = floor(trav/10)`, i.e. the WORLD position. So one
-    // frame after a continue `meters` was the whole mountain again, and every `runStart+meters`
-    // in this file added the stop's offset a SECOND time. The permit fence is the one that bit:
-    // a stop at 121 393 m doubled to 242 787 m, crossed the 170 000 m fence on the very first
-    // frame, and — under 100 🍄 — killed you instantly with NO PERMIT. Pay 61, wake up, die.
-    // With a fatter wallet it did not kill you, it silently charged a 100 🍄 permit for a lap you
-    // never entered (61 + 100 = 161 🍄 for one tap, toast reading "Lap 1 done").
-    // That is the owner's report verbatim: "clicking the button to spend 61 mushrooms to restart
-    // at the secret waterfall does nothing" / Matt: "Nope only the sound".
-    // Only ONE stop in the game is deeper than PERMIT_M/2 = 85 000 m — THE SECRET WATERFALL at
-    // 121 393. SWALLOWTAIL doubles to 150 050, just under the fence. So the bug was unfireable
-    // until a player first reached 121 393 m, which nobody had until today.
-    // `meters` is the SCORE — the metres RAN this leg — as v5.6 ruled and as reset() already
-    // assumes (it sets meters=0 with "distance counts from 0"). With this line corrected,
-    // `runStart+meters` is the world position everywhere else in the file, for free.
+    trav+=spd*dt; meters=Math.floor(trav/10);
+    // ^ v5.10: `meters` IS the odometer — the distance from the village. One number for the HUD,
+    // the death panel, the leaderboard POST and the local HI, and a continue resumes it at the
+    // stop (see reset()). `trav` is the same quantity in px at 10 px/m, so `meters = floor(trav/10)`
+    // and there is no second offset to add anywhere.
+    //
+    // HISTORY, because this line caused two bugs: v5.9 changed it to `floor(trav/10) - runStart`
+    // to make v5.6's "metres actually run" rule real. That made `meters` a LEG distance while
+    // `runStart + meters` was still used in five places as the world position — so every one of
+    // them double-counted the stop's offset, and the permit fence killed a continue on its first
+    // frame (121 393 m doubled to 242 787, past the 170 000 m fence). The rule the owner wants is
+    // simply "meters is where you are", so nothing needs a runStart offset at all.
     const sliding = slideHeld && !jumping && hogY>=GROUND;
     if(jumping){
       vy += (GRAV + (slideHeld ? 5200 : 0))*dt;   // down = fast-drop
@@ -1389,10 +1425,10 @@ function tick(now){
       // trap you cannot land in and re-jump from (owner screenshot). 260 px ≈ the minimum
       // run-up needed to hop the next thing after landing.
       const tailNearSpawn = obs.some(o => o.x + (o.w||60) > W-260);
-      const fallNearSpawn = FALLS.some(f => {
-        const sx = 60 + f.m*10 + 210 - trav;
+      const fallNearSpawn = lapBasesInView().some(base => FALLS.some(f => {
+        const sx = 60 + (base + f.m)*10 + 210 - trav;   // v5.10: falls repeat every lap
         return sx > W-340 && sx < W+340;
-      });
+      }));
       // v5.0.1 (owner playtest shot 3): the same corridor rule for MUSHROOMS. The shroom
       // spawner avoided obstacles, but the obstacle spawner never avoided shrooms — so a
       // stump could materialise right on top of one, and a stump+shroom wall is unjumpable
@@ -1432,7 +1468,7 @@ function tick(now){
     // ---- v5.2: the Gaikas Kop fence = the loop, and the Mayor (the two ways a run "ends") ----
     // 170,000 m is NOT a wall — it's one lap of Hogsback. Each time you reach the fence you buy
     // the NEXT lap's permit (100 🍄) or you're escorted back to the village. Six laps = Mayor.
-    const worldNow = runStart + meters;
+    const worldNow = meters;
     if(worldNow >= PERMIT_M && permits < Math.floor(worldNow / PERMIT_M)){
       // need a permit for the lap you are ENTERING
       if(pocket >= PERMIT_COST){
@@ -1468,8 +1504,12 @@ function tick(now){
       fetchBoard().then(refreshQualify).catch(()=>{});
       return;
     }
-    // landmarks & Oom (worldM: the tour run still SEES the landmarks past its offset)
-    while(lmIdx<LANDMARKS.length && runStart+meters>=LANDMARKS[lmIdx][0]){
+    // landmarks & Oom — v5.10: the map loops, so this cursor wraps too. You hear The Edge, then
+    // Cannacopia, all the way to Gaikas Kop, and on the next lap you hear them all again.
+    const lapNow = Math.floor(meters / LAP_M);
+    if(lapNow !== lastLap){ lastLap = lapNow; lmIdx = 0; }
+    const withinLap = meters - lapNow*LAP_M;
+    while(lmIdx<LANDMARKS.length && withinLap >= LANDMARKS[lmIdx][0]){
       toast={s:LANDMARKS[lmIdx][2],age:0}; beep(880,880,.09,'sine'); lmIdx++;
     }
     if(meters>=nextAmb){
@@ -1647,7 +1687,9 @@ function tick(now){
         ctx.fillText('✓ on the board as '+savedAs, W/2, 124);
       } else {
         ctx.fillStyle='#8f9bbd';
-        ctx.fillText(tourRun ? `you got to ${runStart+meters} m` : '', W/2, 124);
+        // v5.10: `meters` is the score (distance from the village) and the headline above already
+        // shows it. For a continue, the useful second fact is how far this leg ran since the stop.
+        ctx.fillText(tourRun ? `woke at ${runStart} m — ${meters-runStart} m this leg` : '', W/2, 124);
       }
       ctx.fillStyle='#ffd75e'; ctx.font='bold 11px monospace';
       ctx.fillText('🍄 '+pocket+' in the pocket — mushrooms buy second chances', W/2, 138);
