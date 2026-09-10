@@ -19,6 +19,20 @@
      height). While the name box is up, the share button hides (body.has-nm) — one job
      at a time, and nothing stacks over the canvas buttons. */
   body.has-nm #sh{display:none}
+  /* v5.7: sound switch (owner: "would be good if we had a mute button for those that dont
+     like it?"). Bottom-LEFT on purpose, and the position is load-bearing:
+       - top-right is the HUD's (distance / HI / 🍄 are right-aligned at canvas x=W-16), and
+         the touch pads are on the right too (BTN_X=822). In landscape the canvas fills the
+         viewport, so a viewport-anchored top-right button lands ON the HUD — exactly the
+         collision class v5.4 was spent fixing.
+       - the canvas's bottom-left is below GROUND, i.e. dirt. Obstacles sit ABOVE the ground
+         line, so nothing that can kill you is ever hidden under this button.
+     While the name box is up it hides, reusing the v5.4 one-job-at-a-time rule. A DOM button
+     also never reaches the canvas pointer handler, so tapping it cannot fire a hop or a duck. */
+  #mu{position:fixed;left:10px;bottom:2vh;z-index:5;background:#141d38;color:#ffe9a8;
+      border:1px solid #3a4a78;border-radius:12px;font-size:17px;line-height:1;
+      padding:11px 13px;font-family:system-ui,sans-serif}
+  body.has-nm #mu{display:none}
   #nm{position:fixed;left:50%;bottom:2vh;transform:translateX(-50%);z-index:4;
       display:flex;flex-direction:column;gap:5px;align-items:center;background:#141d38;
       border:1px solid #3a4a78;border-radius:18px;padding:7px 12px;text-align:center}
@@ -32,6 +46,7 @@
 </head>
 <body>
 <a id="home" href="/">&#8592; wildlogic.co.za</a>
+<button id="mu" type="button" aria-pressed="true" title="Sound on">&#128266;</button>
 <div id="wrap"><canvas id="cv"></canvas></div>
 <button id="sh" hidden>⚔️ Challenge a chommie</button>
 <div id="nm" hidden>
@@ -1051,9 +1066,44 @@ function drawSigns(){
   ctx.textAlign='left';
 }
 
+// ---- sound switch (v5.7) -------------------------------------------------------
+// Owner: "would be good if we had a mute button for those that dont like it?"
+// One flag, one guard. EVERY sound in the game already routes through beep() — hops,
+// landings, mushrooms, landmarks, weather, deaths, the lap chime — so a single early-return
+// covers the lot without touching a single call site, and there is no second place to keep
+// in sync when a new sound is added. Default ON, because that is how the game has always
+// behaved: anyone who never touches this button hears exactly what they heard before.
+const SOUND_KEY = 'hogback_sound';
+let soundOn = (()=>{ try{ return localStorage.getItem(SOUND_KEY) !== '0'; }catch(e){ return true; } })();
+function paintSound(){
+  try{
+    const b = document.getElementById('mu');
+    if(!b) return;
+    b.textContent = soundOn ? '🔊' : '🔇';
+    b.setAttribute('aria-pressed', soundOn ? 'true' : 'false');
+    b.title = soundOn ? 'Sound on' : 'Sound off';
+  }catch(e){}
+}
+function setSound(on){
+  soundOn = !!on;
+  try{ localStorage.setItem(SOUND_KEY, soundOn ? '1' : '0'); }catch(e){}
+  paintSound();
+}
+try{
+  const mb = document.getElementById('mu');
+  if(mb) mb.addEventListener('click', e=>{
+    e.stopPropagation();
+    setSound(!soundOn);
+    if(soundOn) beep(660,880,.12,'sine');   // confirm audibly, but only when switching ON
+    try{ mb.blur(); }catch(err){}           // keep SPACE jumping the hog, not re-toggling
+  });
+}catch(e){}
+paintSound();
+
 // ---- sound (tiny, lazy, gesture-unlocked) ----
 let AC=null;
 function beep(f0,f1,t,type){
+  if(!soundOn) return;                      // v5.7 mute: one gate, every sound in the game
   try{
     AC = AC || new (window.AudioContext||window.webkitAudioContext)();
     const o=AC.createOscillator(), g=AC.createGain(), n=AC.currentTime;
