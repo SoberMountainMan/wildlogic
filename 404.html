@@ -11,12 +11,13 @@
   #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
   canvas{width:min(100vw,1040px);height:auto;display:block}
   #home{position:fixed;top:10px;left:12px;color:#23405c;text-decoration:none;font-size:15px;opacity:.7;z-index:2}
-  #sh{position:fixed;left:50%;bottom:7vh;transform:translateX(-50%);z-index:3;
+  #sh{position:fixed;left:50%;bottom:4vh;transform:translateX(-50%);z-index:3;
       background:#141d38;color:#ffe9a8;border:1px solid #3a4a78;border-radius:22px;
       font-size:16px;padding:12px 22px;font-family:system-ui,sans-serif}
-  #nm{position:fixed;left:50%;bottom:26vh;transform:translateX(-50%);z-index:4;
-      display:flex;gap:8px;align-items:center;background:#141d38;
-      border:1px solid #3a4a78;border-radius:22px;padding:10px 14px}
+  /* v5.3: name box BELOW the restart buttons (was 26vh — covered the wallet/button zone) */
+  #nm{position:fixed;left:50%;bottom:12vh;transform:translateX(-50%);z-index:4;
+      display:flex;flex-direction:column;gap:6px;align-items:center;background:#141d38;
+      border:1px solid #3a4a78;border-radius:22px;padding:10px 14px;text-align:center}
   #nm[hidden]{display:none}
   #nm span{color:#cdd6ee;font-size:14px}
   #ni{background:#0e1526;color:#ffe9a8;border:1px solid #3a4a78;border-radius:12px;
@@ -30,9 +31,11 @@
 <div id="wrap"><canvas id="cv"></canvas></div>
 <button id="sh" hidden>⚔️ Challenge a chommie</button>
 <div id="nm" hidden>
-  <span id="nl">On the board? Name yourself:</span>
-  <input id="ni" maxlength="14" placeholder="your name" autocomplete="off">
-  <button id="ns">Yebo</button>
+  <span id="nl">On the board? Name yourself to save your score:</span>
+  <span style="display:flex;gap:8px;align-items:center">
+    <input id="ni" maxlength="14" placeholder="your name" autocomplete="off">
+    <button id="ns">Yebo</button>
+  </span>
 </div>
 <script>
 function shareFallback(t, done){
@@ -337,6 +340,15 @@ function bestStop(runMeters){
   let best = null;
   for(const s of STOPS) if(runMeters >= s.m && pocket >= s.cost) best = s;
   return best;
+}
+// v5.3: up to THREE restart options, deepest first — stops the run passed. Affordable ones
+// are live buttons; deeper ones are GREYED with the shortfall ("need N more 🍄") so players
+// learn the economy: restart higher next time if you bank more mushrooms. (Owner: "i want
+// more than one option, so people have to chose and can see if they dont have enough
+// shrooms they start to learn they could have restarted higher if they had more")
+function contOptionsFor(runMeters){
+  const passed = STOPS.filter(s => runMeters >= s.m).sort((a,b)=>b.m-a.m).slice(0,3);
+  return passed.map(s => ({stop:s, afford: pocket >= s.cost, short: Math.max(0, s.cost - pocket)}));
 }
 
 // ---- hog sprite: proper little boar, drawn from shapes (faces right) ----
@@ -1085,13 +1097,16 @@ function die(kind, variant){
   deathHead = HEADS[Math.floor(Math.random()*HEADS.length)];
   state='dead'; deadAt=performance.now(); shakeT=.35; beep(160,70,.28,'sawtooth');
   { const worldM=runStart+meters; if(worldM>hi){ hi=worldM; localStorage.setItem('hogback_hi',hi); } }
-  // continue option for the death screen: deepest affordable stop this run passed
-  contStops = tourRun ? null : bestStop(meters);
+  // continue options for the death screen: up to 3 deepest stops this run passed (v5.3);
+  // contStops stays as the DEFAULT (deepest affordable) for Enter-key pay-and-continue
+  contOptions = tourRun ? [] : contOptionsFor(meters);
+  contStops = tourRun ? null : (contOptions.find(o=>o.afford)?.stop || null);
   try{ document.getElementById('sh').hidden = false; }catch(e){}
   fetchBoard().then(refreshQualify).catch(()=>{});
 }
 let permits = 0;            // v5.2: laps paid for this run — the fence checks worldNow/PERMIT_M against this
-let contStops = null;         // set by die(); the one continue button on the death screen
+let contStops = null;         // default continue (deepest affordable stop) — Enter key uses this
+let contOptions = [];         // v5.3: up to 3 button options {stop, afford, short} on the death screen
 let lastTourStop = null;      // v5.0.1: the stop a tour run started from — free return on death
 function jump(){
   if(state!=='run') return;
@@ -1105,23 +1120,26 @@ function act(){
     // was already paid for, so returning to the same stop is free. (Owner playtest: the old
     // text promised a tour restart but tap gave a ranked 0-run.)
     if(tourRun && lastTourStop && performance.now()-deadAt>450){ reset(lastTourStop); return; }
-    // continue button: keyboard Enter or a tap on the painted button zone. Anywhere else =
-    // run from 0.
-    if(contStops && performance.now()-deadAt>450){
-      if(continueHit && pointerIn(continueHit)){ payAndContinue(); return; }
+    if(contOptions.length && performance.now()-deadAt>450){
+      // v5.3: a tap on one of the restart buttons pays for THAT stop; anywhere else banks.
+      for(const hit of contHits){
+        if(pointerIn(hit)){ payAndContinue(hit.opt); return; }
+      }
     }
     if(performance.now()-deadAt>450) reset();
   }
   else jump();
 }
-function payAndContinue(){
-  pocket -= contStops.cost; savePocket();
-  lastTourStop = contStops;          // v5.0.1: remembered so a tour death returns for free
-  reset(contStops);
-  toast={s:contStops.line+'. '+contStops.cost+' 🍄 spent. Jy is by '+contStops.label+'.',age:0};
+function payAndContinue(opt){
+  const o = opt || (contStops ? {stop:contStops, afford:true} : null);
+  if(!o || !o.afford) return;
+  pocket -= o.stop.cost; savePocket();
+  lastTourStop = o.stop;             // v5.0.1: remembered so a tour death returns for free
+  reset(o.stop);
+  toast={s:o.stop.line+'. '+o.stop.cost+' 🍄 spent. Jy is by '+o.stop.label+'.',age:0};
 }
-// pointer helpers for the death-screen continue button
-let continueHit = null;       // {x0,y0,x1,y1} canvas-space rect of the continue button
+// pointer helpers for the death-screen restart buttons
+let contHits = [];            // [{x0,y0,x1,y1,opt}] canvas-space rects of the restart buttons
 function pointerIn(r){
   return r && pointerLast.x>=r.x0 && pointerLast.x<=r.x1 && pointerLast.y>=r.y0 && pointerLast.y<=r.y1;
 }
@@ -1131,6 +1149,9 @@ const isTyping = e => e.target && (e.target.tagName==='INPUT' || e.target.tagNam
 addEventListener('keydown', e=>{
   if(isTyping(e)) return;
   if(state==='dead' && e.code==='Enter' && contStops && performance.now()-deadAt>450){ payAndContinue(); return; }
+  if(state==='dead' && e.code==='Digit1' && contOptions[0]?.afford && performance.now()-deadAt>450){ payAndContinue(contOptions[0]); return; }
+  if(state==='dead' && e.code==='Digit2' && contOptions[1]?.afford && performance.now()-deadAt>450){ payAndContinue(contOptions[1]); return; }
+  if(state==='dead' && e.code==='Digit3' && contOptions[2]?.afford && performance.now()-deadAt>450){ payAndContinue(contOptions[2]); return; }
   if(e.code==='Space'||e.code==='ArrowUp'){ e.preventDefault(); act(); }
   if(e.code==='ArrowDown'||e.code==='KeyS'){ e.preventDefault(); slideHeld=true; }
 });
@@ -1173,7 +1194,9 @@ cv.addEventListener('pointerdown', e=>{
   pointerLast = p;                                // v5.0: death-screen button hit-testing
   const rec = { y:e.clientY, duck:false };
   touches.set(e.pointerId, rec);
-  if(isDuck(p)){                                  // hold to duck
+  // v5.3: on the death screen the lower restart buttons sit inside the old DUCK_BAND —
+  // a dead hog cannot duck, so don't let the duck-pad capture eat button taps.
+  if(state!=='dead' && isDuck(p)){                // hold to duck
     slideHeld = true; rec.duck = true; return;
   }
   jumpFlash = performance.now();
@@ -1475,41 +1498,54 @@ function tick(now){
       // enough to read on the night palette — owner shot 2 showed the old gold washing out)
       ctx.fillStyle='#ffd75e'; ctx.font='bold 13px monospace';
       ctx.fillText('🍄 '+pocket+' saved up — they buy restarts and the next lap permit', W/2, 182);
-      // v5.0.1: ONE continue button (deepest affordable stop) + tap anywhere. Painted ABOVE
-      // the board, never under it — the owner's screenshot showed the TOP-10 panel painted
-      // straight over the button text and eating its clicks. Board itself moved down.
-      continueHit = null;
-      if(contStops && state==='dead' && deathHead!=='NO PERMIT' && deathHead!=='MAYOR!'){
-        const bl = 'TAP HERE: wake up at '+contStops.label+' ('+contStops.cost+' 🍄)';
-        ctx.font='bold 14px system-ui';
-        const bw = Math.max(320, ctx.measureText(bl).width+40);
-        const bx = W/2-bw/2, by=200, bh=30;
-        ctx.fillStyle='rgba(88,60,110,.97)'; ctx.fillRect(bx,by,bw,bh);
-        ctx.strokeStyle='#e8c8ff'; ctx.lineWidth=2; ctx.strokeRect(bx+1,by+1,bw-2,bh-2);
-        ctx.fillStyle='#ffffff'; ctx.fillText(bl, W/2, by+20);
-        continueHit = {x0:bx, y0:by, x1:bx+bw, y1:by+bh};
-        ctx.fillStyle='#ffffff'; ctx.font='bold 12px monospace';
-        ctx.fillText('your score continues from '+contStops.label+' ('+contStops.m+' m)', W/2, by+45);
+      // v5.3: RESTART BUTTONS — up to three, deepest first, ABOVE the name box. Affordable
+      // stops are live buttons; deeper ones are greyed with the shortfall so players learn
+      // that more 🍄 = restart higher. Painted above the board, never under it.
+      contHits = [];
+      if(contOptions.length && state==='dead' && deathHead!=='NO PERMIT' && deathHead!=='MAYOR!'){
+        ctx.fillStyle='#ffffff'; ctx.font='bold 12px monospace'; ctx.textAlign='center';
+        ctx.fillText('WAKE UP AT…', W/2, 196);
+        let byy = 204;
+        for(const o of contOptions){
+          const bl = o.stop.label+' — '+o.stop.cost+' 🍄' + (o.afford ? '' : '  (need '+o.short+' more)');
+          ctx.font='bold 14px system-ui';
+          const bw = Math.max(330, ctx.measureText(bl).width+40), bh=30;
+          const bx = W/2-bw/2;
+          ctx.globalAlpha = 1;
+          if(o.afford){
+            ctx.fillStyle='rgba(88,60,110,.97)'; ctx.fillRect(bx,byy,bw,bh);
+            ctx.strokeStyle='#e8c8ff'; ctx.lineWidth=2; ctx.strokeRect(bx+1,byy+1,bw-2,bh-2);
+            ctx.fillStyle='#ffffff'; ctx.fillText(bl, W/2, byy+20);
+          } else {
+            ctx.fillStyle='rgba(30,36,58,.92)'; ctx.fillRect(bx,byy,bw,bh);
+            ctx.strokeStyle='#3a4a78'; ctx.lineWidth=1.5; ctx.strokeRect(bx+1,byy+1,bw-2,bh-2);
+            ctx.fillStyle='#8f9bbd'; ctx.fillText(bl, W/2, byy+20);
+          }
+          contHits.push({x0:bx, y0:byy, x1:bx+bw, y1:byy+bh, opt:o});
+          byy += bh+8;
+        }
         ctx.fillStyle='#cdd6ee'; ctx.font='11px monospace';
-        ctx.fillText('out of 🍄 or happy with the distance? tap anywhere else to bank it', W/2, by+60);
+        ctx.fillText('tap a stop to wake there · tap anywhere else to bank your distance', W/2, byy+8);
+        byy += 16;
       } else {
-        ctx.font='14px system-ui'; ctx.globalAlpha=pulse;
+        ctx.font='14px system-ui'; ctx.globalAlpha=pulse; ctx.textAlign='center';
         ctx.fillText(tourRun ? 'tap to wake up at the same stop (free)' : 'tap to try again', W/2, 190);
+        ctx.globalAlpha=1;
       }
-      drawBoard();
+      drawBoard(Math.max(268, (contHits.length ? contHits[contHits.length-1].y1+26 : 0)));
     }
     ctx.globalAlpha=1; ctx.textAlign='left';
   }
   ctx.restore();
   requestAnimationFrame(tick);
 }
-function drawBoard(){
+function drawBoard(topMin){
   if(!board || !board.weekly || !board.weekly.length) return;
   const list=board.weekly;
   ctx.textAlign='center';
-  // v5.0.1: moved down (was y=200) — it was painting over the death screen's continue
-  // button and the tap hint. The panel now starts below ALL death-screen UI.
-  const by0 = 268;
+  // v5.0.1: below ALL death-screen UI. v5.3: pushed further down if three restart buttons
+  // are showing — topMin is the lowest pixel the buttons (plus their hint line) reached.
+  const by0 = Math.max(268, topMin||0);
   ctx.fillStyle='rgba(20,29,56,.82)';
   ctx.fillRect(W/2-160,by0,320,22+list.length*12);
   ctx.fillStyle='#ffe9a8'; ctx.font='bold 11px monospace';
