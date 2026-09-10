@@ -338,18 +338,12 @@ const WALLET_KEY = 'hogback_wallet';
 let pocket = (()=>{ try{ return Math.max(0, Math.floor(+localStorage.getItem(WALLET_KEY)||0)); }catch(e){ return 0; } })();
 function savePocket(){ try{ localStorage.setItem(WALLET_KEY, String(pocket)); }catch(e){} }
 function addPocket(n){ pocket += n; savePocket(); }
-// deepest stop the wallet can pay for, given how far the run got (you can only continue
-// from a stop you actually PASSED this run)
-function bestStop(runMeters){
-  let best = null;
-  for(const s of STOPS) if(runMeters >= s.m && pocket >= s.cost) best = s;
-  return best;
-}
 // v5.3: up to THREE restart options, deepest first — stops the run passed. Affordable ones
 // are live buttons; deeper ones are GREYED with the shortfall ("need N more 🍄") so players
 // learn the economy: restart higher next time if you bank more mushrooms. (Owner: "i want
 // more than one option, so people have to chose and can see if they dont have enough
 // shrooms they start to learn they could have restarted higher if they had more")
+// v5.5: tour deaths use this too — every wake-up pays, free returns are gone.
 function contOptionsFor(runMeters){
   const passed = STOPS.filter(s => runMeters >= s.m).sort((a,b)=>b.m-a.m).slice(0,3);
   return passed.map(s => ({stop:s, afford: pocket >= s.cost, short: Math.max(0, s.cost - pocket)}));
@@ -1104,17 +1098,17 @@ function die(kind, variant){
   deathHead = HEADS[Math.floor(Math.random()*HEADS.length)];
   state='dead'; deadAt=performance.now(); shakeT=.35; beep(160,70,.28,'sawtooth');
   { const worldM=runStart+meters; if(worldM>hi){ hi=worldM; localStorage.setItem('hogback_hi',hi); } }
-  // continue options for the death screen: up to 3 deepest stops this run passed (v5.3);
-  // contStops stays as the DEFAULT (deepest affordable) for Enter-key pay-and-continue
-  contOptions = tourRun ? [] : contOptionsFor(meters);
-  contStops = tourRun ? null : (contOptions.find(o=>o.afford)?.stop || null);
+  // continue options for the death screen: up to 3 deepest stops this run passed (v5.3).
+  // v5.5 owner ruling: TOUR DEATHS ARE NOT FREE EITHER — every wake-up pays, again and
+  // again; when the wallet runs dry you can only afford cheaper stops further back.
+  contOptions = contOptionsFor(meters);
+  contStops = contOptions.find(o=>o.afford)?.stop || null;
   try{ document.getElementById('sh').hidden = false; }catch(e){}
   fetchBoard().then(refreshQualify).catch(()=>{});
 }
 let permits = 0;            // v5.2: laps paid for this run — the fence checks worldNow/PERMIT_M against this
 let contStops = null;         // default continue (deepest affordable stop) — Enter key uses this
 let contOptions = [];         // v5.3: up to 3 button options {stop, afford, short} on the death screen
-let lastTourStop = null;      // v5.0.1: the stop a tour run started from — free return on death
 function jump(){
   if(state!=='run') return;
   if(!jumping && !slideHeld){ vy=JUMPV; jumping=true; beep(440,660,.09); }
@@ -1123,10 +1117,10 @@ function jump(){
 function act(){
   if(state==='ready') reset();
   else if(state==='dead'){
-    // v5.0.1: tour-run death — "tap to head back to the last stop" must be TRUE. The visit
-    // was already paid for, so returning to the same stop is free. (Owner playtest: the old
-    // text promised a tour restart but tap gave a ranked 0-run.)
-    if(tourRun && lastTourStop && performance.now()-deadAt>450){ reset(lastTourStop); return; }
+    // v5.5: NO free returns. Owner ruling: "waking at same spot again shouldnt be free…
+    // keep charging you until you run out of mushrooms and go back further". Tour deaths
+    // now use the same button flow — every wake-up costs, and a dry wallet forces you
+    // further back down the mountain. (Supersedes the v5.0.1 free-return rule.)
     if(contOptions.length && performance.now()-deadAt>450){
       // v5.3: a tap on one of the restart buttons pays for THAT stop; anywhere else banks.
       // v5.4: tapping a GREYED button teaches instead of doing nothing — the whole point of
@@ -1151,7 +1145,6 @@ function payAndContinue(opt){
   const o = opt || (contStops ? {stop:contStops, afford:true} : null);
   if(!o || !o.afford) return;
   pocket -= o.stop.cost; savePocket();
-  lastTourStop = o.stop;             // v5.0.1: remembered so a tour death returns for free
   reset(o.stop);
   toast={s:o.stop.line+'. '+o.stop.cost+' 🍄 spent. Jy is by '+o.stop.label+'.',age:0};
 }
@@ -1286,10 +1279,13 @@ function tick(now){
     }
     nextGap-=spd*dt;
     if(nextGap<=0 && spawnGrace<=0){
-      // Scenic corridor: never spawn an obstacle where it will overlap a waterfall — the mossy
-      // cliff and the small plants read too alike (owner: "too sneaky"). Falls and obstacles
-      // both scroll at `speed`, so relative position is FIXED: a clear gap at spawn time stays
-      // clear for the whole crossing. Just hold the spawn while a fall is near the spawn lane.
+      // v5.5 HARD SPATIAL FLOOR: regardless of what the gap timer says, never spawn while
+      // the previous obstacle's tail is still inside the spawn lane. The gap timer is
+      // authored in seconds and normally guarantees spacing, but the fast-drop (down+jump)
+      // shortens airtime, and an aloe→stump pair with a sliver of ground between them is a
+      // trap you cannot land in and re-jump from (owner screenshot). 260 px ≈ the minimum
+      // run-up needed to hop the next thing after landing.
+      const tailNearSpawn = obs.some(o => o.x + (o.w||60) > W-260);
       const fallNearSpawn = FALLS.some(f => {
         const sx = 60 + f.m*10 + 210 - trav;
         return sx > W-340 && sx < W+340;
@@ -1297,10 +1293,12 @@ function tick(now){
       // v5.0.1 (owner playtest shot 3): the same corridor rule for MUSHROOMS. The shroom
       // spawner avoided obstacles, but the obstacle spawner never avoided shrooms — so a
       // stump could materialise right on top of one, and a stump+shroom wall is unjumpable
-      // (grabbing the shroom puts you inside the stump's hitbox). Hold the spawn while a
-      // shroom sits in the spawn lane; the shroom then passes collectible.
-      const shroomNearSpawn = shrooms.some(s => s.x > W-160);
-      if(fallNearSpawn || shroomNearSpawn){ nextGap += 90; }   // wait until the lane clears
+      // (grabbing the shroom puts you inside the stump's hitbox). v5.5 widens the keep-out
+      // to the JUMP FOOTPRINT: a hop covers ~(2*vy/gravity relation) ≈ 300+ px of track at
+      // speed, so anything closer than that to the obstacle's landing side risks a
+      // "land between them" trap the owner screenshotted (aloe→stump, no room to re-jump).
+      const shroomNearSpawn = shrooms.some(s => s.x > W-320);
+      if(fallNearSpawn || shroomNearSpawn || tailNearSpawn){ nextGap += 90; }   // wait until the lane clears
       else {
         spawn(ramp, grow);
         const spawned = obs[obs.length-1];
@@ -1344,7 +1342,8 @@ function tick(now){
         deathCause='finished lap '+(Math.floor(worldNow/PERMIT_M))+' at Gaikas Kop with no permit ('+PERMIT_COST+' 🍄). back to the village with you';
         deathHead='NO PERMIT';
         state='dead'; deadAt=performance.now(); shakeT=.35; beep(220,110,.4,'triangle');
-        contStops=bestStop(worldNow-1);   // last stop you actually passed
+        contOptions = contOptionsFor(worldNow-1);
+        contStops = contOptions.find(o=>o.afford)?.stop || null;
         try{ document.getElementById('sh').hidden = false; }catch(e){}
         fetchBoard().then(refreshQualify).catch(()=>{});
         return;
@@ -1413,7 +1412,10 @@ function tick(now){
     // to ~1 per 450-850 m (was 110-190; owner caught the maths) so the stop prices bite.
     if(trav > nextShroom){
       const sx=W+30, sy=GROUND-46-Math.random()*54;
-      if(obs.some(o=>Math.abs(o.x-sx)<80)) nextShroom=trav+180;
+      // v5.5: keep-out widened 80 → 300 px. An obstacle's JUMP lands ~300 px past its front
+      // edge at speed; a shroom inside that footprint creates the impossible "land in
+      // between" gap (owner screenshot: aloe + stump, no room to land and re-jump).
+      if(obs.some(o=>Math.abs(o.x-sx)<300)) nextShroom=trav+180;
       else {
         shrooms.push({x:sx,y:sy}); nextShroom=trav+4500+Math.random()*4000;
         if(!shroomHintShown){ shroomHintShown=true; toast={s:'Goud sampioene = spaarveroorge. Rooies vermoor jou.',age:0}; }
@@ -1527,38 +1529,47 @@ function tick(now){
       ctx.fillText(`${runStart+meters} m   ·   HI ${hi} m   ·   🍄 ${pocket}`, W/2, 110);
       ctx.fillStyle='#ffd75e'; ctx.font='bold 11px monospace';
       ctx.fillText('🍄 '+pocket+' in the pocket — mushrooms buy second chances', W/2, 126);
-      // v5.3/v5.4: RESTART BUTTONS — up to three, deepest first, always inside the canvas
-      // band above the DOM overlays. Affordable stops are live buttons; deeper ones are
-      // greyed with the shortfall so players learn that more 🍄 = restart higher.
+      // v5.3/v5.4/v5.5: RESTART BUTTONS — up to three, deepest first, always inside the
+      // canvas band above the DOM overlays. The whole group (header + buttons + hint) sits
+      // on ONE backing box so no text floats naked over the scenery (owner shots: "WAKE UP
+      // AT… barely looks like it made it onto the box bg").
       contHits = [];
       if(contOptions.length && state==='dead' && deathHead!=='NO PERMIT' && deathHead!=='MAYOR!'){
-        ctx.fillStyle='#ffffff'; ctx.font='bold 11px monospace'; ctx.textAlign='center';
-        ctx.fillText('WAKE UP AT…', W/2, 142);
-        let byy = 148;
-        for(const o of contOptions){
+        // measure the group first so the backing box covers all of it
+        let byy = 140;
+        const rows = contOptions.map(o=>{
           const bl = o.stop.label+' — '+o.stop.cost+' 🍄' + (o.afford ? '' : '  (need '+o.short+' more)');
           ctx.font='bold 13px system-ui';
-          const bw = Math.max(300, Math.min(W-24, ctx.measureText(bl).width+36)), bh=26;
-          const bx = W/2-bw/2;
+          return { o, bl, bw: Math.max(300, Math.min(W-24, ctx.measureText(bl).width+36)), bh:26 };
+        });
+        const groupH = 12 + rows.length*(26+6) + 16;
+        const gw = Math.max(340, ...rows.map(r=>r.bw)) + 24;
+        ctx.fillStyle='rgba(20,29,56,.88)';
+        ctx.fillRect(W/2-gw/2, byy, gw, groupH);
+        ctx.fillStyle='#ffe9a8'; ctx.font='bold 11px monospace'; ctx.textAlign='center';
+        ctx.fillText('WAKE UP AT…', W/2, byy+16);
+        byy += 26;
+        for(const r of rows){
+          const bx = W/2-r.bw/2;
           ctx.globalAlpha = 1;
-          if(o.afford){
-            ctx.fillStyle='rgba(88,60,110,.97)'; ctx.fillRect(bx,byy,bw,bh);
-            ctx.strokeStyle='#e8c8ff'; ctx.lineWidth=2; ctx.strokeRect(bx+1,byy+1,bw-2,bh-2);
-            ctx.fillStyle='#ffffff'; ctx.fillText(bl, W/2, byy+18);
+          if(r.o.afford){
+            ctx.fillStyle='rgba(88,60,110,.97)'; ctx.fillRect(bx,byy,r.bw,r.bh);
+            ctx.strokeStyle='#e8c8ff'; ctx.lineWidth=2; ctx.strokeRect(bx+1,byy+1,r.bw-2,r.bh-2);
+            ctx.fillStyle='#ffffff'; ctx.fillText(r.bl, W/2, byy+18);
           } else {
-            ctx.fillStyle='rgba(30,36,58,.92)'; ctx.fillRect(bx,byy,bw,bh);
-            ctx.strokeStyle='#3a4a78'; ctx.lineWidth=1.5; ctx.strokeRect(bx+1,byy+1,bw-2,bh-2);
-            ctx.fillStyle='#8f9bbd'; ctx.fillText(bl, W/2, byy+18);
+            ctx.fillStyle='rgba(30,36,58,.92)'; ctx.fillRect(bx,byy,r.bw,r.bh);
+            ctx.strokeStyle='#3a4a78'; ctx.lineWidth=1.5; ctx.strokeRect(bx+1,byy+1,r.bw-2,r.bh-2);
+            ctx.fillStyle='#8f9bbd'; ctx.fillText(r.bl, W/2, byy+18);
           }
-          contHits.push({x0:bx, y0:byy, x1:bx+bw, y1:byy+bh, opt:o});
-          byy += bh+6;
+          contHits.push({x0:bx, y0:byy, x1:bx+r.bw, y1:byy+r.bh, opt:r.o});
+          byy += r.bh+6;
         }
         ctx.fillStyle='#cdd6ee'; ctx.font='10px monospace';
-        ctx.fillText('tap a stop to wake there · anywhere else banks your distance', W/2, byy+7);
-        byy += 14;
+        ctx.fillText('tap a stop to wake there · anywhere else banks your distance', W/2, byy+8);
+        byy += 16;
       } else {
         ctx.font='13px system-ui'; ctx.globalAlpha=pulse; ctx.textAlign='center';
-        ctx.fillText(tourRun ? 'tap to wake up at the same stop (free)' : 'tap to try again', W/2, 150);
+        ctx.fillText('no stops passed yet — tap to run from the village', W/2, 150);
         ctx.globalAlpha=1;
       }
       drawBoard(Math.max(200, (contHits.length ? contHits[contHits.length-1].y1+18 : 0)));
