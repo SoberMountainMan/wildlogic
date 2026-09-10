@@ -205,7 +205,8 @@ const MIN_GAP_T = 0.66;
 // Spaced for LONG runs — v5.0 map: the run leaves the VILLAGE (dense, funny, every 300-500 m),
 // climbs the MOUNTAIN, follows the waterfall trail, then the deep field thins out to the
 // Gaikas Kop fence at 170 000 m — NOT a wall, one full lap of Hogsback (owner ruling 10 Sep:
-// each lap costs a 100 🍄 permit for the next one; six laps = 1,020,000 = crowned Mayor).
+// the gate ALWAYS opens; the next lap's permit costs 100 🍄 when you can afford it and nothing
+// when you can't — v5.11 removed the NO PERMIT death; six laps = 1,020,000 = crowned Mayor).
 // RESTART STOPS are the landmarks at Fibonacci distances (owner ruling 09 Sep 2026):
 // each one is a rest point you can continue from for mushrooms (see STOPS below).
 const LANDMARKS = [
@@ -236,7 +237,7 @@ const LANDMARKS = [
   [110000, 'CAPE PARROT PROJECT',    'Cape Parrot — hy lag vir jou, hy weet.'],
   [121393, 'THE SECRET WATERFALL',   'Die geheime waterval — jy weet waar, jy sal nie se nie.'],
   [140000, 'THE LABYRINTH',          'Moenie verdwaal nie, vark.'],
-  [170000, 'GAIKAS KOP',             'Gaikas Kop — the fence. 100 🍄 buys the next lap, or its back down the mountain.'],
+  [170000, 'GAIKAS KOP',             'Gaikas Kop — die hek. 100 🍄 vir die volgende rondte, as jy dit het.'],
 ];
 const AMBIENT = [
   'Nee man, kyk uit vir die aalwyne!',
@@ -815,14 +816,18 @@ function backdrop(k){
 
 // ---- waterfalls: canvas-drawn scenery at the waterfall landmarks (no image assets) ----
 // One entry per waterfall landmark: w = spout width, h = drop height, jets = streams.
+// EVERY fall sits on its own signpost metre — the four below match their LANDMARKS/STOPS rows
+// exactly, and the last one is THE SECRET WATERFALL at 121 393 (signpost + 61 🍄 rest stop).
+// v5.11: it used to read 130 393, a v5.0 slip that left the named Secret Waterfall with NO fall
+// drawn at it and put an unnamed fall 9 km further on (its own comment even claimed "past the
+// Labyrinth", but the Labyrinth is at 140 000 — so 130 393 was BEFORE it). Fixed to 121 393.
 const WATERFALLS = [
   {m:17711,  w:44, h:146, jets:2},   // 39 Steps Falls (also a rest stop)
   {m:28657,  w:34, h:184, jets:2},   // Madonna & Child (also a rest stop)
   {m:46368,  w:62, h:116, jets:1},   // Kettlespout (also a rest stop)
   {m:75025,  w:36, h:206, jets:3},   // Swallowtail (also a rest stop)
-  {m:130393, w:30, h:170, jets:2},   // Secret Falls (past the Labyrinth, deep field)
+  {m:121393, w:30, h:170, jets:2},   // THE SECRET WATERFALL (also a rest stop)
 ];
-// Long runs repeat the set so the tail past ~130 km is not empty scenery.
 // v5.10: ONE lap of falls. The repetition is the lap loop's job now — this used to bake in four
 // copies every FALLS_CYCLE = 160 000 m, which was the wrong phase for a 170 000 m lap (they drifted
 // 7 711 m per lap) and ran out at 610 km. The per-lap size growth is applied at draw time from the
@@ -1224,16 +1229,15 @@ function die(kind, variant){
   // continue options for the death screen: up to 3 deepest stops this run passed (v5.3).
   // v5.5 owner ruling: TOUR DEATHS ARE NOT FREE EITHER — every wake-up pays, again and
   // again; when the wallet runs dry you can only afford cheaper stops further back.
-  // v5.9: the stops are WORLD landmarks, so offer the ones this POSITION has passed — not the
-  // ones this leg ran past. `meters` is the leg distance, so a continue that ran 5 km from the
-  // Secret Waterfall would otherwise be offered CANNACOPIA (420 m) and teleport you backwards
-  // up the mountain. Same reason the NO PERMIT branch below uses worldNow-1.
+  // v5.10: `meters` is the absolute position again (distance from the village), so the stops to
+  // offer are simply the ones at or before it — `contOptionsFor(meters)` with no offset. (v5.9
+  // briefly fed it a leg distance here, which is what the note about worldNow-1 used to explain.)
   contOptions = contOptionsFor(meters);
   contStops = contOptions.find(o=>o.afford)?.stop || null;
   try{ document.getElementById('sh').hidden = false; }catch(e){}
   fetchBoard().then(refreshQualify).catch(()=>{});
 }
-let permits = 0;            // v5.2: laps paid for this run — the fence checks worldNow/PERMIT_M against this
+let permits = 0;            // v5.2: laps ENTERED this run — the fence checks worldNow/PERMIT_M against this (v5.11: credited whether or not you can pay, since the gate always opens)
 let contStops = null;         // default continue (deepest affordable stop) — Enter key uses this
 let contOptions = [];         // v5.3: up to 3 button options {stop, afford, short} on the death screen
 function jump(){
@@ -1466,36 +1470,21 @@ function tick(now){
     for(const o of obs) o.x-=spd*dt;
     obs=obs.filter(o=>o.x>-140);
     // ---- v5.2: the Gaikas Kop fence = the loop, and the Mayor (the two ways a run "ends") ----
-    // 170,000 m is NOT a wall — it's one lap of Hogsback. Each time you reach the fence you buy
-    // the NEXT lap's permit (100 🍄) or you're escorted back to the village. Six laps = Mayor.
+    // 170,000 m is NOT a wall — it's one lap of Hogsback, and the gate ALWAYS opens. The next
+    // lap's permit costs 100 🍄 when you can afford it; when you can't, you still ride through.
+    // Six laps = Mayor.
+    //
+    // v5.11 (owner, 10 Sep): "you not supposed to die at 170000." The NO PERMIT death is REMOVED.
+    // It was never the owner's rule — v5.2 recorded him saying "as long as you have enough
+    // mushrooms", and the lethal branch for when you don't was layered on top of that. The fence
+    // can no longer end a run: the toll is a mushroom sink, not a wall.
     const worldNow = meters;
-    if(worldNow >= PERMIT_M && permits < Math.floor(worldNow / PERMIT_M)){
-      // need a permit for the lap you are ENTERING
-      if(pocket >= PERMIT_COST){
-        pocket -= PERMIT_COST; savePocket();
-        permits = Math.floor(worldNow / PERMIT_M);
-        const lap = permits;   // laps completed
-        toast={s:'Lap '+(lap)+' done — permit bought, 100 🍄. On to lap '+(lap+1)+'.',age:0};
-        beep(660,990,.3,'sine');
-      } else {
-        // v5.8: the cause string is POSTed, and the Worker validates it against
-        // /^[\w .\-',!()—]+$/ — a 🍄 is not in that class, so this death returned 400
-        // 'naughty cause' and could NEVER be saved. Of all the deaths to lose, it is the one
-        // the owner most wants to test ("I need to see what happens at 170k that's a new lap").
-        // The emoji belongs in the toast, which is never posted; the cause stays plain text.
-        deathCause='finished lap '+(Math.floor(worldNow/PERMIT_M))+' at Gaikas Kop with no permit ('+PERMIT_COST+' shrooms). back to the village with you';
-        deathHead='NO PERMIT';
-        state='dead'; deadAt=performance.now(); shakeT=.35; beep(220,110,.4,'triangle');
-        contOptions = contOptionsFor(worldNow-1);
-        contStops = contOptions.find(o=>o.afford)?.stop || null;
-        try{ document.getElementById('sh').hidden = false; }catch(e){}
-        fetchBoard().then(refreshQualify).catch(()=>{});
-        return;
-      }
-    }
+    // MAYOR is checked BEFORE the fence. At 1,020,000 m you have COMPLETED lap 6, so the fence
+    // would otherwise charge a 7th permit for a lap you never enter — and under the old lethal
+    // rule a broke player could be killed instead of crowned. Win first; no phantom toll.
     if(worldNow >= MAYOR_M){
       // 1,020,000 m = six full laps. The board's ceiling is 1,000,000, so this posts at the cap.
-      deathCause='six laps of Hogsback, every permit paid. crowned MAYOR.';
+      deathCause='six laps of Hogsback. crowned MAYOR.';
       deathHead='MAYOR!';
       state='dead'; deadAt=performance.now(); shakeT=.35;
       beep(660,1320,.5,'sine');
@@ -1503,6 +1492,19 @@ function tick(now){
       try{ document.getElementById('sh').hidden = false; }catch(e){}
       fetchBoard().then(refreshQualify).catch(()=>{});
       return;
+    }
+    if(worldNow >= PERMIT_M && permits < Math.floor(worldNow / PERMIT_M)){
+      const lap = Math.floor(worldNow / PERMIT_M);   // laps completed = the lap being entered
+      permits = lap;                                 // credit it either way — this is one-shot
+      if(pocket >= PERMIT_COST){
+        pocket -= PERMIT_COST; savePocket();
+        toast={s:'Lap '+lap+' done — permit bought, 100 🍄. On to lap '+(lap+1)+'.',age:0};
+        beep(660,990,.3,'sine');
+      } else {
+        // broke: the gate still opens and no metres are lost. The old NO PERMIT death is gone.
+        toast={s:'Lap '+lap+' done — no permit, but the gate opens. On to lap '+(lap+1)+'.',age:0};
+        beep(440,660,.25,'sine');
+      }
     }
     // landmarks & Oom — v5.10: the map loops, so this cursor wraps too. You hear The Edge, then
     // Cannacopia, all the way to Gaikas Kop, and on the next lap you hear them all again.
