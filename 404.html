@@ -1129,8 +1129,18 @@ function act(){
     if(tourRun && lastTourStop && performance.now()-deadAt>450){ reset(lastTourStop); return; }
     if(contOptions.length && performance.now()-deadAt>450){
       // v5.3: a tap on one of the restart buttons pays for THAT stop; anywhere else banks.
+      // v5.4: tapping a GREYED button teaches instead of doing nothing — the whole point of
+      // showing the shortfall is the lesson (owner: "they start to learn they could have
+      // restarted higher if they had more").
       for(const hit of contHits){
-        if(pointerIn(hit)){ payAndContinue(hit.opt); return; }
+        if(pointerIn(hit)){
+          if(hit.opt.afford){ payAndContinue(hit.opt); }
+          else{
+            toast={s:'Need '+(hit.opt.short)+' more 🍄 to wake up at '+hit.opt.label+' — tap anywhere else to bank this run.',age:0};
+            beep(200,140,.15,'triangle');
+          }
+          return;
+        }
       }
     }
     if(performance.now()-deadAt>450) reset();
