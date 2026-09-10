@@ -11,19 +11,23 @@
   #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
   canvas{width:min(100vw,1040px);height:auto;display:block}
   #home{position:fixed;top:10px;left:12px;color:#23405c;text-decoration:none;font-size:15px;opacity:.7;z-index:2}
-  #sh{position:fixed;left:50%;bottom:4vh;transform:translateX(-50%);z-index:3;
+  #sh{position:fixed;left:50%;bottom:2vh;transform:translateX(-50%);z-index:3;
       background:#141d38;color:#ffe9a8;border:1px solid #3a4a78;border-radius:22px;
-      font-size:16px;padding:12px 22px;font-family:system-ui,sans-serif}
-  /* v5.3: name box BELOW the restart buttons (was 26vh — covered the wallet/button zone) */
-  #nm{position:fixed;left:50%;bottom:12vh;transform:translateX(-50%);z-index:4;
-      display:flex;flex-direction:column;gap:6px;align-items:center;background:#141d38;
-      border:1px solid #3a4a78;border-radius:22px;padding:10px 14px;text-align:center}
+      font-size:16px;padding:10px 20px;font-family:system-ui,sans-serif}
+  /* v5.4: death-screen DOM overlays pin to the VERY bottom edge (they were at 12/4vh and
+     covered the restart buttons on landscape phones, where viewport height == canvas
+     height). While the name box is up, the share button hides (body.has-nm) — one job
+     at a time, and nothing stacks over the canvas buttons. */
+  body.has-nm #sh{display:none}
+  #nm{position:fixed;left:50%;bottom:2vh;transform:translateX(-50%);z-index:4;
+      display:flex;flex-direction:column;gap:5px;align-items:center;background:#141d38;
+      border:1px solid #3a4a78;border-radius:18px;padding:7px 12px;text-align:center}
   #nm[hidden]{display:none}
-  #nm span{color:#cdd6ee;font-size:14px}
-  #ni{background:#0e1526;color:#ffe9a8;border:1px solid #3a4a78;border-radius:12px;
-      font-size:15px;padding:8px 10px;width:140px;font-family:system-ui,sans-serif}
-  #ns{background:#ffe9a8;color:#141d38;border:none;border-radius:12px;
-      font-size:14px;padding:8px 14px;font-family:system-ui,sans-serif}
+  #nm span{color:#cdd6ee;font-size:12px}
+  #ni{background:#0e1526;color:#ffe9a8;border:1px solid #3a4a78;border-radius:10px;
+      font-size:14px;padding:6px 9px;width:130px;font-family:system-ui,sans-serif}
+  #ns{background:#ffe9a8;color:#141d38;border:none;border-radius:10px;
+      font-size:13px;padding:6px 12px;font-family:system-ui,sans-serif}
 </style>
 </head>
 <body>
@@ -1072,7 +1076,7 @@ function reset(fromStop){
   // fast-forward the landmark/weather cursors so the tour run starts in the right scenery:
   while(lmIdx<LANDMARKS.length && LANDMARKS[lmIdx][0] <= runStart) lmIdx++;
   wxTimer = 10+Math.random()*8;               // first weather arrives late — spawn is calm
-  try{ document.getElementById('sh').hidden = true; document.getElementById('nm').hidden = true; }catch(e){}
+  try{ document.getElementById('sh').hidden = true; document.getElementById('nm').hidden = true; document.body.classList.remove('has-nm'); }catch(e){}
 }
 async function fetchBoard(force){
   if(board && !force && performance.now()-boardAt<60000) return board;
@@ -1085,6 +1089,9 @@ function refreshQualify(b){
   qualify = w.length<10 || (runStart+meters) > ((w[w.length-1]||{m:0}).m);
   if(state==='dead' && qualify && !(posted && meters<=lastPostedM)){ nm.hidden=false; prefillName(); }
   else nm.hidden=true;
+  // v5.4: body flag — while the name box is up, CSS hides the share button (landscape phones:
+  // the two overlays stacked and covered the restart buttons)
+  try{ document.body.classList.toggle('has-nm', !nm.hidden); }catch(e){}
 }
 function die(kind, variant){
   // v5.0 death-cause resolution: riders get their OWN pools ('rider:toad'/'rider:baboon') —
@@ -1477,62 +1484,71 @@ function tick(now){
     ctx.textAlign='center'; ctx.globalAlpha=pulse;
     if(state==='ready'){
       ctx.fillStyle='#23405c'; ctx.font='bold 30px system-ui';
-      ctx.fillText("HOG'S BACK RUN", W/2, 108);
-      ctx.font='16px system-ui'; ctx.globalAlpha=.85;
-      ctx.fillText('404 — '+WANT+' wandered into the mist.', W/2, 136);
-      ctx.globalAlpha=pulse;
-      ctx.fillText('click / tap = hop   ·   hold DUCK (or Down arrow) = slide', W/2, 162);
+      ctx.fillText("HOG'S BACK RUN", W/2, 84);
+      ctx.font='15px system-ui'; ctx.globalAlpha=.9;
+      ctx.fillText('404 — '+WANT+' wandered into the mist.', W/2, 108);
+      // v5.4: the start screen TEACHES the game (owner: "we missing an opportunity at the
+      // start to explain the game") — controls, the mushroom economy, continue stops, loop.
+      ctx.globalAlpha=.95; ctx.font='14px system-ui'; ctx.fillStyle='#23405c';
+      ctx.fillText('tap / click = hop  ·  hold the DUCK pad (or ↓) = slide under logs', W/2, 138);
+      ctx.globalAlpha=.8;  ctx.font='13px system-ui';
+      ctx.fillText('collect 🍄 mushrooms — they are money, not weather', W/2, 160);
+      ctx.fillText('die and you can wake up again at a stop you passed, for 🍄', W/2, 180);
+      ctx.fillText('your distance keeps counting — reach 170,000 m for lap 2, six laps = Mayor', W/2, 200);
+      ctx.globalAlpha=pulse; ctx.font='bold 14px system-ui';
+      ctx.fillText('tap anywhere to run', W/2, 232);
     } else {
+      // v5.4: landscape phones give the canvas only ~360 px of height — the panel is
+      // COMPACT (top-anchored, tighter leading) and the restart buttons stay in the
+      // 130-260 band, clear of the DOM name/share boxes pinned to the bottom edge.
       ctx.fillStyle='rgba(20,29,56,.88)';
       const cause = 'You were killed by ' + deathCause + '.';
-      ctx.font='bold 15px system-ui';
-      const cw = Math.max(360, ctx.measureText(cause).width+48);
-      ctx.fillRect(W/2-cw/2,84,cw,116);
-      ctx.fillStyle='#ffe9a8'; ctx.font='bold 26px system-ui'; ctx.textAlign='center';
-      ctx.fillText(deathHead, W/2, 118);
-      ctx.fillStyle='#fff'; ctx.font='bold 15px system-ui';
-      ctx.fillText(cause, W/2, 144);
-      ctx.fillStyle='#cdd6ee'; ctx.font='16px monospace';
-      ctx.fillText(`${runStart+meters} m   ·   HI ${hi} m`, W/2, 168);
-      // wallet line ON the death panel — teaches the economy where the eyes are (bright
-      // enough to read on the night palette — owner shot 2 showed the old gold washing out)
-      ctx.fillStyle='#ffd75e'; ctx.font='bold 13px monospace';
-      ctx.fillText('🍄 '+pocket+' saved up — they buy restarts and the next lap permit', W/2, 182);
-      // v5.3: RESTART BUTTONS — up to three, deepest first, ABOVE the name box. Affordable
-      // stops are live buttons; deeper ones are greyed with the shortfall so players learn
-      // that more 🍄 = restart higher. Painted above the board, never under it.
+      ctx.font='bold 14px system-ui';
+      const cw = Math.max(360, Math.min(W-20, ctx.measureText(cause).width+44));
+      ctx.fillRect(W/2-cw/2,46,cw,96);
+      ctx.fillStyle='#ffe9a8'; ctx.font='bold 22px system-ui'; ctx.textAlign='center';
+      ctx.fillText(deathHead, W/2, 72);
+      ctx.fillStyle='#fff'; ctx.font='bold 13px system-ui';
+      ctx.fillText(cause, W/2, 92);
+      ctx.fillStyle='#cdd6ee'; ctx.font='13px monospace';
+      ctx.fillText(`${runStart+meters} m   ·   HI ${hi} m   ·   🍄 ${pocket}`, W/2, 110);
+      ctx.fillStyle='#ffd75e'; ctx.font='bold 11px monospace';
+      ctx.fillText('🍄 buy restarts at the stops you passed — and the next lap permit', W/2, 126);
+      // v5.3/v5.4: RESTART BUTTONS — up to three, deepest first, always inside the canvas
+      // band above the DOM overlays. Affordable stops are live buttons; deeper ones are
+      // greyed with the shortfall so players learn that more 🍄 = restart higher.
       contHits = [];
       if(contOptions.length && state==='dead' && deathHead!=='NO PERMIT' && deathHead!=='MAYOR!'){
-        ctx.fillStyle='#ffffff'; ctx.font='bold 12px monospace'; ctx.textAlign='center';
-        ctx.fillText('WAKE UP AT…', W/2, 196);
-        let byy = 204;
+        ctx.fillStyle='#ffffff'; ctx.font='bold 11px monospace'; ctx.textAlign='center';
+        ctx.fillText('WAKE UP AT…', W/2, 142);
+        let byy = 148;
         for(const o of contOptions){
           const bl = o.stop.label+' — '+o.stop.cost+' 🍄' + (o.afford ? '' : '  (need '+o.short+' more)');
-          ctx.font='bold 14px system-ui';
-          const bw = Math.max(330, ctx.measureText(bl).width+40), bh=30;
+          ctx.font='bold 13px system-ui';
+          const bw = Math.max(300, Math.min(W-24, ctx.measureText(bl).width+36)), bh=26;
           const bx = W/2-bw/2;
           ctx.globalAlpha = 1;
           if(o.afford){
             ctx.fillStyle='rgba(88,60,110,.97)'; ctx.fillRect(bx,byy,bw,bh);
             ctx.strokeStyle='#e8c8ff'; ctx.lineWidth=2; ctx.strokeRect(bx+1,byy+1,bw-2,bh-2);
-            ctx.fillStyle='#ffffff'; ctx.fillText(bl, W/2, byy+20);
+            ctx.fillStyle='#ffffff'; ctx.fillText(bl, W/2, byy+18);
           } else {
             ctx.fillStyle='rgba(30,36,58,.92)'; ctx.fillRect(bx,byy,bw,bh);
             ctx.strokeStyle='#3a4a78'; ctx.lineWidth=1.5; ctx.strokeRect(bx+1,byy+1,bw-2,bh-2);
-            ctx.fillStyle='#8f9bbd'; ctx.fillText(bl, W/2, byy+20);
+            ctx.fillStyle='#8f9bbd'; ctx.fillText(bl, W/2, byy+18);
           }
           contHits.push({x0:bx, y0:byy, x1:bx+bw, y1:byy+bh, opt:o});
-          byy += bh+8;
+          byy += bh+6;
         }
-        ctx.fillStyle='#cdd6ee'; ctx.font='11px monospace';
-        ctx.fillText('tap a stop to wake there · tap anywhere else to bank your distance', W/2, byy+8);
-        byy += 16;
+        ctx.fillStyle='#cdd6ee'; ctx.font='10px monospace';
+        ctx.fillText('tap a stop to wake there · anywhere else banks your distance', W/2, byy+7);
+        byy += 14;
       } else {
-        ctx.font='14px system-ui'; ctx.globalAlpha=pulse; ctx.textAlign='center';
-        ctx.fillText(tourRun ? 'tap to wake up at the same stop (free)' : 'tap to try again', W/2, 190);
+        ctx.font='13px system-ui'; ctx.globalAlpha=pulse; ctx.textAlign='center';
+        ctx.fillText(tourRun ? 'tap to wake up at the same stop (free)' : 'tap to try again', W/2, 150);
         ctx.globalAlpha=1;
       }
-      drawBoard(Math.max(268, (contHits.length ? contHits[contHits.length-1].y1+26 : 0)));
+      drawBoard(Math.max(200, (contHits.length ? contHits[contHits.length-1].y1+18 : 0)));
     }
     ctx.globalAlpha=1; ctx.textAlign='left';
   }
@@ -1545,7 +1561,7 @@ function drawBoard(topMin){
   ctx.textAlign='center';
   // v5.0.1: below ALL death-screen UI. v5.3: pushed further down if three restart buttons
   // are showing — topMin is the lowest pixel the buttons (plus their hint line) reached.
-  const by0 = Math.max(268, topMin||0);
+  const by0 = Math.max(190, topMin||0);
   ctx.fillStyle='rgba(20,29,56,.82)';
   ctx.fillRect(W/2-160,by0,320,22+list.length*12);
   ctx.fillStyle='#ffe9a8'; ctx.font='bold 11px monospace';
