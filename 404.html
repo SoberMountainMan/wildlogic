@@ -1261,6 +1261,10 @@ function rideThroughFence(){
   obs=[]; nextGap=900; spawnGrace=0;
   shrooms=[]; nextShroom=trav+2500;
   wxTimer=Math.max(wxTimer,7);
+  // v5.13: nextAmb tracks ~160-320 m ahead of `meters`, so it is always armed AT the fence line.
+  // Without this the ambient toast ("loop vark loop") pops the instant the card closes and steps
+  // on the one beat the cutscene just earned. Push it clear of the gate.
+  nextAmb = meters + 240;
 }
 function act(){
   if(state==='ready') reset();
@@ -1759,8 +1763,14 @@ function tick(now){
         // shows it. For a continue, the useful second fact is how far this leg ran since the stop.
         ctx.fillText(tourRun ? `woke at ${runStart} m — ${meters-runStart} m this leg` : '', W/2, 124);
       }
-      ctx.fillStyle='#ffd75e'; ctx.font='bold 11px monospace';
-      ctx.fillText('🍄 '+pocket+' in the pocket — mushrooms buy second chances', W/2, 138);
+      // v5.13: "mushrooms buy second chances" is a DEATH line — on the win there are no second
+      // chances left to buy, so the Mayor gets the celebration line instead of a shop sign.
+      ctx.font='bold 11px monospace'; ctx.fillStyle='#ffd75e';
+      if(isMayor){
+        ctx.fillText('six laps of the ridge — and it is all yours', W/2, 138);
+      } else {
+        ctx.fillText('🍄 '+pocket+' in the pocket — mushrooms buy second chances', W/2, 138);
+      }
       // v5.3/v5.4/v5.5: RESTART BUTTONS — up to three, deepest first, always inside the
       // canvas band above the DOM overlays. The whole group (header + buttons + hint) sits
       // on ONE backing box so no text floats naked over the scenery (owner shots: "WAKE UP
@@ -1801,8 +1811,21 @@ function tick(now){
         ctx.fillText('tap a stop to wake there · anywhere else banks your distance', W/2, byy+8);
         byy += 16;
       } else {
-        ctx.font='13px system-ui'; ctx.globalAlpha=pulse; ctx.textAlign='center';
-        ctx.fillText('no stops passed yet — tap to run from the village', W/2, 150);
+        // v5.13 — two defects the screenshot pass exposed on the win screen.
+        // (1) This hint used to be painted at y=150, i.e. BELOW the panel (which ends at 142) and
+        //     naked over the mountains, clipped by the ridge. House rule (owner, v5.3): no text
+        //     floats off its backing box — so it now gets the same box treatment as the buttons.
+        // (2) "no stops passed yet — tap to run from the village" is the DEATH empty-state. On a
+        //     win it reads as if something went wrong. The Mayor gets its own words.
+        const hint = isMayor
+          ? 'tap to ride the ridge again from the village'
+          : 'no stops passed yet — tap to run from the village';
+        ctx.textAlign='center'; ctx.font='bold 13px system-ui';
+        const hw = Math.max(340, Math.min(W-24, ctx.measureText(hint).width+40));
+        ctx.fillStyle='rgba(20,29,56,.88)';
+        ctx.fillRect(W/2-hw/2, 148, hw, 34);
+        ctx.globalAlpha=pulse; ctx.fillStyle='#ffe9a8';
+        ctx.fillText(hint, W/2, 170);
         ctx.globalAlpha=1;
       }
       drawBoard(Math.max(200, (contHits.length ? contHits[contHits.length-1].y1+18 : 0)));
