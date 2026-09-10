@@ -1183,7 +1183,11 @@ function die(kind, variant){
   // continue options for the death screen: up to 3 deepest stops this run passed (v5.3).
   // v5.5 owner ruling: TOUR DEATHS ARE NOT FREE EITHER — every wake-up pays, again and
   // again; when the wallet runs dry you can only afford cheaper stops further back.
-  contOptions = contOptionsFor(meters);
+  // v5.9: the stops are WORLD landmarks, so offer the ones this POSITION has passed — not the
+  // ones this leg ran past. `meters` is the leg distance, so a continue that ran 5 km from the
+  // Secret Waterfall would otherwise be offered CANNACOPIA (420 m) and teleport you backwards
+  // up the mountain. Same reason the NO PERMIT branch below uses worldNow-1.
+  contOptions = contOptionsFor(runStart + meters);
   contStops = contOptions.find(o=>o.afford)?.stop || null;
   try{ document.getElementById('sh').hidden = false; }catch(e){}
   fetchBoard().then(refreshQualify).catch(()=>{});
@@ -1352,7 +1356,24 @@ function tick(now){
     // shows which is which, so the change is legible instead of reading like a bug.
     const ph=.5-.5*Math.cos(meters/2400*6.2832);
     const spd=speed*(.9+.2*ph);
-    trav+=spd*dt; meters=Math.floor(trav/10);
+    trav+=spd*dt; meters=Math.floor(trav/10)-runStart;
+    // ^ v5.9: THE ONE LINE THAT MADE THE SECRET WATERFALL UNPLAYABLE.
+    // `trav` is the odometer and it is ABSOLUTE — reset(fromStop) seeds it with `fromStop.m*10`,
+    // and this line used to write `meters = floor(trav/10)`, i.e. the WORLD position. So one
+    // frame after a continue `meters` was the whole mountain again, and every `runStart+meters`
+    // in this file added the stop's offset a SECOND time. The permit fence is the one that bit:
+    // a stop at 121 393 m doubled to 242 787 m, crossed the 170 000 m fence on the very first
+    // frame, and — under 100 🍄 — killed you instantly with NO PERMIT. Pay 61, wake up, die.
+    // With a fatter wallet it did not kill you, it silently charged a 100 🍄 permit for a lap you
+    // never entered (61 + 100 = 161 🍄 for one tap, toast reading "Lap 1 done").
+    // That is the owner's report verbatim: "clicking the button to spend 61 mushrooms to restart
+    // at the secret waterfall does nothing" / Matt: "Nope only the sound".
+    // Only ONE stop in the game is deeper than PERMIT_M/2 = 85 000 m — THE SECRET WATERFALL at
+    // 121 393. SWALLOWTAIL doubles to 150 050, just under the fence. So the bug was unfireable
+    // until a player first reached 121 393 m, which nobody had until today.
+    // `meters` is the SCORE — the metres RAN this leg — as v5.6 ruled and as reset() already
+    // assumes (it sets meters=0 with "distance counts from 0"). With this line corrected,
+    // `runStart+meters` is the world position everywhere else in the file, for free.
     const sliding = slideHeld && !jumping && hogY>=GROUND;
     if(jumping){
       vy += (GRAV + (slideHeld ? 5200 : 0))*dt;   // down = fast-drop
