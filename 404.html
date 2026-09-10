@@ -1435,6 +1435,35 @@ const BTN_R = 36, BTN_X = W - 78, BTN_JUMP_Y = 118, BTN_DUCK_Y = 202;
 const DUCK_SPLIT = 160;     // canvas-y line; on/below this in the control column = DUCK
 const DUCK_BAND  = 240;     // below this anywhere on the canvas = duck (bottom-of-screen)
 const CTL_X      = W - 172; // left edge of the control column (58px of grace left of pad)
+// v6.1 — THE TOAST BAND, and why it moved down from 52 to 116.
+// The owner's phone report: "song name on horizontal mobile goes over the headlines/notes that pop
+// up." The now-playing credit (#np) is pinned in VIEWPORT space (top:36px, ~30px tall, so viewport
+// y 36-66). The toast is drawn in CANVAS space. In landscape the canvas is WIDTH-driven and centred,
+// so the canvas's top edge slides up as the viewport gets shorter — and the toast therefore SWEEPS
+// up and down through the credit's band as the viewport height changes. Measured over 27 viewports,
+// the toast lands on the credit for every landscape height between ~205 and ~375 (a 25x30 px hit at
+// 844x310), and misses on every desktop shape. That is the owner's phone exactly.
+//
+// No viewport-anchored placement can fix it: move the credit up and it hits the home link, right and
+// it hits the HUD, down and it hits the mute button or the resting hog. The TOAST is the only one of
+// the two that can move, because it is drawn in the canvas's own coordinate system.
+//
+// The band is set by the WORST viewport, not a typical one. With the canvas centred, the card's
+// viewport top is (vh - 337.6)/2 + 0.938*TOAST_Y, so clearing the credit's bottom edge (66) needs
+// TOAST_Y > 141 at a 205px-tall landscape viewport — the tightest height in the sweep — and > 42 on
+// a 390px one. 150 gives 8px of daylight at the tightest point and 45px at the owner's ~278. Below
+// ~200px of viewport height the band would have to keep dropping, but that only happens with the
+// keyboard up, and the keyboard means the name box, and body.has-nm hides the credit entirely.
+//
+// TOAST_MAXW is the other half: the longest message the game builds ("Need 15 more mushrooms to wake
+// up at Secret Waterfall — tap anywhere else to bank this run.") measures 652 px at 17px, i.e. a
+// 680 px card whose right edge (790) clipped the JUMP pad (x 786) by 4x4 px. Long messages drop to
+// 15px so the card stays inside the free lane, whatever band it is drawn in.
+//
+// _verify_toast_band.js boots the real page at the real slug across 27 viewports and both toast
+// lengths and asserts the card never intersects the credit or either pad. It calls toastCard() below
+// rather than re-deriving the box, so there is no mirrored maths to drift.
+const TOAST_Y = 150, TOAST_H = 34, TOAST_BASE = 23, TOAST_MAXW = 620;
 const isTouch = (typeof matchMedia === 'function') && matchMedia('(pointer: coarse)').matches;
 let jumpFlash = -1e9;                  // lights the JUMP pad briefly on press
 function toCanvas(e){
@@ -1442,6 +1471,15 @@ function toCanvas(e){
   const r = cv.getBoundingClientRect();
   if(!r.width || !r.height) return {x:-1,y:-1};
   return { x:(e.clientX-r.left)*(W/r.width), y:(e.clientY-r.top)*(H/r.height) };
+}
+// The toast card's box, in CANVAS px. A named function because BOTH the draw code and the layout gate
+// (_verify_toast_band.js) need it: the gate asks the game for the box it actually draws instead of
+// re-deriving the maths, so this file cannot drift away from what the gate measures.
+function toastCard(s){
+  ctx.font='17px system-ui';
+  let tw=ctx.measureText(s).width;
+  if(tw>TOAST_MAXW){ ctx.font='15px system-ui'; tw=ctx.measureText(s).width; }
+  return { x:W/2-tw/2-14, y:TOAST_Y, w:tw+28, h:TOAST_H, tw:tw };
 }
 function isDuck(p){
   if(p.y < 0) return false;                       // sentinel from toCanvas(): no rect
@@ -1756,12 +1794,12 @@ function tick(now){
 
   if(toast){
     const a=Math.min(1,toast.age/.25,(2.4-toast.age)/.5);
-    ctx.globalAlpha=a; ctx.font='17px system-ui';
-    const tw=ctx.measureText(toast.s).width;
+    ctx.globalAlpha=a;
+    const tc=toastCard(toast.s);              // v6.1: one source of truth for the card's box
     ctx.fillStyle='rgba(20,29,56,.82)';
-    ctx.fillRect(W/2-tw/2-14,52,tw+28,34);
+    ctx.fillRect(tc.x,tc.y,tc.w,tc.h);
     ctx.fillStyle='#ffe9a8'; ctx.textAlign='center';
-    ctx.fillText(toast.s,W/2,75); ctx.textAlign='left'; ctx.globalAlpha=1;
+    ctx.fillText(toast.s,W/2,tc.y+TOAST_BASE); ctx.textAlign='left'; ctx.globalAlpha=1;
   }
   if(state!=='run'){
     const pulse=.65+.35*Math.sin(now/280);
