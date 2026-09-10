@@ -112,7 +112,10 @@ document.getElementById('ns').addEventListener('click', submitName);
 document.getElementById('ni').addEventListener('keydown', e=>{ if(e.key==='Enter') submitName(); });
 function submitName(){
   const name=(document.getElementById('ni').value||'').trim();
-  if(!name) return;
+  // v5.8: this used to `return` in total silence. Tapping Yebo with an empty box was
+  // indistinguishable from a dead button, and the run just stayed unsaved with no explanation
+  // — the same "it didn't register" feeling, from a different cause.
+  if(!name){ toast={s:'Type a name first, boet — then Yebo saves the run.',age:0}; return; }
   // v5.6 (owner ruling): ONE score, used everywhere — the distance you actually RAN this
   // leg (`meters`), not the world-accumulated runStart+meters. A continue buys you deeper
   // terrain for 🍄, it does not buy you credit for metres you never ran (Matt's HUD read
@@ -125,7 +128,7 @@ function submitName(){
     body:JSON.stringify(body)})
     .then(r=>r.json()).then(res=>{
       if(res.ok){
-        posted=true; lastPostedM=meters;        try{ localStorage.setItem(NAME_KEY,name); }catch(e){}
+        posted=true; lastPostedM=meters; savedAs=name;   try{ localStorage.setItem(NAME_KEY,name); }catch(e){}
         document.getElementById('nm').hidden=true;
         toast = res.weeklyRank
           ? {s:'Yebo — you are #'+res.weeklyRank+' this week!',age:0}
@@ -277,6 +280,10 @@ let prevKind = '';          // last obstacle spawned, so gap maths keeps combos 
 let bird = null, nextBird = 7;   // Knysna loerie flyover — scenery, never collides
 const API='https://lb.wildlogic.co.za/scores';
 let board=null, boardAt=0, qualify=false, posted=false, lastPostedM=0;
+// v5.8: what the board actually has us as, for this run. Empty = not saved. Drawn on the death
+// screen so "did it register?" is answered by the game instead of by the player's memory —
+// Matt's whole complaint was not being able to tell whether his 169 875 had gone in.
+let savedAs='';
 const stars = Array.from({length:70}, () => [Math.random()*W, Math.random()*GROUND*.65, Math.random()]);
 const flies = Array.from({length:9}, () => [Math.random()*W, 60+Math.random()*(GROUND-90), Math.random()*7]);
 let shrooms = [], nextShroom = 900, sCount = 0;   // sCount = pocket display; see STOPS
@@ -1126,6 +1133,15 @@ function reset(fromStop){
   state='run'; speed=tourRun ? 330*.85 : 330;   // continue spawn: slight ease-in tween
   vy=0; hogY=GROUND; jumping=false;
   obs=[]; nextGap=420; mist=null; wxTimer=22; wxCount=0; lmIdx=0; nextAmb=170; toast=null;
+  // v5.8: `posted`/`lastPostedM` MUST be cleared at the top of every run. They were only ever
+  // set (in submitName's success handler) and never reset, so within one page session the pair
+  // latched onto the LAST run you saved — and refreshQualify then hid the name box for every
+  // later death at a distance <= that one. The player sees a perfectly normal death screen with
+  // no way to put their name to the run, which is indistinguishable from "it didn't register on
+  // the leaderboard". That is exactly Matt's report. Per-run scoping is also the correct
+  // semantic: the guard exists to stop you re-posting the SAME run twice, not to lock the whole
+  // session. Re-posting a shorter run is harmless anyway — the Worker's upsert keeps the max.
+  posted=false; lastPostedM=0; savedAs='';
   shrooms=[]; nextShroom=900; sCount=0; queuedAt=-1e9;
   spawnGrace = tourRun ? 2.0 : 0.45;          // 2 s clear runway on a continue, brief warm-up from 0
   floaters=[]; deathCause=''; prevKind=''; bird=null; nextBird=7; permits=0;
@@ -1405,7 +1421,12 @@ function tick(now){
         toast={s:'Lap '+(lap)+' done — permit bought, 100 🍄. On to lap '+(lap+1)+'.',age:0};
         beep(660,990,.3,'sine');
       } else {
-        deathCause='finished lap '+(Math.floor(worldNow/PERMIT_M))+' at Gaikas Kop with no permit ('+PERMIT_COST+' 🍄). back to the village with you';
+        // v5.8: the cause string is POSTed, and the Worker validates it against
+        // /^[\w .\-',!()—]+$/ — a 🍄 is not in that class, so this death returned 400
+        // 'naughty cause' and could NEVER be saved. Of all the deaths to lose, it is the one
+        // the owner most wants to test ("I need to see what happens at 170k that's a new lap").
+        // The emoji belongs in the toast, which is never posted; the cause stays plain text.
+        deathCause='finished lap '+(Math.floor(worldNow/PERMIT_M))+' at Gaikas Kop with no permit ('+PERMIT_COST+' shrooms). back to the village with you';
         deathHead='NO PERMIT';
         state='dead'; deadAt=performance.now(); shakeT=.35; beep(220,110,.4,'triangle');
         contOptions = contOptionsFor(worldNow-1);
@@ -1596,8 +1617,17 @@ function tick(now){
       // number the HI tracks. A continue's world position is shown too, but as scenery
       // ("at 150 582 m"), never as the score, so it can't be mistaken for a best run.
       ctx.fillText(`${meters} m run   ·   HI ${hi} m   ·   🍄 ${pocket}`, W/2, 110);
-      ctx.fillStyle='#8f9bbd'; ctx.font='11px monospace';
-      ctx.fillText(tourRun ? `you got to ${runStart+meters} m` : '', W/2, 124);
+      // v5.8: ANSWER "DID IT REGISTER?" ON THE SCREEN. A player should never have to infer
+      // whether their run reached the board — Matt's report was exactly that inference failing.
+      // Saved state wins this line; a continue's world position is scenery and yields to it.
+      ctx.font='bold 11px monospace';
+      if(savedAs){
+        ctx.fillStyle='#9fe1cb';
+        ctx.fillText('✓ on the board as '+savedAs, W/2, 124);
+      } else {
+        ctx.fillStyle='#8f9bbd';
+        ctx.fillText(tourRun ? `you got to ${runStart+meters} m` : '', W/2, 124);
+      }
       ctx.fillStyle='#ffd75e'; ctx.font='bold 11px monospace';
       ctx.fillText('🍄 '+pocket+' in the pocket — mushrooms buy second chances', W/2, 138);
       // v5.3/v5.4/v5.5: RESTART BUTTONS — up to three, deepest first, always inside the
