@@ -98,11 +98,13 @@ document.getElementById('ni').addEventListener('keydown', e=>{ if(e.key==='Enter
 function submitName(){
   const name=(document.getElementById('ni').value||'').trim();
   if(!name) return;
-  // v5.1: a tour run's score IS the world distance reached (stop + metres). That world
-  // distance is what posts — the mushroom cost already gated the restart, so the board
-  // stays honest without the old points-at-0 rule. v5.2: Mayor fires at 1,020,000 (six
-  // laps) but the board's ceiling is 1,000,000 — clamp to the cap so the save is accepted.
-  const body={name:name,meters:Math.min(runStart+meters,1000000),cause:deathCause};
+  // v5.6 (owner ruling): ONE score, used everywhere — the distance you actually RAN this
+  // leg (`meters`), not the world-accumulated runStart+meters. A continue buys you deeper
+  // terrain for 🍄, it does not buy you credit for metres you never ran (Matt's HUD read
+  // 150 582 from a Swallowtail continue + 75 557 m — that is the world position, not a
+  // best run). Leaderboard and local HI are now the same number. The 1,000,000 clamp is
+  // the board's ceiling (v4.3.1) so a huge run is still accepted by the Worker.
+  const body={name:name,meters:Math.min(meters,1000000),cause:deathCause};
   if(PID) body.pid=PID;                     // no token -> Worker falls back to name-keyed
   fetch(API,{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify(body)})
@@ -227,6 +229,16 @@ const AMBIENT = [
   'Haai, dis mis, dis nie rook nie!',
 ];
 
+// v5.6 ONE-SHOT CLEAR: anyone who played v5.1-5.5 has a HI written as world position
+// (runStart+meters), so a deep continue left it inflated — Matt's read 150 582 for a
+// 75 557 m run. The number can never be beaten under the new rule, so wipe it once,
+// per device, and let it re-derive from the next honest run. Flagged so it fires once.
+try{
+  if(!localStorage.getItem('hogback_hi_v56')){
+    localStorage.removeItem('hogback_hi');
+    localStorage.setItem('hogback_hi_v56','1');
+  }
+}catch(e){}
 let state = 'ready', speed = 330, trav = 0, meters = 0, hi = +(localStorage.getItem('hogback_hi')||0);
 let runStart = 0;           // v5.0: world offset — 0 for a ranked run, stop.m for a tour run
 let tourRun = false;        // tour runs never POST and never write hi
@@ -1080,7 +1092,8 @@ async function fetchBoard(force){
 function refreshQualify(b){
   const w=(b && b.weekly)||[];
   const nm=document.getElementById('nm');
-  qualify = w.length<10 || (runStart+meters) > ((w[w.length-1]||{m:0}).m);
+  // v5.6: rank against the same number that posts and that the HI uses — metres RUN.
+  qualify = w.length<10 || meters > ((w[w.length-1]||{m:0}).m);
   if(state==='dead' && qualify && !(posted && meters<=lastPostedM)){ nm.hidden=false; prefillName(); }
   else nm.hidden=true;
   // v5.4: body flag — while the name box is up, CSS hides the share button (landscape phones:
@@ -1097,11 +1110,9 @@ function die(kind, variant){
   deathCause = lines ? lines[Math.floor(Math.random()*lines.length)] : 'the mist';
   deathHead = HEADS[Math.floor(Math.random()*HEADS.length)];
   state='dead'; deadAt=performance.now(); shakeT=.35; beep(160,70,.28,'sawtooth');
-  // v5.5.1: HI = best SINGLE-RUN distance (just `meters` of the leg that died), not the
-  // world-accumulated worldM. Matt's local HI read 150 582 m from continuing at
-  // Swallowtail and running another 75 557 m — the leaderboard's score, but NOT a "best
-  // run" in the intuitive sense (owner: "is it stacking?"). The leaderboard still uses
-  // worldM for its world-distance metric; the on-canvas HI is the best single leg.
+  // v5.6: HI = the distance you actually RAN this leg (`meters`). One number everywhere:
+  // this writes it, the board POSTs it, the HUD shows it. (v5.1-5.5 wrote runStart+meters
+  // — the world position — which inflated a continue's score by the metres it skipped.)
   if(meters > hi){ hi = meters; localStorage.setItem('hogback_hi', hi); }
   // continue options for the death screen: up to 3 deepest stops this run passed (v5.3).
   // v5.5 owner ruling: TOUR DEATHS ARE NOT FREE EITHER — every wake-up pays, again and
@@ -1531,17 +1542,23 @@ function tick(now){
       ctx.fillStyle='#fff'; ctx.font='bold 13px system-ui';
       ctx.fillText(cause, W/2, 92);
       ctx.fillStyle='#cdd6ee'; ctx.font='13px monospace';
-      ctx.fillText(`${runStart+meters} m   ·   HI ${hi} m   ·   🍄 ${pocket}`, W/2, 110);
+      // v5.6: the score is the metres you RAN — the same number that posts and the same
+      // number the HI tracks. A continue's world position is shown too, but as scenery
+      // ("at 150 582 m"), never as the score, so it can't be mistaken for a best run.
+      ctx.fillText(`${meters} m run   ·   HI ${hi} m   ·   🍄 ${pocket}`, W/2, 110);
+      ctx.fillStyle='#8f9bbd'; ctx.font='11px monospace';
+      ctx.fillText(tourRun ? `you got to ${runStart+meters} m` : '', W/2, 124);
       ctx.fillStyle='#ffd75e'; ctx.font='bold 11px monospace';
-      ctx.fillText('🍄 '+pocket+' in the pocket — mushrooms buy second chances', W/2, 126);
+      ctx.fillText('🍄 '+pocket+' in the pocket — mushrooms buy second chances', W/2, 138);
       // v5.3/v5.4/v5.5: RESTART BUTTONS — up to three, deepest first, always inside the
       // canvas band above the DOM overlays. The whole group (header + buttons + hint) sits
       // on ONE backing box so no text floats naked over the scenery (owner shots: "WAKE UP
       // AT… barely looks like it made it onto the box bg").
       contHits = [];
       if(contOptions.length && state==='dead' && deathHead!=='NO PERMIT' && deathHead!=='MAYOR!'){
-        // measure the group first so the backing box covers all of it
-        let byy = 140;
+        // measure the group first so the backing box covers all of it.
+        // v5.6: starts at 148, below the wallet line at 138 (was 140 — they collided).
+        let byy = 148;
         const rows = contOptions.map(o=>{
           const bl = o.stop.label+' — '+o.stop.cost+' 🍄' + (o.afford ? '' : '  (need '+o.short+' more)');
           ctx.font='bold 13px system-ui';
