@@ -33,6 +33,22 @@
       border:1px solid #3a4a78;border-radius:12px;font-size:17px;line-height:1;
       padding:11px 13px;font-family:system-ui,sans-serif}
   body.has-nm #mu{display:none}
+  /* v6.0: the now-playing credit. TOP-LEFT, stacked under the home link — not bottom-left beside
+     the mute button, which was the first attempt and COLLIDED with the resting hog: the mute
+     button is only ~44px wide so it clears the hog horizontally, but the track title needs ~185px
+     and lands straight on top of it. (Found by rendering it, not by reading the CSS.) The sky up
+     here is empty, the HUD is top-right and the name box is bottom-centre, so nothing competes.
+     Hidden until the music actually starts, so a visitor who never taps sees no extra chrome.
+     It is a real link to the track — that is the point of having the music here at all. */
+  #np{position:fixed;left:12px;top:36px;z-index:5;background:#141d38;
+      color:#ffe9a8;border:1px solid #3a4a78;border-radius:12px;font-size:12px;line-height:1;
+      padding:8px 11px;font-family:system-ui,sans-serif;text-decoration:none;
+      max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #np[hidden]{display:none}
+  body.has-nm #np{display:none}
+  /* The SoundCloud widget lives OFF-SCREEN but must NOT be display:none — a display:none iframe
+     is not rendered, and the widget will not initialise. Parked off the left edge at 120px. */
+  #sc{position:fixed;left:-9999px;top:0;width:120px;height:120px;border:0;opacity:0;pointer-events:none}
   #nm{position:fixed;left:50%;bottom:2vh;transform:translateX(-50%);z-index:4;
       display:flex;flex-direction:column;gap:5px;align-items:center;background:#141d38;
       border:1px solid #3a4a78;border-radius:18px;padding:7px 12px;text-align:center}
@@ -47,6 +63,12 @@
 <body>
 <a id="home" href="/">&#8592; wildlogic.co.za</a>
 <button id="mu" type="button" aria-pressed="true" title="Sound on">&#128266;</button>
+<!-- v6.0: no src on the iframe. It is pointed at the track lazily, on the first gesture, so a
+     visitor who bounces off the 404 costs no SoundCloud request at all. -->
+<iframe id="sc" title="Oom Hogsback — Tussen Hogsback en N&#234;rens" allow="autoplay"
+        scrolling="no" frameborder="no" width="120" height="120" aria-hidden="true"></iframe>
+<a id="np" hidden href="https://soundcloud.com/oom-hogsback/tussen-hogsback-en-nerens"
+   target="_blank" rel="noopener">&#9834; Oom Hogsback — Tussen Hogsback en N&#234;rens</a>
 <div id="wrap"><canvas id="cv"></canvas></div>
 <button id="sh" hidden>⚔️ Challenge a chommie</button>
 <div id="nm" hidden>
@@ -1131,6 +1153,10 @@ function setSound(on){
   soundOn = !!on;
   try{ localStorage.setItem(SOUND_KEY, soundOn ? '1' : '0'); }catch(e){}
   paintSound();
+  // v6.0: ONE SWITCH, BOTH LAYERS. The mute button has always governed the beeps; it now governs
+  // the music too, so muting mid-run silences everything and unmuting resumes the track. Guarded
+  // on musicWanted so a player who never started the music is not suddenly given some.
+  if(musicWanted){ if(soundOn) musicStart(); else musicStop(); }
 }
 try{
   const mb = document.getElementById('mu');
@@ -1142,6 +1168,58 @@ try{
   });
 }catch(e){}
 paintSound();
+
+// ---- MUSIC — Oom Hogsback, "Tussen Hogsback en Nêrens" (v6.0) -----------------------------
+// The owner's own band, and the reason it is in the game is to get it PLAYED. So this drives the
+// OFFICIAL SoundCloud widget instead of hotlinking a stream: plays then register on SoundCloud,
+// where they are worth something, and it stays inside their terms. (A hotlinked stream URL would
+// also rot — it needs a client_id that rotates.)
+//
+// Three rules this has to obey, all of them from earlier rulings:
+//   1. ONE SWITCH. v5.7's mute button governs the music layer as well as the beeps. Never a
+//      second control to keep in sync.
+//   2. NOTHING PLAYS BEFORE A GESTURE. The browser autoplay policy requires it anyway, and the
+//      first gesture is the tap that starts the run — so the music begins with the game, not at
+//      a stranger landing on a 404 page.
+//   3. IT CANNOT BREAK THE GAME. A blocked iframe, a dead network or a missing script must leave
+//      the game exactly as it was: silent, and fully playable. Every path is wrapped, and the
+//      widget is only ever consulted behind a `scWidget` null check.
+const SC_TRACK = 'https://soundcloud.com/oom-hogsback/tussen-hogsback-en-nerens';
+let scWidget = null, scReady = false, musicWanted = false;
+
+function loadMusic(){
+  if(scWidget) return;
+  try{
+    const f = document.getElementById('sc');
+    if(!f) return;
+    f.src = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(SC_TRACK) +
+            '&color=%23ffd75e&auto_play=false&hide_related=true&show_comments=false' +
+            '&show_user=false&show_reposts=false&show_teaser=false&visual=false';
+    const tag = document.createElement('script');
+    tag.src = 'https://w.soundcloud.com/player/api.js';
+    tag.onload = function(){
+      try{
+        scWidget = SC.Widget(f);
+        scWidget.bind(SC.Widget.Events.READY, function(){
+          scReady = true;
+          if(musicWanted && soundOn) scWidget.play();
+        });
+        // 4:54 against a session that can run for hours — loop it rather than fall silent.
+        scWidget.bind(SC.Widget.Events.FINISH, function(){
+          try{ scWidget.seekTo(0); if(musicWanted && soundOn) scWidget.play(); }catch(e){}
+        });
+      }catch(e){ scWidget = null; }
+    };
+    tag.onerror = function(){ scWidget = null; };
+    document.head.appendChild(tag);
+  }catch(e){ scWidget = null; }
+}
+function musicStart(){
+  musicWanted = true;
+  try{ if(scReady && soundOn && scWidget) scWidget.play(); }catch(e){}
+  try{ const el = document.getElementById('np'); if(el) el.hidden = false; }catch(e){}
+}
+function musicStop(){ try{ if(scWidget) scWidget.pause(); }catch(e){} }
 
 // ---- sound (tiny, lazy, gesture-unlocked) ----
 let AC=null;
@@ -1267,7 +1345,10 @@ function rideThroughFence(){
   nextAmb = meters + 240;
 }
 function act(){
-  if(state==='ready') reset();
+  // v6.0: the tap that starts the run is the first user gesture, so it is also what the browser
+  // autoplay policy requires before audio may start. Load the widget and start the music HERE
+  // rather than on page load — a stranger who bounces off the 404 costs SoundCloud nothing.
+  if(state==='ready'){ loadMusic(); musicStart(); reset(); }
   else if(state==='fence'){ if(fence && fence.age>.55) rideThroughFence(); }   // tap to ride on
   else if(state==='dead'){
     // v5.5: NO free returns. Owner ruling: "waking at same spot again shouldnt be free…
