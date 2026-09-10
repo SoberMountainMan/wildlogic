@@ -1097,7 +1097,12 @@ function die(kind, variant){
   deathCause = lines ? lines[Math.floor(Math.random()*lines.length)] : 'the mist';
   deathHead = HEADS[Math.floor(Math.random()*HEADS.length)];
   state='dead'; deadAt=performance.now(); shakeT=.35; beep(160,70,.28,'sawtooth');
-  { const worldM=runStart+meters; if(worldM>hi){ hi=worldM; localStorage.setItem('hogback_hi',hi); } }
+  // v5.5.1: HI = best SINGLE-RUN distance (just `meters` of the leg that died), not the
+  // world-accumulated worldM. Matt's local HI read 150 582 m from continuing at
+  // Swallowtail and running another 75 557 m — the leaderboard's score, but NOT a "best
+  // run" in the intuitive sense (owner: "is it stacking?"). The leaderboard still uses
+  // worldM for its world-distance metric; the on-canvas HI is the best single leg.
+  if(meters > hi){ hi = meters; localStorage.setItem('hogback_hi', hi); }
   // continue options for the death screen: up to 3 deepest stops this run passed (v5.3).
   // v5.5 owner ruling: TOUR DEATHS ARE NOT FREE EITHER — every wake-up pays, again and
   // again; when the wallet runs dry you can only afford cheaper stops further back.
