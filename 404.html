@@ -91,7 +91,10 @@ document.getElementById('ni').addEventListener('keydown', e=>{ if(e.key==='Enter
 function submitName(){
   const name=(document.getElementById('ni').value||'').trim();
   if(!name) return;
-  const body={name:name,meters:meters,cause:deathCause};
+  // v5.1: a tour run's score IS the world distance reached (stop + metres). That world
+  // distance is what posts — the mushroom cost already gated the restart, so the board
+  // stays honest without the old points-at-0 rule.
+  const body={name:name,meters:runStart+meters,cause:deathCause};
   if(PID) body.pid=PID;                     // no token -> Worker falls back to name-keyed
   fetch(API,{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify(body)})
@@ -321,7 +324,8 @@ const STOPS = [
   {m:75025,  label:'SWALLOWTAIL',         line:'You sleep at Swallowtail',             cost:38},
   {m:121393, label:'THE SECRET WATERFALL',line:'You hide at the Secret Waterfall',     cost:61},
 ];
-const PERMIT_M = 170000;   // Gaikas Kop: forestry land, no permit, escorted back to start
+const PERMIT_M = 170000;   // Gaikas Kop: forestry land. The office sells a permit for 100 🍄.
+const PERMIT_COST = 100;   // without it you are escorted back to the village (the loop)
 const MAYOR_M  = 1000000;  // the one and only win condition: crowned Mayor of Hogsback
 const WALLET_KEY = 'hogback_wallet';
 let pocket = (()=>{ try{ return Math.max(0, Math.floor(+localStorage.getItem(WALLET_KEY)||0)); }catch(e){ return 0; } })();
@@ -1052,7 +1056,7 @@ function reset(fromStop){
   obs=[]; nextGap=420; mist=null; wxTimer=22; wxCount=0; lmIdx=0; nextAmb=170; toast=null;
   shrooms=[]; nextShroom=900; sCount=0; queuedAt=-1e9;
   spawnGrace = tourRun ? 2.0 : 0.45;          // 2 s clear runway on a continue, brief warm-up from 0
-  floaters=[]; deathCause=''; prevKind=''; bird=null; nextBird=7;
+  floaters=[]; deathCause=''; prevKind=''; bird=null; nextBird=7; permitBought=false;
   // fast-forward the landmark/weather cursors so the tour run starts in the right scenery:
   while(lmIdx<LANDMARKS.length && LANDMARKS[lmIdx][0] <= runStart) lmIdx++;
   wxTimer = 10+Math.random()*8;               // first weather arrives late — spawn is calm
@@ -1066,7 +1070,7 @@ async function fetchBoard(force){
 function refreshQualify(b){
   const w=(b && b.weekly)||[];
   const nm=document.getElementById('nm');
-  qualify = w.length<10 || meters > ((w[w.length-1]||{m:0}).m);
+  qualify = w.length<10 || (runStart+meters) > ((w[w.length-1]||{m:0}).m);
   if(state==='dead' && qualify && !(posted && meters<=lastPostedM)){ nm.hidden=false; prefillName(); }
   else nm.hidden=true;
 }
@@ -1080,12 +1084,13 @@ function die(kind, variant){
   deathCause = lines ? lines[Math.floor(Math.random()*lines.length)] : 'the mist';
   deathHead = HEADS[Math.floor(Math.random()*HEADS.length)];
   state='dead'; deadAt=performance.now(); shakeT=.35; beep(160,70,.28,'sawtooth');
-  if(!tourRun && meters>hi){ hi=meters; localStorage.setItem('hogback_hi',hi); }
+  { const worldM=runStart+meters; if(worldM>hi){ hi=worldM; localStorage.setItem('hogback_hi',hi); } }
   // continue option for the death screen: deepest affordable stop this run passed
   contStops = tourRun ? null : bestStop(meters);
   try{ document.getElementById('sh').hidden = false; }catch(e){}
   fetchBoard().then(refreshQualify).catch(()=>{});
 }
+let permitBought = false;   // v5.1: passed the Gaikas Kop fence this run (paid 100 🍄)
 let contStops = null;         // set by die(); the one continue button on the death screen
 let lastTourStop = null;      // v5.0.1: the stop a tour run started from — free return on death
 function jump(){
@@ -1283,22 +1288,31 @@ function tick(now){
     }
     for(const o of obs) o.x-=spd*dt;
     obs=obs.filter(o=>o.x>-140);
-    // ---- v5.0: the permit wall and the Mayor (the two ways a run "ends" now) ----
-    if(!tourRun && runStart+meters >= PERMIT_M){
-      // Gaikas Kop: forestry land, permit required. Escorted back to the village. Wallet
-      // kept — that is the loop, not a punishment. The run does NOT post (you never
-      // actually "died"; and a 170 km board row is exactly what this gate exists to cap).
-      pocket = pocket; savePocket();
-      deathCause='caught at Gaikas Kop with no permit. back to the village with you';
-      deathHead='NO PERMIT';
-      state='dead'; deadAt=performance.now(); shakeT=.35; beep(220,110,.4,'triangle');
-      contStops=null; tourRun=true;    // mark so nothing re-posts and hi stays untouched
-      try{ document.getElementById('sh').hidden = true; }catch(e){}
-      return;                          // skip the rest; render handles the special screen
+    // ---- v5.1: the permit wall and the Mayor (the two ways a run "ends" now) ----
+    // Tour runs POST TOO now (owner ruling: the score IS the world distance reached, and the
+    // mushroom cost is the anti-spam gate) — so both endings apply to every run.
+    if(runStart+meters >= PERMIT_M && !permitBought){
+      // Gaikas Kop: forestry land. If the wallet covers a permit you pass through; if not,
+      // escorted back to the village — the loop is lore, and the wall caps the board.
+      // NOTE: no runStart step — worldM = runStart+meters keeps counting naturally past
+      // the fence; permitBought guards this block from re-firing every frame.
+      if(pocket >= PERMIT_COST){
+        pocket -= PERMIT_COST; savePocket();
+        toast={s:'Permit bought at the fence — 100 🍄. Gaikas Kop is open, boet.',age:0};
+        permitBought = true;
+        beep(660,990,.3,'sine');
+      } else {
+        deathCause='caught at Gaikas Kop with no permit ('+PERMIT_COST+' 🍄). back to the village with you';
+        deathHead='NO PERMIT';
+        state='dead'; deadAt=performance.now(); shakeT=.35; beep(220,110,.4,'triangle');
+        contStops=bestStop(runStart+meters-1);   // last stop you actually passed
+        try{ document.getElementById('sh').hidden = false; }catch(e){}
+        fetchBoard().then(refreshQualify).catch(()=>{});
+        return;
+      }
     }
-    if(!tourRun && runStart+meters >= MAYOR_M){
-      // 1 000 000 m: the board's ceiling. You are crowned and the run saves. (Worker accepts
-      // meters up to exactly 1 000 000, so this POSTS clean.)
+    if(runStart+meters >= MAYOR_M){
+      // 1 000 000 m: the board's ceiling. You are crowned and the run saves.
       deathCause='covered every metre of Hogsback. crowned MAYOR.';
       deathHead='MAYOR!';
       state='dead'; deadAt=performance.now(); shakeT=.35;
@@ -1457,16 +1471,16 @@ function tick(now){
       ctx.fillStyle='#fff'; ctx.font='bold 15px system-ui';
       ctx.fillText(cause, W/2, 144);
       ctx.fillStyle='#cdd6ee'; ctx.font='16px monospace';
-      ctx.fillText(`${meters} m   ·   HI ${hi} m`, W/2, 168);
+      ctx.fillText(`${runStart+meters} m   ·   HI ${hi} m`, W/2, 168);
       // wallet line ON the death panel — teaches the economy where the eyes are (bright
       // enough to read on the night palette — owner shot 2 showed the old gold washing out)
       ctx.fillStyle='#ffd75e'; ctx.font='bold 13px monospace';
-      ctx.fillText('🍄 '+pocket+' saved up — they buy restarts from rest stops', W/2, 182);
+      ctx.fillText('🍄 '+pocket+' saved up — they buy restarts and the Gaikas Kop permit', W/2, 182);
       // v5.0.1: ONE continue button (deepest affordable stop) + tap anywhere. Painted ABOVE
       // the board, never under it — the owner's screenshot showed the TOP-10 panel painted
       // straight over the button text and eating its clicks. Board itself moved down.
       continueHit = null;
-      if(contStops && !tourRun && state==='dead' && deathHead!=='NO PERMIT' && deathHead!=='MAYOR!'){
+      if(contStops && state==='dead' && deathHead!=='NO PERMIT' && deathHead!=='MAYOR!'){
         const bl = 'TAP HERE: wake up at '+contStops.label+' ('+contStops.cost+' 🍄)';
         ctx.font='bold 14px system-ui';
         const bw = Math.max(320, ctx.measureText(bl).width+40);
@@ -1476,9 +1490,9 @@ function tick(now){
         ctx.fillStyle='#ffffff'; ctx.fillText(bl, W/2, by+20);
         continueHit = {x0:bx, y0:by, x1:bx+bw, y1:by+bh};
         ctx.fillStyle='#ffffff'; ctx.font='bold 12px monospace';
-        ctx.fillText('you restart from '+contStops.label+' ('+contStops.m+' m) — this run is NOT SAVED', W/2, by+45);
+        ctx.fillText('your score continues from '+contStops.label+' ('+contStops.m+' m)', W/2, by+45);
         ctx.fillStyle='#cdd6ee'; ctx.font='11px monospace';
-        ctx.fillText('want a score on the board? tap anywhere else to run from 0', W/2, by+60);
+        ctx.fillText('out of 🍄 or happy with the distance? tap anywhere else to bank it', W/2, by+60);
       } else {
         ctx.font='14px system-ui'; ctx.globalAlpha=pulse;
         ctx.fillText(tourRun ? 'tap to wake up at the same stop (free)' : 'tap to try again', W/2, 190);
