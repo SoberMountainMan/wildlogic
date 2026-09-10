@@ -1501,10 +1501,13 @@ function tick(now){
       // start to explain the game") — controls, the mushroom economy, continue stops, loop.
       ctx.globalAlpha=.95; ctx.font='14px system-ui'; ctx.fillStyle='#23405c';
       ctx.fillText('tap / click = hop  ·  hold the DUCK pad (or ↓) = slide under logs', W/2, 138);
+      // v5.4.2 owner cuts: don't say what mushrooms are NOT (new players never knew the
+      // old weather rule) and NO ending secrets — permits, the lap loop and the Mayor are
+      // discoveries, not instructions.
       ctx.globalAlpha=.8;  ctx.font='13px system-ui';
-      ctx.fillText('collect 🍄 mushrooms — they are money, not weather', W/2, 160);
+      ctx.fillText('collect 🍄 mushrooms — they are money', W/2, 160);
       ctx.fillText('die and you can wake up again at a stop you passed, for 🍄', W/2, 180);
-      ctx.fillText('your distance keeps counting — reach 170,000 m for lap 2, six laps = Mayor', W/2, 200);
+      ctx.fillText('the ridge goes deeper than it looks — how far can you go?', W/2, 200);
       ctx.globalAlpha=pulse; ctx.font='bold 14px system-ui';
       ctx.fillText('tap anywhere to run', W/2, 232);
     } else {
@@ -1523,7 +1526,7 @@ function tick(now){
       ctx.fillStyle='#cdd6ee'; ctx.font='13px monospace';
       ctx.fillText(`${runStart+meters} m   ·   HI ${hi} m   ·   🍄 ${pocket}`, W/2, 110);
       ctx.fillStyle='#ffd75e'; ctx.font='bold 11px monospace';
-      ctx.fillText('🍄 buy restarts at the stops you passed — and the next lap permit', W/2, 126);
+      ctx.fillText('🍄 '+pocket+' in the pocket — mushrooms buy second chances', W/2, 126);
       // v5.3/v5.4: RESTART BUTTONS — up to three, deepest first, always inside the canvas
       // band above the DOM overlays. Affordable stops are live buttons; deeper ones are
       // greyed with the shortfall so players learn that more 🍄 = restart higher.
