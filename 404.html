@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>404 · Hog's Back Run — WildLogic</title>
+<title>404 · Tussen Hogsback en Nêrens — WildLogic</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐗</text></svg>">
 <style>
   html,body{margin:0;height:100%;background:#bfe0f2;overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none}
@@ -87,7 +87,7 @@ function shareFallback(t, done){
 }
 document.getElementById('sh').addEventListener('click', e=>{
   e.stopPropagation();
-  const msg='I died from '+deathCause.replace(/\.\s+/g,', ')+' '+meters+' m into the Hogsback mist. Beat that: wildlogic.co.za/hogs-back-run';
+  const msg='I died from '+deathCause.replace(/\.\s+/g,', ')+' '+meters+' m into the Hogsback mist. Beat that: wildlogic.co.za/tussen-hogsback-en-nerens';
   const done=()=>{ e.target.textContent='✓ Copied — go paste it on them';
     setTimeout(()=>{ e.target.textContent='⚔️ Challenge a chommie'; },1800); };
   try{
@@ -172,10 +172,14 @@ function submitName(){
       toast = {s:'No signal to the leaderboard — run not saved. Try again.',age:0};
     });
 }
-/* PURPOSE: wildlogic.co.za custom 404 easter egg — "Hog's Back Run", a dino-class
-   endless runner starring the WildLogic hog along his own ridge. Vanilla canvas,
-   one file, no deps. Signature twist: Hogsback mist banks periodically obscure
-   the track. High score in localStorage('hogback_hi'). */
+/* PURPOSE: wildlogic.co.za custom 404 easter egg — "Tussen Hogsback en Nêrens"
+   ("Between Hogsback and Nowhere"), a dino-class endless runner starring the
+   WildLogic hog along his own ridge. Vanilla canvas, one file, no deps. Signature
+   twist: Hogsback mist banks periodically obscure the track. The soundtrack is
+   Oom Hogsback's track of the same name, through the official SoundCloud widget.
+   High score in localStorage('hogback_hi').
+   RENAMED at v6.1 from "Hog's Back Run". The old slug still resolves — this page is
+   served by the Pages 404 handler, so EVERY path returns it (see WANT below). */
 'use strict';
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const W = 900, H = 360, GROUND = 296;
@@ -321,11 +325,22 @@ let shrooms = [], nextShroom = 900, sCount = 0;   // sCount = pocket display; se
 // now just part of the scenery"). Pickup = +1 persistent wallet, instantly. STOPS above
 // price continue-from-rest-point runs. Weather below still cycles but nothing clears it —
 // it is visibility texture, timed exactly as before.
+// v6.1: match the NAME on the whole sanitised path, then truncate only for DISPLAY.
+// The old form sliced to 26 chars BEFORE matching — and '/tussen-hogsback-en-nerens' is 26
+// characters, so the match would have landed exactly on the cap with ZERO margin. It works
+// today; it would have been a silent tripwire the moment the slug grew a character. Match
+// first, truncate after. BOTH slugs are kept: the rename must not break a /hogs-back-run
+// link already shared.
+// WANT is the SUBJECT of the 404 line — '404 — <WANT> wandered into the mist.' — so for the
+// game's OWN page it must not be the game's name: the title two lines above already says it,
+// and a 25-char all-caps title shouted inside a sentence reads as a mistake. Found by
+// RENDERING the renamed page, not by reading this code (the v5.13 lesson).
 const WANT = (()=>{ try{
-  const p = decodeURIComponent(location.pathname).replace(/[^a-zA-Z0-9\/\-. ]/g,'').slice(1,26).trim();
-  if(p==='hogs-back-run') return "HOG'S BACK RUN";
-  return p || 'This page';
-}catch(e){ return 'This page'; }})();
+  const raw = decodeURIComponent(location.pathname).replace(/[^a-zA-Z0-9\/\-. ]/g,'');
+  if(raw==='/hogs-back-run' || raw==='/tussen-hogsback-en-nerens') return 'this hog';
+  const p = raw.slice(1,26).trim();
+  return p || 'this page';
+}catch(e){ return 'this page'; }})();
 // death-cause reveals — must read grammatically as "You were killed by <line>."
 // and "I died from <line> <m> m into the mist"
 const KILLERS = {
@@ -1794,7 +1809,7 @@ function tick(now){
       ctx.globalAlpha = 1;
     } else if(state==='ready'){
       ctx.fillStyle='#23405c'; ctx.font='bold 30px system-ui';
-      ctx.fillText("HOG'S BACK RUN", W/2, 84);
+      ctx.fillText("TUSSEN HOGSBACK EN NÊRENS", W/2, 84);
       ctx.font='15px system-ui'; ctx.globalAlpha=.9;
       ctx.fillText('404 — '+WANT+' wandered into the mist.', W/2, 108);
       // v5.4: the start screen TEACHES the game (owner: "we missing an opportunity at the
