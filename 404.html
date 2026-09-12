@@ -39,13 +39,39 @@
      and lands straight on top of it. (Found by rendering it, not by reading the CSS.) The sky up
      here is empty, the HUD is top-right and the name box is bottom-centre, so nothing competes.
      Hidden until the music actually starts, so a visitor who never taps sees no extra chrome.
-     It is a real link to the track — that is the point of having the music here at all. */
-  #np{position:fixed;left:12px;top:36px;z-index:5;background:#141d38;
+     It is a real link to the track — that is the point of having the music here at all.
+
+     v6.3: moved to TOP-CENTRE on a player report — "someones left thumb is accidently hitting it
+     because she taps jump above the hog on left". The whole canvas is a jump zone (cv pointerdown
+     -> act()), so the top-left corner was live thumb space, and #np is a real <a>, so the stray
+     tap did TWO things: no hop AND a navigation to SoundCloud mid-run.
+     THE Y-BAND DID NOT MOVE — still top:36px, i.e. viewport y 36-66. That matters: the v6.1 toast
+     fix was VERTICAL (TOAST_Y 52 -> 150), and a purely horizontal move cannot reintroduce a
+     vertical sweep collision. Proven by re-running _verify_toast_band.js, which reads this
+     element's rect from the browser instead of assuming a position.
+     Centre-top is the band no thumb rests in: left and right are the pads, bottom-centre is the
+     share/name box. max-width:46vw keeps it clear of the HUD (right-aligned at canvas x = W-16)
+     at every width the gate sweeps. */
+  #np{position:fixed;left:50%;transform:translateX(-50%);top:36px;z-index:5;background:#141d38;
       color:#ffe9a8;border:1px solid #3a4a78;border-radius:12px;font-size:12px;line-height:1;
       padding:8px 11px;font-family:system-ui,sans-serif;text-decoration:none;
       max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #np[hidden]{display:none}
   body.has-nm #np{display:none}
+  /* v6.3: the pause button (players: "people wanna take a break without losing progress").
+     Stacked ABOVE the mute button at the SAME x — never beside it. #mu is bottom-left because it
+     is only ~44px wide and so clears the hog horizontally, and the hog is drawn at canvas
+     x 70-142, i.e. viewport x ~66-133. A second button beside it would start at x 64 and land
+     straight on the boar: the identical collision v6.0 hit with the track title. Stacking leaves
+     the horizontal footprint exactly as it is today, and the bottom-left band is the safe one
+     (below GROUND = dirt, so nothing that can kill you is ever hidden under it).
+     Only shown for a live run or a paused one — there is nothing to pause on the ready screen,
+     the death screen or the Gaikas Kop cutscene. Reuses the v5.4 one-job-at-a-time rule. */
+  #pz{position:fixed;left:10px;bottom:calc(2vh + 52px);z-index:5;background:#141d38;color:#ffe9a8;
+      border:1px solid #3a4a78;border-radius:12px;font-size:15px;line-height:1;
+      padding:12px 13px;font-family:system-ui,sans-serif}
+  #pz[hidden]{display:none}
+  body.has-nm #pz{display:none}
   /* The SoundCloud widget lives OFF-SCREEN but must NOT be display:none — a display:none iframe
      is not rendered, and the widget will not initialise. Parked off the left edge at 120px. */
   #sc{position:fixed;left:-9999px;top:0;width:120px;height:120px;border:0;opacity:0;pointer-events:none}
@@ -63,6 +89,7 @@
 <body>
 <a id="home" href="/">&#8592; wildlogic.co.za</a>
 <button id="mu" type="button" aria-pressed="true" title="Sound on">&#128266;</button>
+<button id="pz" type="button" title="Pause" hidden>&#10074;&#10074;</button>
 <!-- v6.0: no src on the iframe. It is pointed at the track lazily, on the first gesture, so a
      visitor who bounces off the 404 costs no SoundCloud request at all. -->
 <iframe id="sc" title="Oom Hogsback — Tussen Hogsback en N&#234;rens" allow="autoplay"
@@ -302,6 +329,7 @@ const WX_FADE = 1.2;
 let wxTimer = 22, mist = null, wxCount = 0;
 let lmIdx = 0, nextAmb = 170, lastLap = 0;   // v5.10: lastLap wraps the landmark cursor each lap
 let toast = null, last = performance.now();
+let resumeIn = 0;          // v6.3: seconds left on the 3-2-1 before a paused run restarts
 let queuedAt = -1e9;        // buffered jump timestamp
 let logHintShown = false;   // taught once per session, survives restarts
 let potholeHintShown = false;
@@ -1088,6 +1116,44 @@ function drawShroom(s, tNow){
   ctx.fillStyle='#fff7d9'; ctx.fillRect(s.x+4,y+1,2.6,2.6); ctx.fillRect(s.x+11,y,2.6,2.6);
 }
 
+// ---- v6.3: the WALLET icon is DRAWN, not the 🍄 emoji ----
+// Player report: "the mushroom icon for the number youve collected, its red but what you collect
+// is gold… someone thought it was counting how many red toadstools you jumped over."
+// They were reading it correctly. The emoji renders as a RED fly agaric in every platform colour
+// font, while the mushrooms you actually collect are GOLD (#ffd75e — the cap drawShroom paints,
+// with a cream stem and white spots). A red mushroom sitting in the score corner next to a number
+// really does look like a tally of something else. So the icon now matches the thing it counts.
+function drawWalletShroom(x, y){                 // x,y = top-left of a 14x13 box
+  ctx.fillStyle='#efe4c8'; ctx.fillRect(x+5, y+6, 4, 7);              // stem
+  ctx.fillStyle='#ffd75e';
+  ctx.beginPath(); ctx.moveTo(x, y+7);
+  ctx.quadraticCurveTo(x+7, y-2, x+14, y+7); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#fff7d9'; ctx.fillRect(x+3.5, y+3, 2.2, 2.2); ctx.fillRect(x+9, y+2.4, 2.2, 2.2);
+}
+// Draw one line of text with that glyph standing in for the emoji. `segs` is the text split
+// AROUND the glyph — [before, after]; pass ['', n] to put it at the front. One helper so the HUD
+// and both death-screen lines cannot drift apart, and so the glyph lands on the text's own
+// baseline rather than at a hand-tuned offset per call site. The caller must have set ctx.font
+// (measureText reads it) and the intended fillStyle; the glyph's own colours are restored after.
+function shroomLine(segs, cx, y, align){
+  const GW = 14, GAP = 5, has = segs.length > 1;
+  const before = ctx.measureText(segs[0]).width;
+  const after  = has ? ctx.measureText(segs[1] || '').width : 0;
+  const total  = before + (has ? GW + GAP : 0) + after;
+  let x = (align === 'center') ? cx - total/2 : cx - total;
+  const a0 = ctx.textAlign, f0 = ctx.fillStyle;
+  ctx.textAlign = 'left';
+  if(segs[0]) ctx.fillText(segs[0], x, y);
+  x += before;
+  if(has){
+    drawWalletShroom(x, y - 11);
+    ctx.fillStyle = f0;                          // the glyph repaints fillStyle; hand it back
+    x += GW + GAP;
+    if(segs[1]) ctx.fillText(segs[1], x, y);
+  }
+  ctx.textAlign = a0;
+}
+
 // ---- Knysna loerie: Hogsback staple and pure scenery. Green bird, and the whole point
 // of it is the crimson flash under the wings when it beats. Never collides with anything.
 // Draw order matters: both wings go BEHIND the green body, so the red on the downstroke
@@ -1388,8 +1454,44 @@ function act(){
     }
     if(performance.now()-deadAt>450) reset();
   }
+  else if(state==='paused'){ if(resumeIn<=0) resumeIn = 3; }   // tap anywhere to start the 3-2-1
   else jump();
 }
+
+// ---- v6.3: PAUSE ----
+// Players: "people wanna take a break without losing progress." The game ALREADY froze when the
+// tab lost focus — visibilitychange reset `last` and rAF is throttled while hidden — so that was
+// an invisible, unadvertised pause. This exposes it as a button and makes it explicit, so a phone
+// call at minute 30 cannot end a 40-minute run.
+// It cannot make the game easier: distance is the only currency, and a paused run accrues none.
+// It is also NOT a continue — resume returns to state 'run' with `meters` untouched, so the run
+// still posts to the board under the same Iron Hog rules. Only `tourRun` (a paid wake-up, which
+// sets it) forfeits the post and the local HI.
+function setPaused(on){
+  if(on){
+    if(state!=='run') return;                  // only a live run can be paused
+    state='paused'; resumeIn=0;
+    beep(520,90,.10,'sine');
+  } else {
+    if(state!=='paused' || resumeIn>0) return;
+    resumeIn=3;                                // 3-2-1, then the run carries on
+  }
+  syncPauseBtn();
+}
+// Guarded writes only: this runs every frame, and setting textContent unconditionally would churn
+// the DOM 60 times a second for a label that changes twice a run.
+function syncPauseBtn(){
+  const b=document.getElementById('pz'); if(!b) return;
+  const live = (state==='run' || state==='paused');
+  if(b.hidden === live) b.hidden = !live;
+  const lbl = state==='paused' ? '▶' : '❚❚';
+  if(b.textContent !== lbl) b.textContent = lbl;
+  const ttl = state==='paused' ? 'Resume' : 'Pause';
+  if(b.title !== ttl) b.title = ttl;
+}
+document.getElementById('pz').addEventListener('click', e=>{
+  e.preventDefault(); setPaused(state==='run');   // a DOM button never reaches the canvas handler
+});
 function payAndContinue(opt){
   const o = opt || (contStops ? {stop:contStops, afford:true} : null);
   if(!o || !o.afford) return;
@@ -1407,6 +1509,10 @@ let slideHeld=false;
 const isTyping = e => e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA');
 addEventListener('keydown', e=>{
   if(isTyping(e)) return;
+  // v6.3: P or Escape toggles pause. Placed above the hop keys so a desktop player can break
+  // without losing a run, and guarded to run/paused so it can never fire on a death screen where
+  // Enter and 1-3 already mean something else.
+  if((e.code==='KeyP'||e.code==='Escape') && (state==='run'||state==='paused')){ e.preventDefault(); setPaused(state==='run'); return; }
   // v5.12: the Gaikas Kop cutscene is dismissed by the same keys that would otherwise hop
   if(state==='fence' && (e.code==='Enter'||e.code==='Space'||e.code==='ArrowUp')){ e.preventDefault(); act(); return; }
   if(state==='dead' && e.code==='Enter' && contStops && performance.now()-deadAt>450){ payAndContinue(); return; }
@@ -1496,7 +1602,8 @@ cv.addEventListener('pointerdown', e=>{
   // v5.3: on the death screen the lower restart buttons sit inside the old DUCK_BAND —
   // a dead hog cannot duck, so don't let the duck-pad capture eat button taps.
   // v5.12: same for the Gaikas Kop cutscene — any tap anywhere must dismiss it.
-  if(state!=='dead' && state!=='fence' && isDuck(p)){   // hold to duck
+  // v6.3: while paused EVERY tap is "carry on", so the duck pad must not swallow one.
+  if(state!=='dead' && state!=='fence' && state!=='paused' && isDuck(p)){   // hold to duck
     slideHeld = true; rec.duck = true; return;
   }
   jumpFlash = performance.now();
@@ -1531,6 +1638,14 @@ function drawControls(){
 function tick(now){
   const dt = Math.min((now-last)/1000,.05); last=now;
   if(fence) fence.age += dt;                    // v5.12: the cutscene clock runs while paused
+  // v6.3 PAUSE. The world does not move while paused, and that is free: the entire update block
+  // below is gated on state==='run', so a 'paused' state simply never enters it. This block only
+  // runs the RESUME countdown, on the same real dt, so the 3-2-1 cannot be skipped or stretched
+  // by a slow frame — and dt is computed above the state check, so it is live while paused.
+  if(state==='paused' && resumeIn>0){
+    resumeIn -= dt;
+    if(resumeIn<=0){ resumeIn=0; state='run'; }
+  }
   if(state==='run'){
     if(spawnGrace>0) spawnGrace-=dt;            // v5.0: clear runway after a continue spawn
     // DIFFICULTY RAMP. Top runners are past 20 km but the curve used to flat-line at
@@ -1746,10 +1861,15 @@ function tick(now){
       vy=JUMPV; jumping=true; beep(440,660,.09); queuedAt=-1e9;
     }
   }
-  if(toast){ toast.age+=dt; if(toast.age>2.4) toast=null; }
-  for(const f of floaters) f.t+=dt;
-  floaters = floaters.filter(f=>f.t<.8);
-  if(shakeT>0) shakeT-=dt;
+  // v6.3: these sit OUTSIDE the state==='run' block above, so without this guard a toast would
+  // keep ageing and a floater would keep fading while the run is paused — the world would look
+  // frozen but the ephemeral layer would quietly move. "Paused" has to mean paused.
+  if(state!=='paused'){
+    if(toast){ toast.age+=dt; if(toast.age>2.4) toast=null; }
+    for(const f of floaters) f.t+=dt;
+    floaters = floaters.filter(f=>f.t<.8);
+    if(shakeT>0) shakeT-=dt;
+  }
 
   // ---- render ----
   ctx.save();
@@ -1789,7 +1909,8 @@ function tick(now){
   ctx.font='12px monospace'; ctx.globalAlpha=.7;
   ctx.fillText('HI '+String(hi).padStart(4,'0'), W-16, 48);
   ctx.font='13px monospace'; ctx.globalAlpha = pocket>0 ? .95 : .4;
-  ctx.fillText('🍄 '+pocket, W-16, 66);           // v5.0: persistent wallet, not a 0-3 meter
+  // v6.3: drawn GOLD glyph, not the red 🍄 emoji — see drawWalletShroom for the player report.
+  shroomLine(['', String(pocket)], W-16, 66, 'right');   // v5.0: persistent wallet, not a 0-3 meter
   ctx.globalAlpha=1; ctx.textAlign='left';
 
   if(toast){
@@ -1883,7 +2004,9 @@ function tick(now){
       // v5.6: the score is the metres you RAN — the same number that posts and the same
       // number the HI tracks. A continue's world position is shown too, but as scenery
       // ("at 150 582 m"), never as the score, so it can't be mistaken for a best run.
-      ctx.fillText(`${meters} m run   ·   HI ${hi} m   ·   🍄 ${pocket}`, W/2, 110);
+      // v6.3: one measured line — the prefix and the wallet glyph are laid out together so the
+      // whole thing stays centred as a unit. Two separate centred calls would stack on each other.
+      shroomLine([`${meters} m run   ·   HI ${hi} m   ·   `, String(pocket)], W/2, 110, 'center');
       // v5.8: ANSWER "DID IT REGISTER?" ON THE SCREEN. A player should never have to infer
       // whether their run reached the board — Matt's report was exactly that inference failing.
       // Saved state wins this line; a continue's world position is scenery and yields to it.
@@ -1903,7 +2026,7 @@ function tick(now){
       if(isMayor){
         ctx.fillText('six laps of the ridge — and it is all yours', W/2, 138);
       } else {
-        ctx.fillText('🍄 '+pocket+' in the pocket — mushrooms buy second chances', W/2, 138);
+        shroomLine(['', pocket+' in the pocket — mushrooms buy second chances'], W/2, 138, 'center');
       }
       // v5.3/v5.4/v5.5: RESTART BUTTONS — up to three, deepest first, always inside the
       // canvas band above the DOM overlays. The whole group (header + buttons + hint) sits
@@ -1966,6 +2089,27 @@ function tick(now){
     }
     ctx.globalAlpha=1; ctx.textAlign='left';
   }
+  // v6.3: the pause card, drawn LAST so it covers the frozen world. The world stays visible
+  // underneath, dimmed, so the player can see exactly where they stopped — and the 3-2-1 is a
+  // big single digit rather than a line of prose, because it is read at a glance mid-run.
+  if(state==='paused'){
+    ctx.fillStyle='rgba(20,29,56,.66)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='rgba(20,29,56,.94)'; ctx.fillRect(W/2-190, 74, 380, 132);
+    ctx.textAlign='center';
+    ctx.fillStyle='#ffe9a8'; ctx.font='bold 20px system-ui';
+    ctx.fillText('PAUSED', W/2, 106);
+    ctx.fillStyle='#cdd6ee'; ctx.font='13px system-ui';
+    ctx.fillText('the ridge waits. your run is safe — nothing is lost.', W/2, 132);
+    if(resumeIn>0){
+      ctx.fillStyle='#ffd75e'; ctx.font='bold 34px system-ui';
+      ctx.fillText(String(Math.ceil(resumeIn)), W/2, 184);
+    } else {
+      ctx.fillStyle='#8f9bbd'; ctx.font='13px system-ui';
+      ctx.fillText('tap anywhere to carry on', W/2, 178);
+    }
+    ctx.textAlign='left';
+  }
+  syncPauseBtn();
   ctx.restore();
   requestAnimationFrame(tick);
 }
@@ -1987,7 +2131,16 @@ function drawBoard(topMin){
     ctx.fillText((i+1)+'. '+nm+' — '+r.m+' m', W/2, by0+29+i*12);
   });
 }
-document.addEventListener('visibilitychange',()=>{ if(!document.hidden) last=performance.now(); });
+// v6.3: leaving the page now PAUSES instead of silently freezing. It always froze — rAF is
+// throttled while hidden and this handler reset `last` so no huge dt landed on return — but the
+// player could not know that, and could not do it on purpose. A phone call at minute 30 ending a
+// 40-minute run is the most enraging thing this game can do, and the most common.
+// setPaused(true) returns early unless state==='run', so calling it unconditionally is safe.
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ setPaused(true); }
+  else last=performance.now();
+});
+addEventListener('blur', ()=>{ setPaused(true); });
 requestAnimationFrame(tick);
 </script>
 </body>
