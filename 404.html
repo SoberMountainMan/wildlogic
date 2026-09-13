@@ -1615,9 +1615,15 @@ const CTL_X      = W - 172; // left edge of the control column (58px of grace le
 // The band is set by the WORST viewport, not a typical one. With the canvas centred, the card's
 // viewport top is (vh - 337.6)/2 + 0.938*TOAST_Y, so clearing the credit's bottom edge (66) needs
 // TOAST_Y > 141 at a 205px-tall landscape viewport — the tightest height in the sweep — and > 42 on
-// a 390px one. 150 gives 8px of daylight at the tightest point and 45px at the owner's ~278. Below
-// ~200px of viewport height the band would have to keep dropping, but that only happens with the
-// keyboard up, and the keyboard means the name box, and body.has-nm hides the credit entirely.
+// a 390px one. v6.5 raises it 150 -> 158 on the FULL sweep's evidence, not a spot-check: 150 left
+// only 8.4 px of daylight at the tightest point, and because the credit and the card are BOTH centred
+// they overlap completely in X, so that 8.4 px was the only thing separating them. 158 gives 15.9 px
+// there — nearly double — and 52 px at the owner's ~278 (was 45); the pad clearance improves a hair
+// too (13.8 -> 14.0 px). Better on both measured axes. It is also no worse on the DEATH screen, where
+// the card lands in the 148+ control band either way (at 158 it overlaps the empty-state hint box by
+// 24 px instead of 32). Below ~200px of viewport height the band would have to keep dropping, but
+// that only happens with the keyboard up, and the keyboard means the name box, and body.has-nm hides
+// the credit entirely.
 //
 // TOAST_MAXW is the other half: the longest message the game builds ("Need 15 more mushrooms to wake
 // up at Secret Waterfall — tap anywhere else to bank this run.") measures 652 px at 17px, i.e. a
@@ -1638,7 +1644,7 @@ const CTL_X      = W - 172; // left edge of the control column (58px of grace le
 // rather than re-deriving the box, so there is no mirrored maths to drift — and it DERIVES the long
 // sample from the game's own stop table, so a change to the copy cannot quietly stop it covering the
 // worst case (which is exactly what happened here).
-const TOAST_Y = 150, TOAST_H = 34, TOAST_BASE = 23, TOAST_MAXW = 620;
+const TOAST_Y = 158, TOAST_H = 34, TOAST_BASE = 23, TOAST_MAXW = 620;
 const TOAST_FONTS = [17, 15, 13];      // v6.4: descend until the text fits the lane
 const isTouch = (typeof matchMedia === 'function') && matchMedia('(pointer: coarse)').matches;
 let jumpFlash = -1e9;                  // lights the JUMP pad briefly on press
