@@ -320,7 +320,15 @@ let state = 'ready', speed = 330, trav = 0, meters = 0, hi = +(localStorage.getI
 // gate. Tap (or Enter/Space) rides on into the next lap with the distance intact.
 let fence = null;
 let runStart = 0;           // v5.0: world offset — 0 for a ranked run, stop.m for a tour run
-let tourRun = false;        // tour runs never POST and never write hi
+// v6.4: `tourRun` marks a PAID wake-up run. It is PACING ONLY — it never gated the score.
+// CORRECTED COMMENT: this line used to claim that a tour run never posts and never writes the hi,
+// which has been FALSE since v5.1. submitName() POSTs with no tourRun guard and die() writes `hi`
+// with no tourRun guard, so a resumed run counts, exactly as the v5.10 owner ruling in reset() wants
+// ("a continue RESUMES it... the point is not to have to start from 0"). What tourRun actually
+// changes: spawn speed (330*.85), the nextGap runway, spawnGrace, the speed ease-in, and the HUD's
+// "woke at" label. It was left stale once already and then corroborated by a second wrong comment —
+// do not "fix" the code to match an old note; read the write sites.
+let tourRun = false;
 let spawnGrace = 0;         // v5.0: 2 s obstacle-free runway after a continue spawn
 let hogY = GROUND, vy = 0, jumping = false, obs = [], nextGap = 420, deadAt = 0;
 // weather: Hogsback can't make up its mind. clear -> mist -> clear -> rain -> ...
@@ -467,8 +475,57 @@ const lapBasesInView = () => { const b = lapStartOf(trav/10); return [b, b + LAP
 // more than one option, so people have to chose and can see if they dont have enough
 // shrooms they start to learn they could have restarted higher if they had more")
 // v5.5: tour deaths use this too — every wake-up pays, free returns are gone.
+//
+// ======================== v6.4: THE STOPS TILE PER LAP ========================
+// Owner, 13 Sep: "dying at 170200 means you on lap 2 ... you should restart on beginning of lap 2,
+// not go back to lap 1" and "so lap 2, 3, 4, etc first checkpoint is 170,001. wake up on lap 2."
+//
+// Everything else in the game already loops — the scenery, the falls, the landmark messages — but
+// this list was written ONCE as absolute distances from the village, so its nine stops existed in
+// lap 1 and nowhere else: die at 400,000 m and the deepest button was still the Secret Waterfall at
+// 121,393 m, a 278 km rollback, with no distance shown before you paid. Two changes, both here:
+//   (1) TILE. A stop with relative `m` in lap L sits at m + (L-1)*LAP_M — lap 2's Cannacopia is
+//       170,420 m, the owner's own example.
+//   (2) THE START OF EACH LAP IS ITSELF A WAKE-UP POINT, at (L-1)*LAP_M + 1 — 170,001, 340,001,
+//       510,001, 680,001, 850,001. Without it there is a ~49 km hole late in every lap: a death just
+//       past a fence fell all the way back to the previous lap's Secret Waterfall. With it, dying at
+//       170,200 offers the start of lap 2 — 199 m back instead of 48,807 m. The +1 keeps the wake
+//       unambiguously INSIDE the new lap, and the fence's own re-trigger test
+//       (`permits < floor(worldNow/PERMIT_M)`) is already false there, so nothing fires twice.
+//
+// THE PRICE IS ADDITIVE, NOT MULTIPLICATIVE — and that is not a style choice. `cost * lap` inverts
+// the ladder: the within-lap costs restart at 1, so lap 2's early stops (2, 4, 12) would come out
+// CHEAPER than lap 1's late ones (38, 61), the toll would get cheaper the deeper you went, and the
+// wallet would never drain — the opposite of "eventually they run out and have to go further back".
+// `cost + 61*(lap-1)` is monotonic all the way up the mountain (61 = the full span of the lap-1
+// ladder), it keeps LAP 1 UNCHANGED stop for stop, and it bites where it should: by lap 4 the
+// cheapest wake-up (183) is about a lap's income, and by lap 6 every option costs more than a lap
+// earns. The one tie per lap — the lap start matching the previous lap's top rung — is forced
+// arithmetic: at 170,001 the price must be >= 61 (lap 1's top) and <= 62 (lap 2's Cannacopia), so 61
+// is the only integer that fits, and it buys a 199 m rollback where the other 61-cost button costs
+// 48,807 m.
+//
+// The tiled entry MUST be a NEW object carrying an ABSOLUTE `m`: reset() uses `m` directly as a
+// world position (`trav = m*10; meters = m`), so a relative one would silently drop the player
+// 170 km back to Cannacopia. STOPS itself is never mutated.
+const LAP_SPAN = 61;                              // the last cost in the lap-1 ladder — the step per lap
+const LAP_COUNT = Math.ceil(MAYOR_M / LAP_M);     // six laps of the mountain
+const lapPrice = (base, lap) => base + LAP_SPAN*(lap-1);
+const ALL_STOPS = (() => {
+  const out = [];
+  for(let lap=1; lap<=LAP_COUNT; lap++){
+    for(const s of STOPS){
+      out.push({ m: s.m + (lap-1)*LAP_M,
+                 label: lap===1 ? s.label : s.label+' (lap '+lap+')',   // lap 1 reads exactly as today
+                 line: s.line, cost: lapPrice(s.cost, lap) });
+    }
+    if(lap > 1) out.push({ m: (lap-1)*LAP_M + 1, label: 'THE GATE (LAP '+lap+')',
+                           line: 'You ride through the gate into lap '+lap, cost: lapPrice(0, lap) });
+  }
+  return out;
+})();
 function contOptionsFor(runMeters){
-  const passed = STOPS.filter(s => runMeters >= s.m).sort((a,b)=>b.m-a.m).slice(0,3);
+  const passed = ALL_STOPS.filter(s => runMeters >= s.m).sort((a,b)=>b.m-a.m).slice(0,3);
   return passed.map(s => ({stop:s, afford: pocket >= s.cost, short: Math.max(0, s.cost - pocket)}));
 }
 
@@ -1465,8 +1522,9 @@ function act(){
 // call at minute 30 cannot end a 40-minute run.
 // It cannot make the game easier: distance is the only currency, and a paused run accrues none.
 // It is also NOT a continue — resume returns to state 'run' with `meters` untouched, so the run
-// still posts to the board under the same Iron Hog rules. Only `tourRun` (a paid wake-up, which
-// sets it) forfeits the post and the local HI.
+// still posts to the board under the same Iron Hog rules. (CORRECTED in v6.4: this note used to
+// say "only `tourRun` forfeits the post and the local HI" — it does not, and never did after v5.1.
+// A paid wake-up posts and writes the HI like any other run; see the tourRun declaration above.)
 function setPaused(on){
   if(on){
     if(state!=='run') return;                  // only a live run can be paused
@@ -1563,13 +1621,25 @@ const CTL_X      = W - 172; // left edge of the control column (58px of grace le
 //
 // TOAST_MAXW is the other half: the longest message the game builds ("Need 15 more mushrooms to wake
 // up at Secret Waterfall — tap anywhere else to bank this run.") measures 652 px at 17px, i.e. a
-// 680 px card whose right edge (790) clipped the JUMP pad (x 786) by 4x4 px. Long messages drop to
-// 15px so the card stays inside the free lane, whatever band it is drawn in.
+// 680 px card whose right edge (790) clipped the JUMP pad (x 786) by 4x4 px. Long messages drop a
+// font size so the card stays inside the free lane, whatever band it is drawn in.
+//
+// v6.4: ONE STEP WAS NOT ENOUGH ANY MORE. Tiling the stops per lap added "(lap N)" to the labels,
+// and BOTH long messages are built FROM a label — the wake toast ("… Jy is by THE SECRET WATERFALL
+// (lap 6).") and the greyed-button prompt ("Need 329 more 🍄 to wake up at …"). The worst case went
+// 82 -> 96 characters, and at 15px that is ~673 px of text — a card reaching back out to the pad
+// column. So the drop is now a LADDER (17 -> 15 -> 13) that keeps stepping until the text actually
+// fits TOAST_MAXW. That turns the constant into an ENFORCED invariant instead of a threshold that
+// only ever got one chance to apply, which is what made it silently lose coverage. 96 chars at 13px
+// is ~584 px — comfortably inside the lane.
 //
 // _verify_toast_band.js boots the real page at the real slug across 27 viewports and both toast
 // lengths and asserts the card never intersects the credit or either pad. It calls toastCard() below
-// rather than re-deriving the box, so there is no mirrored maths to drift.
+// rather than re-deriving the box, so there is no mirrored maths to drift — and it DERIVES the long
+// sample from the game's own stop table, so a change to the copy cannot quietly stop it covering the
+// worst case (which is exactly what happened here).
 const TOAST_Y = 150, TOAST_H = 34, TOAST_BASE = 23, TOAST_MAXW = 620;
+const TOAST_FONTS = [17, 15, 13];      // v6.4: descend until the text fits the lane
 const isTouch = (typeof matchMedia === 'function') && matchMedia('(pointer: coarse)').matches;
 let jumpFlash = -1e9;                  // lights the JUMP pad briefly on press
 function toCanvas(e){
@@ -1582,9 +1652,15 @@ function toCanvas(e){
 // (_verify_toast_band.js) need it: the gate asks the game for the box it actually draws instead of
 // re-deriving the maths, so this file cannot drift away from what the gate measures.
 function toastCard(s){
-  ctx.font='17px system-ui';
-  let tw=ctx.measureText(s).width;
-  if(tw>TOAST_MAXW){ ctx.font='15px system-ui'; tw=ctx.measureText(s).width; }
+  // v6.4: descend the font ladder until the text fits TOAST_MAXW. The chosen size is left on ctx,
+  // which is what the draw site below relies on (it calls toastCard for the box and then fillText
+  // without setting a font of its own).
+  let tw = 0;
+  for(const px of TOAST_FONTS){
+    ctx.font = px+'px system-ui';
+    tw = ctx.measureText(s).width;
+    if(tw <= TOAST_MAXW) break;              // fits at this size — stop shrinking
+  }
   return { x:W/2-tw/2-14, y:TOAST_Y, w:tw+28, h:TOAST_H, tw:tw };
 }
 function isDuck(p){
@@ -1767,6 +1843,12 @@ function tick(now){
       state='dead'; deadAt=performance.now(); shakeT=.35;
       beep(660,1320,.5,'sine');
       contStops=null;
+      // v6.4: clear the BUTTON LIST too, not just the Enter-key default. `contOptions` is only ever
+      // set in die(), so on the win screen it still held the options from the last death — and the
+      // Digit1/2/3 handlers check `contOptions[i]?.afford`, not the state's head. Pressing 1/2/3 on
+      // the Mayor screen therefore spent mushrooms and rode on past the win. The draw code already
+      // skips the buttons on 'MAYOR!', so the buttons were invisible while the KEYS stayed live.
+      contOptions=[];
       try{ document.getElementById('sh').hidden = false; }catch(e){}
       fetchBoard().then(refreshQualify).catch(()=>{});
       return;
