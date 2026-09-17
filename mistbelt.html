@@ -1,0 +1,1364 @@
+<!doctype html>
+<html lang="en-ZA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mistbelt — grow back the Hogsback forest</title>
+<meta name="description" content="Clear the alien trees off a Hogsback mountainside, plant what belongs here, and watch the Amathole mistbelt forest return.">
+<style>
+  :root{
+    --bg:#0d1512; --panel:#141f1a; --panel2:#1a2822; --line:#26362e;
+    --ink:#e9efe8; --dim:#9db3a6; --faint:#6d8276;
+    --indig:#3f8f5e; --indig-hi:#63b47f;
+    --alien:#a8c34a; --bare:#8a7a5e; --rain:#7fa8c9; --snow:#dbe9ef; --warm:#e0a355;
+    --r:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%}
+  #app{max-width:940px;margin:0 auto;padding:14px 14px 40px}
+  h1{font-size:17px;font-weight:600;margin:0 0 2px;letter-spacing:.01em}
+  .sub{color:var(--dim);font-size:13px;margin:0 0 12px}
+
+  .hud{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;margin-bottom:10px}
+  .chip{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:7px 11px;min-width:0;display:flex;flex-direction:column;justify-content:center}
+  .chip .k{font-size:11px;color:var(--faint);letter-spacing:.04em;text-transform:uppercase}
+  .chip .v{font-size:15px;font-weight:600;white-space:nowrap}
+  .chip.wx{flex:1;min-width:210px}
+  .chip.wx .v{font-weight:500}
+  .wxline{display:flex;align-items:center;gap:7px}
+  .wxdot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;background:var(--dim)}
+  .tag{font-size:11px;color:var(--faint)}
+
+  .stage{position:relative;border-radius:var(--r);overflow:hidden;border:1px solid var(--line);
+    background:#0a100e;touch-action:none;cursor:pointer}
+  canvas{display:block;width:100%;height:auto}
+
+  .tools{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0 4px}
+  button.tool{font:inherit;font-size:13px;color:var(--ink);background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;padding:8px 11px;cursor:pointer;
+    display:flex;flex-direction:column;align-items:flex-start;gap:1px;line-height:1.25;text-align:left}
+  button.tool:hover{border-color:#3a5044}
+  button.tool b{font-weight:600;font-size:13px}
+  button.tool span{font-size:11px;color:var(--faint)}
+  button.tool[aria-pressed="true"]{border-color:var(--indig-hi);background:#1c2f26}
+  button.tool.cut[aria-pressed="true"]{border-color:var(--alien);background:#2b3316}
+  button.tool:disabled{opacity:.45;cursor:default}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:11px 13px;margin-top:10px}
+  .panel h2{font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--faint);margin:0 0 7px}
+  #notes p{margin:0 0 6px;font-size:13.5px;color:var(--ink)}
+  #notes p.dim{color:var(--dim)}
+  #notes p.good{color:var(--indig-hi)}
+  #notes p.warn{color:var(--warm)}
+
+  .savebar{display:flex;flex-wrap:wrap;gap:7px;align-items:center}
+  .savebar input{flex:1;min-width:180px;font:inherit;font-size:12px;color:var(--ink);
+    background:#0f1a16;border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+  button.btn{font:inherit;font-size:13px;color:var(--ink);background:var(--panel2);
+    border:1px solid var(--line);border-radius:9px;padding:8px 12px;cursor:pointer}
+  button.btn:hover{border-color:#3a5044}
+  .hint{font-size:12px;color:var(--faint);margin:8px 0 0}
+
+  .card{position:fixed;left:0;right:0;bottom:0;z-index:20;padding:14px;
+    background:linear-gradient(to top,rgba(8,14,12,.98),rgba(8,14,12,.86));
+    border-top:1px solid var(--line)}
+  .card .inner{max-width:940px;margin:0 auto}
+  .card h3{margin:0 0 5px;font-size:15px}
+  .card p{margin:0 0 9px;font-size:13.5px;color:var(--dim);max-width:60ch}
+  .card a{color:var(--indig-hi)}
+  .card .row{display:flex;gap:8px;flex-wrap:wrap}
+
+  footer{margin-top:16px;font-size:12px;color:var(--faint);line-height:1.6}
+  footer a{color:var(--dim)}
+  @media (max-width:520px){ .chip.wx{min-width:100%} }
+</style>
+</head>
+<body>
+<main id="app">
+  <h1>Mistbelt</h1>
+  <p class="sub">A mountainside above Hogsback. Black wattle, patula pine, bugweed and bramble have taken the slope. Clear them, plant what belongs here, and the Amathole forest grows back.</p>
+
+  <div class="hud">
+    <div class="chip"><span class="k">Day</span><span class="v" id="hudDay">1</span></div>
+    <div class="chip"><span class="k">A day's work</span><span class="v" id="hudAp">12</span></div>
+    <div class="chip"><span class="k">Nursery credit</span><span class="v" id="hudCredit">6</span></div>
+    <div class="chip wx">
+      <span class="k">Hogsback weather</span>
+      <span class="v"><span class="wxline"><span class="wxdot" id="wxDot"></span><span id="wxText">Reading the sky…</span></span></span>
+      <span class="tag" id="wxSrc">open-meteo.com</span>
+    </div>
+  </div>
+
+  <div class="stage"><canvas id="cv" width="900" height="660"></canvas></div>
+
+  <div class="tools" id="tools"></div>
+
+  <section class="panel">
+    <h2>Today's board</h2>
+    <div id="board"></div>
+    <div class="savebar" style="margin-top:9px">
+      <button class="btn" id="btnClaim">Claim the day</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Field notes</h2>
+    <div id="notes"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Keep your forest</h2>
+    <div class="savebar">
+      <button class="btn" id="btnSave">Copy save code</button>
+      <input id="codeIn" placeholder="Paste a save code here" spellcheck="false" autocomplete="off">
+      <button class="btn" id="btnLoad">Load</button>
+      <button class="btn" id="btnNew">Start over</button>
+    </div>
+    <p class="hint" id="saveHint">Your forest saves itself in this browser. A save code is how you carry it to another phone, or bring it back after clearing your browser.</p>
+  </section>
+
+  <footer>
+    The Cape Parrot Project works on this forest — clearing aliens, growing indigenous seedlings in community nurseries, and putting them back into the Amathole mistbelt.
+    <a href="https://www.wildbirdtrust.com/projects/cape-parrot-project" target="_blank" rel="noopener">wildbirdtrust.com</a>
+    <br>Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>.
+  </footer>
+</main>
+
+<div class="card" id="card" hidden>
+  <div class="inner">
+    <h3 id="cardTitle"></h3>
+    <p id="cardBody"></p>
+    <div class="row">
+      <button class="btn" id="cardOk">Right</button>
+      <a class="btn" id="cardLink" href="#" target="_blank" rel="noopener" hidden style="text-decoration:none">Learn more</a>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+/* ============================================================ constants */
+
+var VERSION = 1;
+var SAVE_KEY = 'mistbelt.save.v1';
+var SPOT = { lat: -32.5947, lon: 26.9342 };
+var COLS = 10, ROWS = 7, NTILES = COLS * ROWS;
+var W = 900, H = 660;
+var AP_MAX = 12;
+var CREDIT_START = 6;
+var MAX_CATCHUP_DAYS = 5;
+var PARROT_AGE = 8;
+
+/* Real species, from the Amathole / Hogsback literature. */
+var ALIEN_KEYS = ['wattle', 'pine', 'bugweed', 'bramble'];
+var ALIENS = {
+  wattle:  { name: 'Black wattle',     sci: 'Acacia mearnsii',     ap: 2, bank: 3, spread: 3, fruit: true,
+             note: 'Its seed sits in the soil for decades, so a stump is not the end of it.' },
+  pine:    { name: 'Patula pine',      sci: 'Pinus patula',        ap: 2, bank: 3, spread: 2, fruit: false,
+             note: 'Planted for timber. The cones hold their seed until the heat opens them.' },
+  bugweed: { name: 'Bugweed',          sci: 'Solanum mauritianum', ap: 1, bank: 2, spread: 4, fruit: true,
+             note: 'Birds carry the fruit uphill. It fruits the whole year round.' },
+  bramble: { name: 'American bramble', sci: 'Rubus cuneifolius',   ap: 1, bank: 2, spread: 3, fruit: true,
+             note: 'Roots sucker back after cutting. It takes the light from everything under it.' }
+};
+
+var SP_KEYS = ['yellowwood', 'stinkwood', 'chestnut', 'knobwood'];
+var SPECIES = {
+  yellowwood: { name: 'Yellowwood',      sci: 'Podocarpus latifolius', cost: 3, slow: true,  fruit: false, hollow: true,
+                note: 'Slow, and it lives for centuries. The old ones grow hollow.' },
+  stinkwood:  { name: 'White stinkwood', sci: 'Celtis africana',      cost: 2, slow: false, fruit: true,  hollow: false,
+                note: 'Shades the ground within a few seasons. Birds come for the fruit.' },
+  chestnut:   { name: 'Cape chestnut',   sci: 'Calodendrum capense',  cost: 2, slow: false, fruit: false, hollow: false,
+                note: 'Flowers feed the sunbirds and sugarbirds.' },
+  knobwood:   { name: 'Forest knobwood', sci: 'Zanthoxylum davyi',    cost: 3, slow: true,  fruit: true,  hollow: false,
+                note: 'Thorny, and the seed is worth cracking open.' }
+};
+
+var ALIEN_CODE = { none: 0, wattle: 1, pine: 2, bugweed: 3, bramble: 4 };
+var ALIEN_FROM = [null, 'wattle', 'pine', 'bugweed', 'bramble'];
+var SP_CODE = { none: 0, yellowwood: 1, stinkwood: 2, chestnut: 3, knobwood: 4 };
+var SP_FROM = [null, 'yellowwood', 'stinkwood', 'chestnut', 'knobwood'];
+
+/* A month-by-month average for the village, used when the forecast cannot be reached. */
+var SEASON = [
+  { tmax: 24, tmin: 13, rain: 3.2, snow: 0, wind: 12, cloud: 60 },
+  { tmax: 24, tmin: 13, rain: 3.0, snow: 0, wind: 12, cloud: 58 },
+  { tmax: 22, tmin: 12, rain: 2.6, snow: 0, wind: 11, cloud: 55 },
+  { tmax: 20, tmin: 9,  rain: 1.8, snow: 0, wind: 11, cloud: 50 },
+  { tmax: 17, tmin: 6,  rain: 1.0, snow: 0, wind: 12, cloud: 45 },
+  { tmax: 15, tmin: 4,  rain: 0.6, snow: 0, wind: 13, cloud: 42 },
+  { tmax: 15, tmin: 3,  rain: 0.7, snow: 1, wind: 14, cloud: 45 },
+  { tmax: 17, tmin: 4,  rain: 1.0, snow: 1, wind: 15, cloud: 48 },
+  { tmax: 20, tmin: 7,  rain: 1.6, snow: 0, wind: 14, cloud: 55 },
+  { tmax: 21, tmin: 9,  rain: 2.6, snow: 0, wind: 13, cloud: 62 },
+  { tmax: 22, tmin: 11, rain: 3.2, snow: 0, wind: 12, cloud: 64 },
+  { tmax: 23, tmin: 12, rain: 3.3, snow: 0, wind: 12, cloud: 62 }
+];
+
+/* ============================================================ state */
+
+var state = null;
+var tool = 'cut';
+var troop = null;      // baboon troop walking the slope
+var parrot = null;     // a cape parrot in flight
+var cv = null, ctx = null, els = {}, notesEl = null;
+
+function tile(alien, seeds) {
+  return { alien: alien, seeds: seeds || 0, sp: null, stage: 0, age: 0, hollow: false };
+}
+
+function idx(c, r) { return r * COLS + c; }
+function at(c, r) {
+  if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return null;
+  return state.tiles[idx(c, r)];
+}
+
+function newState() {
+  var t = [];
+  var i, c, r;
+  for (r = 0; r < ROWS; r++) {
+    for (c = 0; c < COLS; c++) {
+      var near = 1 - r / (ROWS - 1);              // uphill is heavier with aliens
+      var roll = Math.random();
+      if (roll < 0.28 + 0.34 * near) {
+        var k = roll < 0.12 + 0.16 * near ? 'wattle'
+              : roll < 0.20 + 0.24 * near ? 'pine'
+              : roll < 0.25 + 0.30 * near ? 'bugweed' : 'bramble';
+        t.push(tile(k, ALIENS[k].bank));
+      } else {
+        t.push(tile(null, 0));
+      }
+    }
+  }
+  return {
+    v: VERSION,
+    day: 1,
+    ap: AP_MAX,
+    credit: CREDIT_START,
+    tiles: t,
+    weather: null,
+    weatherDay: null,
+    lastDayKey: dayKey(new Date()),
+    seen: { seedbank: false, baboon: false, parrot: false, shade: false },
+    log: [],
+    cleared: 0,
+    planted: 0,
+    board: null
+  };
+}
+
+function dayKey(d) {
+  var m = d.getMonth() + 1, dd = d.getDate();
+  return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (dd < 10 ? '0' + dd : dd);
+}
+
+/* ============================================================ weather */
+
+function weatherFrom(payload, month) {
+  if (!payload || !payload.current || !payload.daily) return null;
+  var d = payload.daily;
+  var c = payload.current;
+  return {
+    tmax: num(d.temperature_2m_max, 0),
+    tmin: num(d.temperature_2m_min, 0),
+    rain: num(d.precipitation_sum, 0),
+    snow: num(d.snowfall_sum, 0),
+    wind: num(d.wind_speed_10m_max, 0),
+    cloud: one(c.cloud_cover),
+    temp: one(c.temperature_2m),
+    code: one(c.weather_code),
+    month: month
+  };
+}
+
+/* the daily block is arrays; the current block is plain numbers */
+function num(a, i) {
+  if (!a || a.length <= i || a[i] === null || a[i] === undefined) return 0;
+  return Number(a[i]) || 0;
+}
+
+function one(v) {
+  var n = Number(v);
+  return isFinite(n) ? n : 0;
+}
+
+function fallbackFor(month) {
+  var s = SEASON[month];
+  return { tmax: s.tmax, tmin: s.tmin, rain: s.rain, snow: s.snow, wind: s.wind,
+           cloud: s.cloud, temp: (s.tmax + s.tmin) / 2, code: s.cloud > 60 ? 3 : 0, month: month, fallback: true };
+}
+
+function classify(w) {
+  return {
+    wet: w.rain >= 1,
+    heavy: w.rain >= 5,
+    frost: w.tmin <= 2,
+    mist: w.cloud >= 85 && w.wind < 16 && w.rain < 1,
+    berg: w.wind >= 35,
+    snow: w.snow > 0
+  };
+}
+
+function weatherWord(w) {
+  var k = classify(w);
+  if (k.snow) return 'Snow on the ridge';
+  if (k.heavy) return 'Heavy rain';
+  if (k.wet) return 'Rain';
+  if (k.mist) return 'Mist';
+  if (k.berg) return 'Berg wind';
+  if (k.frost) return 'Frost';
+  if (w.cloud >= 60) return 'Cloudy';
+  return 'Clear';
+}
+
+function weatherColour(w) {
+  var k = classify(w);
+  if (k.snow) return '#dbe9ef';
+  if (k.wet) return '#7fa8c9';
+  if (k.mist) return '#9db3a6';
+  if (k.berg) return '#e0a355';
+  if (k.frost) return '#bcd6e0';
+  return '#e8d9a0';
+}
+
+function fetchForecast(month) {
+  var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + SPOT.lat +
+    '&longitude=' + SPOT.lon +
+    '&current=temperature_2m,precipitation,cloud_cover,wind_speed_10m,weather_code' +
+    '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_speed_10m_max' +
+    '&timezone=Africa%2FJohannesburg&forecast_days=1';
+  if (typeof fetch !== 'function') return Promise.resolve(fallbackFor(month));
+  return fetch(url).then(function (r) { return r.json(); })
+    .then(function (j) { return weatherFrom(j, month) || fallbackFor(month); })
+    .catch(function () { return fallbackFor(month); });
+}
+
+/* ============================================================ the day */
+
+function matureIndigenousAround(c, r) {
+  var n = 0, dc, dr;
+  for (dr = -1; dr <= 1; dr++) {
+    for (dc = -1; dc <= 1; dc++) {
+      if (!dc && !dr) continue;
+      var t = at(c + dc, r + dr);
+      if (t && t.sp && t.stage === 3) n++;
+    }
+  }
+  return n;
+}
+
+function count(pred) {
+  var n = 0, i;
+  for (i = 0; i < NTILES; i++) if (pred(state.tiles[i])) n++;
+  return n;
+}
+
+function stats() {
+  var alien = count(function (t) { return !!t.alien; });
+  var mature = count(function (t) { return t.sp && t.stage === 3; });
+  var growing = count(function (t) { return t.sp && t.stage > 0 && t.stage < 3; });
+  var bare = count(function (t) { return !t.alien && !t.sp; });
+  return {
+    alien: alien, mature: mature, growing: growing, bare: bare, total: NTILES,
+    alienPct: Math.round(alien / NTILES * 100),
+    forestPct: Math.round(mature / NTILES * 100)
+  };
+}
+
+function tickDay(w) {
+  var k = classify(w);
+  var s = stats();
+  var i, c, r, t, line = [];
+
+  /* --- aliens: germination, then downhill spread --- */
+  var sprouted = 0;
+  for (r = 0; r < ROWS; r++) {
+    for (c = 0; c < COLS; c++) {
+      t = at(c, r);
+      if (!t.alien && t.seeds > 0 && w.rain >= 3) {
+        var shade = matureIndigenousAround(c, r);
+        var chance = 0.55 - 0.12 * shade;
+        if (chance < 0.2) chance = 0.2;
+        if (Math.random() < chance) {
+          t.alien = pickAlien(t);
+          t.seeds -= 1;
+          sprouted++;
+        }
+      }
+      if (t.alien && Math.random() < 0.10 && t.seeds < 6) t.seeds += 1;
+    }
+  }
+  if (sprouted) line.push(sprouted + (sprouted === 1 ? ' alien seedling came up' : ' alien seedlings came up') +
+    ' out of seed left in the ground.');
+
+  var spread = 0;
+  for (r = 0; r < ROWS; r++) {
+    for (c = 0; c < COLS; c++) {
+      t = at(c, r);
+      if (!t.alien) continue;
+      var def = ALIENS[t.alien];
+      var tries = k.berg ? def.spread + 1 : def.spread;
+      var n;
+      for (n = 0; n < tries; n++) {
+        if (Math.random() > 0.18) continue;
+        var dr = Math.random() < 0.7 ? 1 : (Math.random() < 0.5 ? 0 : -1);
+        var dc = Math.floor(Math.random() * 3) - 1;
+        var t2 = at(c + dc, r + dr);
+        if (t2 && t2.seeds < 9) { t2.seeds += 1; spread++; }
+      }
+    }
+  }
+  if (spread) line.push('Seed moved ' + spread + ' step' + (spread === 1 ? '' : 's') + ' down the slope.');
+
+  /* --- indigenous growth --- */
+  var grew = 0, lost = 0, hollowed = 0;
+  for (i = 0; i < NTILES; i++) {
+    t = state.tiles[i];
+    if (!t.sp || t.stage === 0 || t.stage === 3) continue;
+    var def2 = SPECIES[t.sp];
+    var g = 1;
+    if (w.rain >= 5) g += 2;
+    else if (w.rain >= 1) g += 1;
+    if (k.mist && !def2.slow) g += 1;
+    if (k.mist && def2.slow) g += 1;
+    if (k.frost) g -= 1;
+    if (k.berg) g -= 1;
+    if (k.snow) g -= 1;
+    if (def2.slow) g = Math.max(0, g - 0.5);
+
+    if (t.stage === 1 && (k.frost || k.snow)) {
+      if (Math.random() < (k.snow ? 0.35 : 0.2)) { t.sp = null; t.stage = 0; t.age = 0; lost++; continue; }
+    }
+    t.age += Math.max(0, g);
+    if (t.age >= (def2.slow ? 7 : 4)) { t.stage = 3; t.age = 0; if (def2.hollow) hollowed++; }
+    else if (t.age >= (def2.slow ? 3 : 2)) t.stage = 2;
+    if (g > 0) grew++;
+  }
+  if (grew) line.push(grew + (grew === 1 ? ' tree grew' : ' trees grew') + ' on ' + weatherWord(w).toLowerCase() + '.');
+  if (lost) line.push(lost + (lost === 1 ? ' seedling' : ' seedlings') + ' died in the cold.');
+
+  /* --- the troop --- */
+  var baboonLine = baboonPass();
+
+  /* --- anything else --- */
+  state.day += 1;
+  state.ap = AP_MAX;
+  state.weatherDay = state.day;
+
+  note('Day ' + state.day + ' — ' + weatherWord(w).toLowerCase() + '. ' +
+    (line.length ? line.join(' ') : 'The slope held its own.'));
+  if (baboonLine) note(baboonLine, 'warn');
+  rollBoard(w);
+  note(voiceFor(w), 'dim');
+
+  parrotCheck();
+  return line;
+}
+
+function pickAlien(t) {
+  /* what the seed bank in that spot is most likely to be */
+  var roll = Math.random();
+  if (t.lastAlien) return t.lastAlien;
+  return roll < 0.4 ? 'wattle' : roll < 0.65 ? 'pine' : roll < 0.85 ? 'bugweed' : 'bramble';
+}
+
+function fruitingIndigenous() {
+  var n = 0, i;
+  for (i = 0; i < NTILES; i++) {
+    var t = state.tiles[i];
+    if (t.sp && t.stage === 3 && SPECIES[t.sp].fruit) n++;
+  }
+  return n;
+}
+
+function baboonPass() {
+  if (state.day % 4 !== 0) return null;
+  var r = 2 + Math.floor(Math.random() * (ROWS - 3));
+  var settled = fruitingIndigenous() >= 2;
+  var drops = settled ? 1 : 3;
+  var c, placed = 0;
+  for (c = 0; c < COLS && placed < drops; c++) {
+    var t = at(c, r);
+    if (!t) continue;
+    if (t.seeds < 9 && (t.alien || !t.sp)) { t.seeds += 1; placed++; }
+  }
+  troop = { row: r, x: -40, dir: 1, settled: settled, t: 0 };
+  if (!state.seen.baboon) {
+    state.seen.baboon = true;
+    card('A troop came through',
+      'Chacma baboons move along the slope and drop the seed of whatever they ate. ' +
+      'Bugweed and bramble fruit is what they find up here. Two mature fruiting trees on the slope ' +
+      'and they stop to feed there instead of ranging the whole mountain.',
+      'https://www.mdpi.com/1424-2818/16/3/168');
+  }
+  return settled
+    ? 'The troop settled in the fruiting trees you planted, and left one lot of seed behind.'
+    : 'A troop crossed the slope and left ' + placed + ' lot' + (placed === 1 ? '' : 's') + ' of alien seed behind.';
+}
+
+function parrotCheck() {
+  if (state.seen.parrot) return false;
+  var i;
+  for (i = 0; i < NTILES; i++) {
+    var t = state.tiles[i];
+    if (t.sp === 'yellowwood' && t.stage === 3 && t.age >= 0) {
+      t.hollow = true;
+      state.seen.parrot = true;
+      parrot = { x: -60, y: 120, tx: tileX(i % COLS, Math.floor(i / COLS)) + 8,
+                 ty: tileY(Math.floor(i / COLS)) - 26, t: 0 };
+      card('A Cape parrot lands in the yellowwood',
+        'South Africa\u2019s only endemic parrot, and fewer than two thousand are left in the wild. ' +
+        'It nests in the hollow of an old yellowwood, high off the ground, and it feeds on the seed of ' +
+        'the trees that grow here. The Cape Parrot Project started in this village in 2009, growing ' +
+        'indigenous seedlings in community nurseries and putting them back into the mistbelt.',
+        'https://www.wildbirdtrust.com/projects/cape-parrot-project');
+      note('A Cape parrot landed in the yellowwood you grew.', 'good');
+      return true;
+    }
+  }
+  return false;
+}
+
+/* ============================================================ actions */
+
+function clearAt(c, r) {
+  var t = at(c, r);
+  if (!t || !t.alien) return false;
+  var def = ALIENS[t.alien];
+  if (state.ap < def.ap) return false;
+  state.ap -= def.ap;
+  t.lastAlien = t.alien;
+  t.alien = null;
+  t.seeds += def.bank;
+  state.cleared++;
+  state.credit += 2;
+  if (!state.seen.seedbank) {
+    state.seen.seedbank = true;
+    card('The seed stays behind',
+      def.name + ' (' + def.sci + ') is cut, and its seed is already in the ground — ' +
+      'this one leaves ' + def.bank + ' lots of it. ' + def.note +
+      ' Rain brings it up again. The community nursery pays you for the clearing: 2 credit a stump.',
+      null);
+  }
+  return true;
+}
+
+function plantAt(c, r, spKey) {
+  var t = at(c, r);
+  if (!t || t.sp || t.alien) return false;
+  var def = SPECIES[spKey];
+  if (!def || state.credit < def.cost) return false;
+  state.credit -= def.cost;
+  state.ap = Math.max(0, state.ap - 1);
+  t.sp = spKey;
+  t.stage = 1;
+  t.age = 0;
+  state.planted++;
+  return true;
+}
+
+/* ============================================================ the day's board */
+
+var VOICES = {
+  wet: ['The nursery grower: "Soft ground today. The wattle comes out easier."',
+        'The parrot monitor: "Good rain for the seedlings. Good rain for the seed bank too."'],
+  mist: ['The neighbour up the pass: "Mist like this is what a yellowwood wants."',
+         'The nursery grower: "A mist day. Good day for putting things in the ground."'],
+  frost: ['The nursery grower: "Cold one. The tender seedlings will feel it tonight."',
+          'The parrot monitor: "The old forest takes frost. A seedling does not."'],
+  berg: ['The neighbour up the pass: "Berg wind. It will carry seed clean off the ridge."',
+         'The parrot monitor: "Wind like this moves seed a long way downhill."'],
+  snow: ['The parrot monitor: "Snow on the Hogs. The parrots will be low today."',
+         'The neighbour up the pass: "Snow. Not much grows on a day like this."'],
+  clear: ['The nursery grower: "Clear and warm. A good day for the slope."',
+          'The parrot monitor: "Quiet day. Nothing moves much up here."']
+};
+
+function voiceFor(w) {
+  var k = classify(w);
+  var key = k.snow ? 'snow' : k.wet ? 'wet' : k.mist ? 'mist' : k.frost ? 'frost' : k.berg ? 'berg' : 'clear';
+  var arr = VOICES[key];
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/* Three jobs for the day, and the weather picks which ones you get. */
+function rollBoard(w) {
+  var k = classify(w);
+  var pool = [
+    { text: 'Clear a patch that still has seed in the ground', need: 1, metric: 'seeds' }
+  ];
+  if (k.wet) pool.push({ text: 'Pull five aliens while the ground is soft', need: 5, metric: 'cuts' });
+  if (k.mist) pool.push({ text: 'Put two seedlings in under the mist', need: 2, metric: 'plants' });
+  if (k.frost) pool.push({ text: 'Cut three aliens before the cold settles', need: 3, metric: 'cuts' });
+  if (k.berg) pool.push({ text: 'Cut four aliens before the wind carries more seed', need: 4, metric: 'cuts' });
+  if (k.snow) pool.push({ text: 'Plant one tree in the snow break', need: 1, metric: 'plants' });
+  pool.push({ text: 'Plant one tree on the slope', need: 1, metric: 'plants' });
+  pool.push({ text: 'Cut three aliens off the slope', need: 3, metric: 'cuts' });
+
+  var tasks = [], seen = {}, i;
+  for (i = 0; i < pool.length && tasks.length < 3; i++) {
+    if (seen[pool[i].text]) continue;
+    seen[pool[i].text] = true;
+    tasks.push(pool[i]);
+  }
+  state.board = { day: state.day, cuts: 0, plants: 0, seeds: 0, tasks: tasks, claimed: false };
+  return state.board;
+}
+
+function boardTasks() { return state.board && state.board.tasks ? state.board.tasks : []; }
+
+function taskGot(t) {
+  if (!state.board) return 0;
+  return Math.min(state.board[t.metric] || 0, t.need);
+}
+
+function taskDone(t) { return taskGot(t) >= t.need; }
+
+function boardDone() {
+  var ts = boardTasks(), i;
+  if (!ts.length) return false;
+  for (i = 0; i < ts.length; i++) if (!taskDone(ts[i])) return false;
+  return true;
+}
+
+function boardProgress(metric, n) {
+  if (!state.board || state.board.claimed) return;
+  state.board[metric] = (state.board[metric] || 0) + n;
+}
+
+function claimBoard() {
+  if (!state.board || state.board.claimed || !boardDone()) return false;
+  state.board.claimed = true;
+  state.credit += 4;
+  note('The board is done for the day. The nursery pays 4 credit.', 'good');
+  return true;
+}
+
+/* ============================================================ save */
+
+/* Six characters a tile: alien, seed count, stage, species, and age in half-days as base 36.
+   That keeps a whole 70-tile forest inside one pastable line. */
+function encodeSave(s) {
+  var chars = '', i;
+  for (i = 0; i < s.tiles.length; i++) {
+    var t = s.tiles[i];
+    chars += String(ALIEN_CODE[t.alien] || 0) +
+             String(clamp(t.seeds, 0, 9)) +
+             String(clamp(t.stage, 0, 3)) +
+             String(SP_CODE[t.sp] || 0) +
+             pad2(clamp(Math.round(t.age * 2), 0, 1295).toString(36));
+  }
+  var seen = (s.seen.seedbank ? 1 : 0) | (s.seen.baboon ? 2 : 0) | (s.seen.parrot ? 4 : 0) | (s.seen.shade ? 8 : 0);
+  var payload = {
+    v: s.v, d: s.day, a: s.ap, c: s.credit, s: seen,
+    l: s.cleared, p: s.planted, k: s.lastDayKey, t: chars
+  };
+  var body = b64encode(JSON.stringify(payload));
+  return 'MB1-' + body + '-' + checksum(body);
+}
+
+function clamp(n, lo, hi) {
+  n = Math.round(Number(n) || 0);
+  return n < lo ? lo : n > hi ? hi : n;
+}
+
+function pad2(x) { return x.length >= 2 ? x : '0' + x; }
+
+function decodeTiles(str) {
+  if (typeof str !== 'string' || str.length !== NTILES * 6) return null;
+  var out = [], i;
+  for (i = 0; i < NTILES; i++) {
+    var c = str.slice(i * 6, i * 6 + 6);
+    var a = parseInt(c.charAt(0), 10);
+    var seeds = parseInt(c.charAt(1), 10);
+    var stage = parseInt(c.charAt(2), 10);
+    var sp = parseInt(c.charAt(3), 10);
+    var age = parseInt(c.slice(4, 6), 36);
+    if (!isFinite(a) || !isFinite(seeds) || !isFinite(stage) || !isFinite(sp) || !isFinite(age)) return null;
+    if (a > 4 || sp > 4 || stage > 3 || seeds > 9) return null;
+    out.push({
+      alien: ALIEN_FROM[a] || null, seeds: seeds, stage: stage,
+      sp: SP_FROM[sp] || null, age: age / 2, hollow: false
+    });
+  }
+  return out;
+}
+
+function decodeSave(code) {
+  if (typeof code !== 'string') return null;
+  code = code.trim().replace(/\s+/g, '');
+  var parts = code.split('-');
+  if (parts.length !== 3 || parts[0] !== 'MB1') return null;
+  if (checksum(parts[1]) !== parts[2]) return null;
+  var payload;
+  try { payload = JSON.parse(b64decode(parts[1])); } catch (e) { return null; }
+  if (!payload || payload.v !== VERSION) return null;
+  var tiles = decodeTiles(payload.t);
+  if (!tiles) return null;
+  var s = newState();
+  s.day = payload.d;
+  s.ap = payload.a;
+  s.credit = payload.c;
+  s.cleared = payload.l || 0;
+  s.planted = payload.p || 0;
+  s.lastDayKey = payload.k || dayKey(new Date());
+  s.seen = {
+    seedbank: !!(payload.s & 1), baboon: !!(payload.s & 2),
+    parrot: !!(payload.s & 4), shade: !!(payload.s & 8)
+  };
+  s.tiles = tiles;
+  return s;
+}
+
+function checksum(str) {
+  var h = 5381, i;
+  for (i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+
+function b64encode(s) {
+  var bytes = new TextEncoder().encode(s), bin = '', i;
+  for (i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+function b64decode(s) {
+  var bin = atob(s), bytes = new Uint8Array(bin.length), i;
+  for (i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+
+function saveLocal() {
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem(SAVE_KEY, encodeSave(state)); } catch (e) {}
+}
+
+function loadLocal() {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    var code = localStorage.getItem(SAVE_KEY);
+    return code ? decodeSave(code) : null;
+  } catch (e) { return null; }
+}
+
+/* ============================================================ geometry */
+
+var ROW_TOP = 368, ROW_STEP = 42, TILE_H = 38;
+
+function bandTop(r) { return ROW_TOP + ROW_STEP * r; }
+function bandH() { return TILE_H; }
+function halfWidth(r) { return 128 + 200 * (r / (ROWS - 1)); }
+function tileX(c, r) {
+  var hw = halfWidth(r), w = (hw * 2) / COLS;
+  return (W / 2 - hw) + c * w;
+}
+function tileW(r) { return (halfWidth(r) * 2) / COLS; }
+function tileY(r) { return bandTop(r); }
+
+function hitTest(x, y) {
+  var r = Math.floor((y - ROW_TOP) / ROW_STEP);
+  if (r < 0 || r >= ROWS) return null;
+  var x0 = W / 2 - halfWidth(r), w = tileW(r);
+  var c = Math.floor((x - x0) / w);
+  if (c < 0 || c >= COLS) return null;
+  return { c: c, r: r };
+}
+
+/* ============================================================ drawing */
+
+var HORIZON = 300;
+
+function drawSky(w) {
+  var k = classify(w);
+  var g = ctx.createLinearGradient(0, 0, 0, HORIZON);
+  if (k.snow) { g.addColorStop(0, '#4a6076'); g.addColorStop(1, '#9db3c0'); }
+  else if (k.wet) { g.addColorStop(0, '#26363f'); g.addColorStop(1, '#4e6674'); }
+  else if (k.mist) { g.addColorStop(0, '#4e6157'); g.addColorStop(1, '#8a9f93'); }
+  else if (k.frost) { g.addColorStop(0, '#22333c'); g.addColorStop(1, '#5f7b88'); }
+  else { g.addColorStop(0, '#14283a'); g.addColorStop(1, '#35606d'); }
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, HORIZON);
+}
+
+function ridgeY(x, humps, base, amp) {
+  var v = 0, i;
+  for (i = 0; i < humps.length; i++) {
+    var h = humps[i], dx = (x - h[0]) / h[1];
+    v += h[2] * Math.exp(-dx * dx * 1.7);
+  }
+  return base - amp * v;
+}
+
+function ridgeBand(humps, base, amp, colour) {
+  ctx.beginPath();
+  ctx.moveTo(0, HORIZON);
+  var x;
+  for (x = 0; x <= W; x += 6) ctx.lineTo(x, ridgeY(x, humps, base, amp));
+  ctx.lineTo(W, HORIZON);
+  ctx.closePath();
+  ctx.fillStyle = colour;
+  ctx.fill();
+}
+
+/* The three Hogs: three rounded backs running down the ridge, palest at the back. */
+var HOGS_FAR  = [[150, 150, 1], [420, 138, 0.94], [690, 152, 0.82]];
+var HOGS_MID  = [[300, 195, 1], [640, 175, 0.88]];
+var HOGS_NEAR = [[190, 225, 1], [590, 205, 0.9]];
+
+function drawRidges(w) {
+  ridgeBand(HOGS_FAR, 300, 192, '#33544c');
+  ridgeBand(HOGS_MID, 330, 142, '#25423b');
+  ridgeBand(HOGS_NEAR, 352, 96, '#1a2e29');
+}
+
+function drawGround(w) {
+  var k = classify(w);
+  var g = ctx.createLinearGradient(0, HORIZON - 4, 0, H);
+  if (k.snow) { g.addColorStop(0, '#46574f'); g.addColorStop(1, '#68766a'); }
+  else if (k.wet) { g.addColorStop(0, '#22332c'); g.addColorStop(1, '#35483d'); }
+  else { g.addColorStop(0, '#24352d'); g.addColorStop(1, '#3d5044'); }
+  ctx.fillStyle = g;
+  ctx.fillRect(0, HORIZON - 4, W, H - HORIZON + 4);
+}
+
+function drawScenery(w) {
+  var i;
+
+  /* the fall, off the crest of the near ridge and down into the forest */
+  var fx = 250, top = ridgeY(fx, HOGS_NEAR, 352, 96);
+  ctx.fillStyle = 'rgba(228,242,248,0.30)';
+  ctx.beginPath(); ctx.ellipse(fx + 2, 364, 26, 6, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(228,242,248,0.62)';
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(fx, top + 6); ctx.lineTo(fx - 5, 362); ctx.stroke();
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(fx + 16, top + 18); ctx.lineTo(fx + 13, 362); ctx.stroke();
+
+  /* the village on its shelf */
+  var vx = [44, 68, 94, 120, 146, 56, 108, 158, 82, 132];
+  var vy = [322, 314, 326, 316, 324, 334, 336, 328, 340, 342];
+  for (i = 0; i < vx.length; i++) {
+    ctx.fillStyle = '#3b4a40';
+    ctx.fillRect(vx[i], vy[i], 16, 11);
+    ctx.fillStyle = '#9aa794';
+    ctx.beginPath();
+    ctx.moveTo(vx[i] - 3, vy[i]);
+    ctx.lineTo(vx[i] + 8, vy[i] - 9);
+    ctx.lineTo(vx[i] + 19, vy[i]);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#c8d2bc';
+    ctx.fillRect(vx[i] + 4, vy[i] + 3, 3, 3);
+  }
+  ctx.strokeStyle = 'rgba(140,152,132,0.5)';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(32, 352);
+  ctx.quadraticCurveTo(110, 340, 200, 358);
+  ctx.stroke();
+
+  /* indigenous forest in the folds below the escarpment */
+  ctx.fillStyle = 'rgba(18,48,34,0.96)';
+  var fx2 = [292, 336, 380, 424, 468, 512, 556, 600];
+  var fy2 = [336, 328, 338, 330, 340, 332, 342, 334];
+  for (i = 0; i < fx2.length; i++) {
+    ctx.beginPath(); ctx.ellipse(fx2[i], fy2[i], 40, 20, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  /* the timber blocks on the far side of the valley */
+  ctx.fillStyle = '#1e3329';
+  var bx = [650, 724, 798, 872];
+  for (i = 0; i < bx.length; i++) {
+    ctx.beginPath();
+    ctx.moveTo(bx[i] - 36, 350);
+    ctx.lineTo(bx[i] + 36, 350);
+    ctx.lineTo(bx[i] + 28, 306);
+    ctx.lineTo(bx[i] - 28, 306);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /* mist pooling in the folds, drifting slowly */
+  for (i = 0; i < 4; i++) {
+    var mx = 110 + i * 205 + Math.sin(now() / (3400 + i * 800)) * 30;
+    var my = 306 + i * 14;
+    var mr = 155 + i * 18;
+    var mg = ctx.createRadialGradient(mx, my, 0, mx, my, mr);
+    mg.addColorStop(0, 'rgba(206,226,218,0.30)');
+    mg.addColorStop(1, 'rgba(206,226,218,0)');
+    ctx.fillStyle = mg;
+    ctx.beginPath(); ctx.ellipse(mx, my, mr, mr * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawPlots() {
+  var r, c;
+  for (r = 0; r < ROWS; r++) {
+    for (c = 0; c < COLS; c++) {
+      var t = at(c, r);
+      var x = tileX(c, r), y = tileY(r), tw = tileW(r), th = bandH() - 4;
+      drawTile(t, x + 2, y + 2, tw - 4, th, r, c);
+    }
+  }
+}
+
+function jit(a, b, k) {
+  var n = Math.sin(a * 12.9898 + b * 78.233 + k * 37.719) * 43758.5453;
+  return n - Math.floor(n);
+}
+
+function drawTile(t, x, y, w, h, r, c) {
+  roundRect(x, y, w, h, 6);
+  if (t.alien) ctx.fillStyle = 'rgba(88,102,44,0.42)';
+  else if (t.sp) ctx.fillStyle = 'rgba(46,92,64,0.34)';
+  else ctx.fillStyle = 'rgba(120,104,78,0.30)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  var cx = x + w / 2 + (jit(c, r, 1) - 0.5) * 5;
+  var cy = y + h / 2 + (jit(c, r, 2) - 0.5) * 4;
+  var vary = 0.78 + 0.44 * jit(c, r, 3);
+
+  if (t.alien) drawAlien(t.alien, cx, cy, w, h);
+  else if (t.sp) drawTree(t.sp, t.stage, cx, cy, w, h, vary);
+  if (t.seeds > 0 && !t.alien) drawSeeds(t.seeds, x + w - 11, y + h - 9);
+}
+
+function drawAlien(kind, cx, cy, w, h) {
+  var s = Math.min(w, h) * 0.9;
+  ctx.save();
+  if (kind === 'wattle' || kind === 'pine') {
+    ctx.fillStyle = kind === 'wattle' ? '#8fa842' : '#6f8f45';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - s * 0.46);
+    ctx.lineTo(cx + s * 0.26, cy + s * 0.30);
+    ctx.lineTo(cx - s * 0.26, cy + s * 0.30);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#5c4a30';
+    ctx.fillRect(cx - 1.5, cy + s * 0.26, 3, s * 0.16);
+  } else if (kind === 'bugweed') {
+    ctx.fillStyle = '#9db052';
+    ctx.beginPath(); ctx.arc(cx, cy, s * 0.26, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#c9c26a';
+    ctx.beginPath(); ctx.arc(cx - s * 0.14, cy - s * 0.12, s * 0.06, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + s * 0.13, cy - s * 0.05, s * 0.06, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.strokeStyle = '#93a84a';
+    ctx.lineWidth = 2;
+    var a;
+    for (a = 0; a < 5; a++) {
+      var ang = a / 5 * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(ang) * s * 0.3, cy + Math.sin(ang) * s * 0.24);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#b6c46e';
+    ctx.beginPath(); ctx.arc(cx, cy, s * 0.1, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawTree(sp, stage, cx, cy, w, h, vary) {
+  var def = SPECIES[sp];
+  var s = Math.min(w, h);
+  var scale = (stage === 1 ? 0.26 : stage === 2 ? 0.52 : 0.84) * (vary || 1);
+  var rad = s * 0.48 * scale;
+  var tone = sp === 'chestnut' ? '#4f9c62' : sp === 'knobwood' ? '#357a52' : sp === 'yellowwood' ? '#2f6d4a' : '#438b5c';
+  var dark = sp === 'chestnut' ? '#3d7d4d' : sp === 'knobwood' ? '#286040' : sp === 'yellowwood' ? '#24553a' : '#356e49';
+  ctx.save();
+  if (stage >= 2) {
+    ctx.fillStyle = '#463723';
+    ctx.fillRect(cx - rad * 0.14, cy + rad * 0.2, rad * 0.28, rad * 0.72);
+  }
+  ctx.fillStyle = tone;
+  ctx.beginPath(); ctx.ellipse(cx, cy - rad * 0.2, rad * 1.1, rad * 0.88, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = dark;
+  ctx.beginPath(); ctx.ellipse(cx + rad * 0.42, cy - rad * 0.44, rad * 0.64, rad * 0.52, 0, 0, Math.PI * 2); ctx.fill();
+  if (stage === 3 && def.hollow) {
+    ctx.fillStyle = 'rgba(18,26,20,0.88)';
+    ctx.beginPath(); ctx.ellipse(cx + rad * 0.1, cy - rad * 0.08, rad * 0.2, rad * 0.26, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  if (stage === 3 && def.fruit) {
+    ctx.fillStyle = '#d8b45c';
+    ctx.beginPath(); ctx.arc(cx - rad * 0.5, cy - rad * 0.55, 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + rad * 0.62, cy - rad * 0.3, 1.8, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* bush and rock along the edges, so the slope does not end in a straight line */
+function drawScatter() {
+  var i;
+  ctx.fillStyle = 'rgba(22,52,38,0.92)';
+  for (i = 0; i < 30; i++) {
+    var t = i / 29;
+    var row = t * (ROWS - 1);
+    var hw = halfWidth(row);
+    var side = i % 2 ? 1 : -1;
+    var x = W / 2 + side * (hw + 12 + jit(i, 3, 5) * 48);
+    var y = bandTop(row) + jit(i, 7, 6) * TILE_H;
+    var rr = 7 + jit(i, 11, 8) * 12;
+    ctx.beginPath(); ctx.ellipse(x, y, rr, rr * 0.72, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(98,106,94,0.5)';
+  for (i = 0; i < 16; i++) {
+    var t2 = i / 15;
+    var row2 = t2 * (ROWS - 1);
+    var hw2 = halfWidth(row2);
+    var side2 = i % 2 ? -1 : 1;
+    var x2 = W / 2 + side2 * (hw2 + 20 + jit(i, 5, 9) * 56);
+    var y2 = bandTop(row2) + jit(i, 9, 10) * TILE_H;
+    ctx.beginPath(); ctx.ellipse(x2, y2, 4 + jit(i, 13, 11) * 4, 3, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawSeeds(n, x, y) {
+  ctx.fillStyle = 'rgba(168,195,74,0.85)';
+  var i;
+  for (i = 0; i < Math.min(n, 6); i++) {
+    ctx.beginPath();
+    ctx.arc(x - i * 3.2, y, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawActors(dt) {
+  if (troop) {
+    troop.t += dt;
+    troop.x += troop.dir * 0.045 * dt;
+    if (troop.x > W + 50) { troop = null; }
+    else {
+      var y = tileY(troop.row) + ROW_STEP * 0.5;
+      var i;
+      for (i = 0; i < 4; i++) {
+        var bx = troop.x - i * 13;
+        ctx.fillStyle = '#4b4038';
+        ctx.beginPath(); ctx.ellipse(bx, y + Math.sin((troop.t / 200) + i) * 2, 6, 5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(bx + 6, y - 4, 3, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+  if (parrot) {
+    parrot.t += dt;
+    var p = Math.min(1, parrot.t / 2200);
+    parrot.x = -60 + (parrot.tx + 60) * p;
+    parrot.y = 120 + (parrot.ty - 120) * p - Math.sin(p * Math.PI) * 40;
+    ctx.fillStyle = '#6ea35a';
+    ctx.beginPath(); ctx.ellipse(parrot.x, parrot.y, 7, 4.5, -0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#d9a83f';
+    ctx.beginPath(); ctx.arc(parrot.x + 6, parrot.y - 3, 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(110,163,90,0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(parrot.x - 5, parrot.y);
+    ctx.lineTo(parrot.x - 15, parrot.y - Math.sin(parrot.t / 90) * 7);
+    ctx.stroke();
+  }
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+var _t0 = 0;
+function now() {
+  if (typeof performance !== 'undefined' && performance.now) return performance.now();
+  return Date.now();
+}
+
+var _last = 0;
+function frame(ts) {
+  var t = typeof ts === 'number' ? ts : now();
+  var dt = _last ? Math.max(0, Math.min(60, t - _last)) : 16;
+  _last = t;
+  var w = state.weather || fallbackFor(new Date().getMonth());
+  if (!ctx) return;
+  drawSky(w);
+  drawRidges(w);
+  drawGround(w);
+  drawScenery(w);
+  drawScatter();
+  drawPlots();
+  drawActors(dt);
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(frame);
+}
+
+/* ============================================================ ui */
+
+function note(text, cls) {
+  state.log.push({ d: state.day, t: text });
+  if (state.log.length > 40) state.log.shift();
+  if (notesEl) {
+    var p = document.createElement('p');
+    p.textContent = text;
+    if (cls) p.className = cls;
+    notesEl.appendChild(p);
+    while (notesEl.childNodes && notesEl.childNodes.length > 14 && notesEl.firstChild) {
+      notesEl.removeChild(notesEl.firstChild);
+    }
+    if (typeof notesEl.scrollTop === 'number') notesEl.scrollTop = notesEl.scrollHeight;
+  }
+}
+
+function card(title, body, link) {
+  var el = els.card;
+  if (!el) return;
+  els.cardTitle.textContent = title;
+  els.cardBody.textContent = body;
+  if (link) { els.cardLink.href = link; els.cardLink.hidden = false; }
+  else { els.cardLink.hidden = true; }
+  el.hidden = false;
+}
+
+function hud() {
+  var s = stats();
+  if (els.hudDay) els.hudDay.textContent = String(state.day);
+  if (els.hudAp) els.hudAp.textContent = state.ap + ' / ' + AP_MAX;
+  if (els.hudCredit) els.hudCredit.textContent = String(state.credit);
+  var w = state.weather;
+  if (w && els.wxText) {
+    els.wxText.textContent = weatherWord(w) + ', ' + Math.round(w.tmin) + '\u00b0 to ' +
+      Math.round(w.tmax) + '\u00b0, ' + Math.round(w.rain) + ' mm';
+    els.wxDot.style.background = weatherColour(w);
+    els.wxSrc.textContent = (w.fallback ? 'season average' : 'open-meteo.com') +
+      ' \u00b7 forest ' + s.forestPct + '% \u00b7 alien ' + s.alienPct + '%';
+  }
+  renderBoard();
+  renderTools();
+}
+
+function renderBoard() {
+  var el = els.board;
+  if (!el) return;
+  el.textContent = '';
+  var ts = boardTasks(), i;
+  for (i = 0; i < ts.length; i++) {
+    var t = ts[i], done = taskDone(t);
+    var row = document.createElement('p');
+    row.textContent = (done ? '\u2713 ' : '\u00b7 ') + t.text + '  ' + taskGot(t) + '/' + t.need;
+    row.className = done ? 'good' : '';
+    el.appendChild(row);
+  }
+  if (els.btnClaim) {
+    var claimed = !!(state.board && state.board.claimed);
+    els.btnClaim.disabled = claimed || !boardDone();
+    els.btnClaim.textContent = claimed ? 'Board done for the day' : 'Claim the day';
+  }
+}
+
+function renderTools() {
+  var bar = els.tools;
+  if (!bar) return;
+  var i;
+  var cut = bar.querySelector ? bar.querySelector('[data-tool="cut"]') : null;
+  if (!cut) {
+    bar.textContent = '';
+    var b = document.createElement('button');
+    b.className = 'tool cut';
+    b.setAttribute('data-tool', 'cut');
+    b.setAttribute('aria-pressed', 'true');
+    b.appendChild(label('Clear', 'cuts 1\u20132 of the day'));
+    b.addEventListener('click', function () { tool = 'cut'; hud(); });
+    bar.appendChild(b);
+    for (i = 0; i < SP_KEYS.length; i++) {
+      var k = SP_KEYS[i], def = SPECIES[k];
+      var btn = document.createElement('button');
+      btn.className = 'tool';
+      btn.setAttribute('data-tool', k);
+      btn.setAttribute('aria-pressed', 'false');
+      btn.appendChild(label(def.name, def.cost + ' credit'));
+      btn.addEventListener('click', mkPicker(k));
+      bar.appendChild(btn);
+    }
+  }
+  var kids = bar.childNodes, n;
+  for (n = 0; n < kids.length; n++) {
+    var el = kids[n];
+    if (!el || !el.getAttribute) continue;
+    var t = el.getAttribute('data-tool');
+    el.setAttribute('aria-pressed', t === tool ? 'true' : 'false');
+    var sp = SPECIES[t];
+    if (sp) el.disabled = state.credit < sp.cost;
+  }
+}
+
+function mkPicker(k) {
+  return function () { tool = k; hud(); };
+}
+
+function label(a, b) {
+  var frag = document.createDocumentFragment();
+  var e1 = document.createElement('b'); e1.textContent = a;
+  var e2 = document.createElement('span'); e2.textContent = b;
+  frag.appendChild(e1); frag.appendChild(e2);
+  return frag;
+}
+
+function act(c, r) {
+  if (tool === 'cut') {
+    var t = at(c, r);
+    var seeded = !!(t && t.seeds > 0);
+    if (clearAt(c, r)) {
+      boardProgress('cuts', 1);
+      if (seeded) boardProgress('seeds', 1);
+      saveLocal(); hud();
+    }
+  } else {
+    if (plantAt(c, r, tool)) {
+      boardProgress('plants', 1);
+      var n = matureIndigenousAround(c, r);
+      if (n >= 2 && !state.seen.shade) {
+        state.seen.shade = true;
+        card('The shade does the work',
+          'Indigenous canopy closes over the ground, and the alien seed under it comes up far less. ' +
+          'Two or three mature trees around a patch and the clearing holds itself.',
+          null);
+      }
+      saveLocal(); hud();
+    }
+  }
+}
+
+/* ============================================================ boot */
+
+function boot() {
+  var ids = ['hudDay', 'hudAp', 'hudCredit', 'wxText', 'wxDot', 'wxSrc', 'tools', 'notes',
+             'board', 'btnClaim', 'card', 'cardTitle', 'cardBody', 'cardOk', 'cardLink',
+             'btnSave', 'btnLoad', 'btnNew', 'codeIn', 'saveHint', 'cv'];
+  var i;
+  for (i = 0; i < ids.length; i++) els[ids[i]] = document.getElementById(ids[i]);
+  notesEl = els.notes;
+  cv = els.cv;
+  if (cv && cv.getContext) ctx = cv.getContext('2d');
+
+  state = loadLocal() || newState();
+
+  var month = new Date().getMonth();
+  state.weather = fallbackFor(month);
+  if (!state.board) rollBoard(state.weather);
+  fetchForecast(month).then(function (w) {
+    state.weather = w;
+    hud();
+  });
+
+  /* catch up on the days you were away */
+  var today = dayKey(new Date());
+  if (state.lastDayKey !== today) {
+    var gap = 1;
+    state.ap = AP_MAX;
+    for (i = 0; i < Math.min(gap, MAX_CATCHUP_DAYS); i++) tickDay(state.weather);
+    state.lastDayKey = today;
+    saveLocal();
+  } else {
+    note('Day ' + state.day + '. ' + weatherWord(state.weather) + ' over the ridge.', 'dim');
+  }
+
+  if (els.btnClaim) els.btnClaim.addEventListener('click', function () {
+    if (claimBoard()) { saveLocal(); hud(); }
+  });
+  if (els.cardOk) els.cardOk.addEventListener('click', function () { els.card.hidden = true; });
+  if (els.btnSave) els.btnSave.addEventListener('click', function () {
+    var code = encodeSave(state);
+    if (els.codeIn) els.codeIn.value = code;
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(function () {
+        if (els.saveHint) els.saveHint.textContent = 'Copied. Send it to yourself on WhatsApp and it is yours for good.';
+      }).catch(function () {});
+    }
+  });
+  if (els.btnLoad) els.btnLoad.addEventListener('click', function () {
+    var s = decodeSave(els.codeIn ? els.codeIn.value : '');
+    if (!s) { if (els.saveHint) els.saveHint.textContent = 'That code did not read. Check for a missing character.'; return; }
+    state = s;
+    if (els.notes) els.notes.textContent = '';
+    note('Save code loaded. Day ' + state.day + '.', 'good');
+    saveLocal(); hud();
+  });
+  if (els.btnNew) els.btnNew.addEventListener('click', function () {
+    state = newState();
+    if (els.notes) els.notes.textContent = '';
+    note('A fresh slope. Day 1.', 'dim');
+    saveLocal(); hud();
+  });
+
+  if (cv && cv.addEventListener) {
+    var dragging = false;
+    var pick = function (ev) {
+      var box = cv.getBoundingClientRect ? cv.getBoundingClientRect() : null;
+      if (!box || !box.width) return null;
+      var x = (ev.clientX - box.left) / box.width * W;
+      var y = (ev.clientY - box.top) / box.height * H;
+      return hitTest(x, y);
+    };
+    cv.addEventListener('pointerdown', function (ev) {
+      dragging = true;
+      var p = pick(ev);
+      if (p) act(p.c, p.r);
+    });
+    cv.addEventListener('pointermove', function (ev) {
+      if (!dragging) return;
+      var p = pick(ev);
+      if (p) act(p.c, p.r);
+    });
+    cv.addEventListener('pointerup', function () { dragging = false; });
+    cv.addEventListener('pointercancel', function () { dragging = false; });
+    cv.addEventListener('pointerleave', function () { dragging = false; });
+  }
+
+  hud();
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(frame);
+  else frame(0);
+}
+
+/* ============================================================ exports */
+
+var API = {
+  VERSION: VERSION, GRID: { COLS: COLS, ROWS: ROWS, NTILES: NTILES },
+  ALIENS: ALIENS, SPECIES: SPECIES, ALIEN_KEYS: ALIEN_KEYS, SP_KEYS: SP_KEYS,
+  SEASON: SEASON, AP_MAX: AP_MAX, MAX_CATCHUP_DAYS: MAX_CATCHUP_DAYS,
+  newState: newState, getState: function () { return state; },
+  setState: function (s) { state = s; }, setTool: function (t) { tool = t; },
+  tickDay: tickDay, clearAt: clearAt, plantAt: plantAt,
+  encodeSave: encodeSave, decodeSave: decodeSave, checksum: checksum,
+  weatherFrom: weatherFrom, fallbackFor: fallbackFor, classify: classify,
+  weatherWord: weatherWord, baboonPass: baboonPass, parrotCheck: parrotCheck,
+  fruitingIndigenous: fruitingIndigenous, matureIndigenousAround: matureIndigenousAround,
+  stats: stats, hitTest: hitTest, tileX: tileX, tileY: tileY, bandTop: bandTop, bandH: bandH,
+  frame: frame, boot: boot, note: note, hud: hud,
+  rollBoard: rollBoard, boardTasks: boardTasks, boardProgress: boardProgress,
+  boardDone: boardDone, claimBoard: claimBoard, taskGot: taskGot, taskDone: taskDone,
+  voiceFor: voiceFor, VOICES: VOICES,
+  parrotState: function () { return parrot ? { x: parrot.x, y: parrot.y, t: parrot.t } : null; },
+  troopState: function () { return troop ? { x: troop.x, row: troop.row } : null; }
+};
+
+if (typeof globalThis !== 'undefined') globalThis.__MB = API;
+
+if (typeof document !== 'undefined' && document.getElementById) {
+  try { boot(); } catch (e) { if (typeof console !== 'undefined') console.error(e); }
+}
+
+})();
+</script>
+</body>
+</html>
