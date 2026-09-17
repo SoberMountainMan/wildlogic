@@ -112,7 +112,7 @@
 <body>
 <div id="app">
   <div id="stage">
-    <canvas id="cv" width="720" height="1040"></canvas>
+    <canvas id="cv" width="720" height="770"></canvas>
     <div class="ov wxpill"><span id="wxIcon"></span><span id="wxText">reading the sky</span></div>
     <div class="ov tokens" id="tokenBar"></div>
     <button class="ov gear" id="btnGear" title="The day's board">&#9881;</button>
@@ -192,12 +192,19 @@
 
 /* ============================================================ constants */
 
-var VERSION = 2;
-var SAVE_KEY = 'mistbelt.save.v2';
+var VERSION = 3;
+var SAVE_KEY = 'mistbelt.save.v3';
 var SPOT = { lat: -32.5947, lon: 26.9342 };
-var COLS = 9, ROWS = 10, NTILES = COLS * ROWS;
-var W = 720, H = 1040;
-var Y0 = 380, ROW_STEP = 62, SKY = 380;
+/* The world is a side-on strip: flat square tiles, one size, in a straight grid, seen from the
+   side. v2 was a tall top-down pyramid (9 wide x 10 deep, every row bigger than the one behind
+   it) and it read as a different game entirely. Twenty tiles across is more hillside than fits on
+   a phone, so the camera pans; three rows is the depth of the belt, back to front. */
+var COLS = 20, ROWS = 3, NTILES = COLS * ROWS;
+var TILE = 180;
+var SKY = 230;
+var W = 720, H = SKY + ROWS * TILE;
+var VIS_COLS = W / TILE;
+var RAIL_H = 15;
 var AP_MAX = 12;
 var BIN_LOAD = 3;
 
@@ -273,7 +280,8 @@ var SEASON = [
 /* ============================================================ state */
 
 var state = null, tool = 'cut', cv = null, ctx = null, els = {}, notesEl = null;
-var actors = [], parrot = null, troop = null, binItems = 0, binFlash = 0;
+var actors = [], parrot = null, troop = null, binItems = 0, binFlash = 0, toad = null;
+var camX = 0;
 
 function idx(c, r) { return r * COLS + c; }
 function cell(c, r) {
@@ -281,31 +289,39 @@ function cell(c, r) {
   return state.tiles[idx(c, r)];
 }
 
-/* The hillside is laid out, not scattered: an old forest remnant along the top,
-   a tarn in the top corner, the bank under it, open hillside below. */
+/* The strip is the walk out of the village and onto the invaded hillside, laid out left to right:
+   the village edge, the last forest remnant, the stream, then open ground. Row 0 is the far bank,
+   row 2 is under your feet. */
 function terrainAt(c, r) {
-  if (r <= 1 && c >= 6) return 'water';
-  if (r === 2 && c >= 6) return 'bank';
-  if (r <= 1) return 'forest';
+  if (r === 0 && c >= 6 && c <= 8) return 'water';
+  if (r === 0 && (c === 5 || c === 9)) return 'bank';
+  if (r === 0 && c <= 4) return 'forest';
+  if (r === 1 && c <= 4) return 'forest';
   return 'grass';
 }
 
-var PLACES = [[4, 7, 'house'], [1, 8, 'nursery'], [7, 7, 'bin'], [3, 5, 'sign'], [7, 1, 'jetty']];
+/* The village sits on the front row at the left, so the first screen holds everything a new
+   player needs: the house, the nursery, the signpost and the bin. */
+var PLACES = [[0, 2, 'house'], [1, 2, 'nursery'], [2, 2, 'sign'], [3, 2, 'bin'], [7, 0, 'jetty']];
+
+/* How thickly the aliens have taken each row. The open middle slope is the worst of it; the far
+   bank is half shaded by the forest remnant, so less of it has taken. */
+var ALIEN_DENSITY = [0.16, 0.44, 0.34];
 
 function newState() {
   var t = [], r, c;
   binItems = 0;
+  toad = null;
   for (r = 0; r < ROWS; r++) {
     for (c = 0; c < COLS; c++) {
       var ter = terrainAt(c, r);
       var alien = null, seeds = 0;
       if (ter === 'grass') {
-        var near = 1 - (r - 2) / (ROWS - 3);
         var roll = Math.random();
-        if (roll < 0.20 + 0.34 * near) {
-          alien = roll < 0.10 + 0.16 * near ? 'wattle'
-                : roll < 0.17 + 0.24 * near ? 'pine'
-                : roll < 0.21 + 0.29 * near ? 'bugweed' : 'bramble';
+        if (roll < ALIEN_DENSITY[r]) {
+          alien = roll < ALIEN_DENSITY[r] * 0.42 ? 'wattle'
+                : roll < ALIEN_DENSITY[r] * 0.72 ? 'pine'
+                : roll < ALIEN_DENSITY[r] * 0.90 ? 'bugweed' : 'bramble';
           seeds = ALIENS[alien].bank;
         }
       }
@@ -321,7 +337,8 @@ function newState() {
     bag: { yellowwood: 0, stinkwood: 1, chestnut: 1, knobwood: 0 },
     decor: { bench: 0, birdbath: 0, sign: 0, hide: 0, lantern: 0 },
     tiles: t, weather: null, lastDayKey: dayKey(new Date()),
-    seen: { seedbank: false, baboon: false, parrot: false, shade: false },
+    seen: { seedbank: false, baboon: false, parrot: false, shade: false,
+            toad: false, binbaboon: false },
     log: [], cleared: 0, planted: 0, bought: 0, recycled: 0,
     board: null, qty: 1, pick: 'stinkwood'
   };
@@ -497,6 +514,7 @@ function tickDay(w) {
   rollBoard(w);
   note(voiceFor(w), 'dim');
   parrotCheck();
+  toadCheck();
   return line;
 }
 
@@ -517,20 +535,21 @@ function fruitingIndigenous() {
 
 function baboonPass() {
   if (state.day % 4 !== 0) return null;
-  var r = 4 + Math.floor(Math.random() * (ROWS - 5));
+  var r = Math.floor(Math.random() * ROWS);
   var settled = fruitingIndigenous() >= 2;
   var drops = settled ? 1 : 3, placed = 0, c;
   for (c = 0; c < COLS && placed < drops; c++) {
     var t = cell(c, r);
     if (t && t.ter === 'grass' && !t.obj && t.seeds < 9 && (t.alien || !t.sp)) { t.seeds += 1; placed++; }
   }
-  troop = { row: r, x: -40, dir: 1, t: 0 };
+  troop = { row: r, x: -60, dir: 1, t: 0 };
   if (!state.seen.baboon) {
     state.seen.baboon = true;
     card('A troop came through',
       'Chacma baboons move along the hillside and drop the seed of whatever they ate. ' +
       'Bugweed and bramble fruit is what they find up here. Two mature fruiting trees and they ' +
-      'stop to feed there instead of ranging the whole mountain.',
+      'stop to feed there instead of ranging the whole mountain. The one that waits at your bin ' +
+      'is a resident, and it is after the cuttings.',
       'https://www.mdpi.com/1424-2818/16/3/168');
   }
   return settled
@@ -546,8 +565,12 @@ function parrotCheck() {
     if (t.sp === 'yellowwood' && t.stage === 3) {
       t.hollow = true;
       state.seen.parrot = true;
-      parrot = { x: -60, y: 120, tx: tileX(i % COLS, Math.floor(i / COLS)) + 20,
-                 ty: tileY(Math.floor(i / COLS)) - 30, t: 0 };
+      var pc = i % COLS, pr = Math.floor(i / COLS);
+      /* Pan to it before the bird launches. The parrot flies in over 2.2 s, and with a camera on
+         the world the payoff was landing two screens away where nobody would see it. */
+      centreOn(pc);
+      parrot = { fromX: camX - 80, x: camX - 80, y: SKY - 70,
+                 tx: pc * TILE + TILE / 2, ty: tileY(pr) - 46, t: 0 };
       card('A Cape parrot lands in the yellowwood',
         'South Africa\u2019s only endemic parrot, and fewer than two thousand are left in the wild. ' +
         'It nests in the hollow of an old yellowwood, high off the ground, and it feeds on the seed ' +
@@ -559,6 +582,37 @@ function parrotCheck() {
     }
   }
   return false;
+}
+
+/* The toad is the other half of the story, and the reason the game is not simply "plant
+   everything". The parrot wants the forest back; the Amathole toad wants the grassland kept open,
+   because the plantations are what took it. It shows up once the hillside is clear enough that
+   there is bare open grass again. */
+var TOAD_AT = 4;
+
+function toadCheck() {
+  if (state.seen.toad) return false;
+  if (stats().alien > TOAD_AT) return false;
+  var i, pick = -1;
+  for (i = 0; i < NTILES; i++) {
+    var t = state.tiles[i];
+    if (t.ter === 'grass' && !t.alien && !t.sp && !t.obj &&
+        Math.floor(i / COLS) === ROWS - 1) { pick = i; break; }
+  }
+  if (pick < 0) return false;
+  state.seen.toad = true;
+  var c = pick % COLS, r = Math.floor(pick / COLS);
+  toad = { c: c, r: r, t: 0 };
+  centreOn(c);
+  card('An Amathole toad',
+    'The Amathole toad lives nowhere else on earth \u2014 only the grassland of the Amathole ' +
+    'Mountains, around Hogsback. It is under four centimetres long, dark olive-brown with a pale ' +
+    'stripe down the middle of its back, and it shelters under rocks and logs. It is Critically ' +
+    'Endangered, and silviculture is the single greatest threat to it: the plantations take the ' +
+    'open grassland it needs. Keep a piece of the hillside open and it stays.',
+    'https://thebdi.org/2021/11/17/amatola-toad-vandijkophrynus-amatolicus/');
+  note('An Amathole toad sat down on the open grass.', 'good');
+  return true;
 }
 
 /* ============================================================ the day's board */
@@ -691,7 +745,16 @@ function recycle() {
   boardProgress('recycles', items);
   boardProgress('tokens', items);
   binFlash = 700;
-  note('Emptied the bin: ' + items + ' items, ' + items + ' ' + tk + ' tokens.', 'good');
+  if (!state.seen.binbaboon) {
+    state.seen.binbaboon = true;
+    card('The baboon at the bin',
+      'A chacma baboon has worked out that this bin gets emptied, so it waits here instead of ' +
+      'going through the village. It is a resident, not one of the troop that passes along the ' +
+      'hillside. Bring it three lots of cuttings and it will trade them in for tokens in whatever ' +
+      'the weather is doing today.', null);
+  }
+  note('The baboon emptied the bin: ' + items + ' item' + (items === 1 ? '' : 's') + ', ' +
+       items + ' ' + tk + ' token' + (items === 1 ? '' : 's') + '.', 'good');
   return true;
 }
 
@@ -731,7 +794,8 @@ function encodeSave(s) {
              pad2(clamp(Math.round(t.age * 2), 0, 1295).toString(36)) +
              String(OBJ_CODE[t.obj] || 0);
   }
-  var seen = (s.seen.seedbank ? 1 : 0) | (s.seen.baboon ? 2 : 0) | (s.seen.parrot ? 4 : 0) | (s.seen.shade ? 8 : 0);
+  var seen = (s.seen.seedbank ? 1 : 0) | (s.seen.baboon ? 2 : 0) | (s.seen.parrot ? 4 : 0) |
+             (s.seen.shade ? 8 : 0) | (s.seen.toad ? 16 : 0) | (s.seen.binbaboon ? 32 : 0);
   var bag = '', dec = '';
   for (i = 0; i < SP_KEYS.length; i++) bag += clamp(s.bag[SP_KEYS[i]] || 0, 0, 9);
   for (i = 0; i < DECOR_KEYS.length; i++) dec += clamp(s.decor[DECOR_KEYS[i]] || 0, 0, 9);
@@ -778,7 +842,8 @@ function decodeSave(code) {
   s.day = p.d; s.ap = p.a; s.cleared = p.l || 0; s.planted = p.p || 0;
   s.bought = p.b || 0; s.recycled = p.y || 0;
   s.lastDayKey = p.k || dayKey(new Date());
-  s.seen = { seedbank: !!(p.s & 1), baboon: !!(p.s & 2), parrot: !!(p.s & 4), shade: !!(p.s & 8) };
+  s.seen = { seedbank: !!(p.s & 1), baboon: !!(p.s & 2), parrot: !!(p.s & 4), shade: !!(p.s & 8),
+             toad: !!(p.s & 16), binbaboon: !!(p.s & 32) };
   var tk = String(p.tk || '0.0.0.0').split('.');
   s.tokens = { sun: +tk[0] || 0, mist: +tk[1] || 0, rain: +tk[2] || 0, snow: +tk[3] || 0 };
   var g = String(p.g || '0000'), d = String(p.c || '00000'), i;
@@ -821,21 +886,27 @@ function loadLocal() {
 
 /* ============================================================ geometry */
 
-function tileSize(r) { return 64 + 1.5 * r; }
-function tileX(c, r) { var ts = tileSize(r); return (W - ts * COLS) / 2 + c * ts; }
-function tileY(r) { return Y0 + r * ROW_STEP; }
+/* Every tile is the same size now, so a tile is just its column and row times TILE. The only
+   thing that moves is the camera. tileX returns a SCREEN x — anything stored in the world (the
+   parrot's target, a critter's x) keeps world coordinates and subtracts camX at draw time. */
+function worldW() { return COLS * TILE; }
+function clampCam(x) {
+  var hi = worldW() - W;
+  if (hi < 0) hi = 0;
+  return Math.max(0, Math.min(hi, x));
+}
+function tileX(c) { return c * TILE - camX; }
+function tileY(r) { return SKY + r * TILE; }
+function centreOn(c) { camX = clampCam(c * TILE + TILE / 2 - W / 2); }
 
 function hitTest(x, y) {
-  var r, c;
-  for (r = ROWS - 1; r >= 0; r--) {
-    var ty = tileY(r), th = tileSize(r) * 0.94;
-    if (y < ty || y > ty + th) continue;
-    var ts = tileSize(r), x0 = tileX(0, r);
-    c = Math.floor((x - x0) / ts);
-    if (c < 0 || c >= COLS) continue;
-    return { c: c, r: r };
-  }
-  return null;
+  /* Stop above the rail. The rail is HUD, not ground, and without this a tap on it would act on
+     whatever tile happened to be underneath it. */
+  if (y < SKY || y >= SKY + ROWS * TILE - RAIL_H) return null;
+  var c = Math.floor((x + camX) / TILE);
+  var r = Math.floor((y - SKY) / TILE);
+  if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return null;
+  return { c: c, r: r };
 }
 
 /* ============================================================ drawing */
@@ -873,72 +944,135 @@ function ridgeY(x, humps, base, amp) {
   return base - amp * v;
 }
 
-function ridgeBand(humps, base, amp, colour) {
+function ridgeBand(humps, base, amp, colour, par) {
   ctx.beginPath();
   ctx.moveTo(0, SKY);
-  var x;
-  for (x = 0; x <= W; x += 8) ctx.lineTo(x, ridgeY(x, humps, base, amp));
+  var x, off = camX * (par || 0);
+  for (x = 0; x <= W; x += 8) ctx.lineTo(x, ridgeY(x + off, humps, base, amp));
   ctx.lineTo(W, SKY);
   ctx.closePath();
   ctx.fillStyle = colour;
   ctx.fill();
 }
 
-function drawSky(w) {
+/* Flat sky, flat ridges, flat horizon. The reference art has no linear gradient anywhere, and the
+   old sky was one big vertical gradient with gradient ridges stacked on it — it read as a
+   different game from the tiles sitting underneath it. Two flat tones and silhouettes say the
+   same thing and stay in the same visual language as everything else on screen. */
+var SKY_TONE = {
+  snow:  ['#9fb4c2', '#b9cad4'],
+  wet:   ['#7d99a8', '#98b0bc'],
+  mist:  ['#9aa89c', '#b6c1b2'],
+  frost: ['#8aa6b6', '#a9c2ce'],
+  clear: ['#7fb6d8', '#a8d2e8']
+};
+
+function skyKey(w) {
   var k = classify(w);
-  var g = ctx.createLinearGradient(0, 0, 0, SKY);
-  if (k.snow) { g.addColorStop(0, '#7d95a8'); g.addColorStop(1, '#c9d8de'); }
-  else if (k.wet) { g.addColorStop(0, '#5b7688'); g.addColorStop(1, '#93aab6'); }
-  else if (k.mist) { g.addColorStop(0, '#809389'); g.addColorStop(1, '#b8c6bb'); }
-  else if (k.frost) { g.addColorStop(0, '#5d7f92'); g.addColorStop(1, '#adc6d1'); }
-  else { g.addColorStop(0, '#7fb6d8'); g.addColorStop(1, '#cfe6f1'); }
-  ctx.fillStyle = g;
+  return k.snow ? 'snow' : k.wet ? 'wet' : k.mist ? 'mist' : k.frost ? 'frost' : 'clear';
+}
+
+function drawSky(w) {
+  var tone = SKY_TONE[skyKey(w)];
+  ctx.fillStyle = tone[0];
   ctx.fillRect(0, 0, W, SKY);
+  ctx.fillStyle = tone[1];
+  ctx.fillRect(0, SKY * 0.62, W, SKY * 0.38 + 1);
 
-  ridgeBand([[150, 150, 1], [400, 138, 0.94], [630, 150, 0.82]], 300, 170, 'rgba(96,134,122,0.60)');
-  ridgeBand([[260, 190, 1], [560, 170, 0.88]], 330, 122, 'rgba(70,108,96,0.72)');
-  ridgeBand([[150, 220, 1], [520, 200, 0.9]], 358, 86, 'rgba(48,82,70,0.86)');
+  /* The Hogsback ridges, far to near. Broad and rolling, the way the reference draws its hills —
+     the first pass used narrow tall humps and it looked like a saw blade, not a mountain. Each
+     band slides a little against the tiles as the camera pans, which is what makes the strip feel
+     like a place rather than a wall. */
+  ridgeBand([[120, 300, 1], [430, 260, 0.90], [700, 280, 0.78]], SKY - 34, 78, 'rgba(150,175,168,0.72)', 0.10);
+  ridgeBand([[240, 300, 1], [600, 260, 0.85]], SKY - 18, 56, 'rgba(110,145,130,0.82)', 0.18);
+  ridgeBand([[180, 320, 1], [560, 300, 0.90]], SKY - 2, 40, 'rgba(74,112,94,0.92)', 0.28);
 
-  var i;
-  for (i = 0; i < 17; i++) {
-    var fx = 26 + i * 42 + jit(i, 1, 2) * 16;
-    var fy = 338 + jit(i, 2, 3) * 14;
-    ctx.fillStyle = i % 2 ? '#2e6745' : '#255a3a';
+  /* A low treeline where the far forest meets the sky. Flat, like everything else out here. */
+  var i, span = W + 140;
+  ctx.fillStyle = '#2f6b47';
+  ctx.fillRect(0, SKY - 15, W, 15);
+  for (i = 0; i < 16; i++) {
+    var fx = (40 + i * 62 + jit(i, 1, 2) * 22 - camX * 0.34) % span;
+    if (fx < -70) fx += span;
     ctx.beginPath();
-    ctx.ellipse(fx, fy, 34 + jit(i, 3, 4) * 12, 23 + jit(i, 4, 5) * 8, 0, 0, Math.PI * 2);
+    ctx.ellipse(fx, SKY - 15, 40 + jit(i, 3, 4) * 16, 16 + jit(i, 4, 5) * 8, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
+/* Straight off the reference: a ground tile is ONE flat colour with a handful of big soft blobs
+   of a lighter tint on it, and a couple of hard white bubbles if it is water. No top lip, no
+   soil band, no seam, no gradient. My first pass had all four — and the soil band under every
+   tile is exactly what made the hillside read as three separate shelves instead of one strip.
+   The blobs are barely there on grass and much stronger on water, which is how the reference
+   reads: a field is almost flat, a pond is not. The shade varies a little tile to tile, which is
+   what stops a wide flat field looking printed. */
+/* Measured off the reference tiles rather than invented. Two rules matter:
+   1. The shade spread is TINY. Four adjacent ground tiles in the reference are almost the same
+      colour; the texture, not the base colour, is what varies. A wide spread puts a checkerboard
+      on the hillside, because each 180px square is one flat colour and the joins are visible.
+   2. Ground blobs are FINE and VISIBLE. Many small soft flecks read as texture; a few big soft
+      blobs read as a cloud sitting inside each square, which draws the square. Measured off the
+      reference strips, the speckle is clearly there — roughly a seventh lighter — and it is the
+      speckle, not the base tone, that stops a flat field looking like plastic. Water is the
+      exception: the reference water tiles carry two or three genuinely large soft shapes. */
+var TILE_ART = {
+  grass:  { shades: ['#7ec25c', '#80c45e', '#7cc05a', '#82c660'],
+            blob: 'rgba(255,255,255,0.13)', n: 22, r0: 0.020, r1: 0.042 },
+  forest: { shades: ['#3f8050', '#418254', '#3d7e4d', '#408153'],
+            blob: 'rgba(255,255,255,0.12)', n: 20, r0: 0.020, r1: 0.042 },
+  water:  { shades: ['#78c8dd', '#7bccdf', '#75c5da', '#7ecfe2'],
+            blob: 'rgba(255,255,255,0.20)', n: 4, r0: 0.21,  r1: 0.13 },
+  bank:   { shades: ['#b09573', '#b29776', '#ae9370', '#b49978'],
+            blob: 'rgba(255,255,255,0.15)', n: 26, r0: 0.014, r1: 0.034 }
+};
+
 function drawTile(c, r) {
   var t = cell(c, r);
-  var ts = tileSize(r), x = tileX(c, r), y = tileY(r), h = ts * 0.94;
-  var cx = x + ts / 2, cy = y + h / 2;
+  var x = tileX(c), y = tileY(r);
+  if (x + TILE < 0 || x > W) return;
+  var a = TILE_ART[t.ter] || TILE_ART.grass;
+  var i;
 
-  squircle(cx, cy, ts * 0.99, h * 0.99, 3.2, true, c * 3.7 + r * 1.9);
-  var g = ctx.createLinearGradient(0, y, 0, y + h);
-  if (t.ter === 'water') { g.addColorStop(0, '#93d2e6'); g.addColorStop(1, '#5aa6c8'); }
-  else if (t.ter === 'bank') { g.addColorStop(0, '#7c5a3a'); g.addColorStop(1, '#553a24'); }
-  else if (t.ter === 'forest') { g.addColorStop(0, '#37704b'); g.addColorStop(1, '#245238'); }
-  else { g.addColorStop(0, '#82c066'); g.addColorStop(1, '#65a34f'); }
-  ctx.fillStyle = g;
-  ctx.fill();
+  /* Hash the shade, do NOT cycle it. `(c * 3 + r * 7) % 4` put all four shades on four
+     consecutive tiles, which is a checkerboard by construction. A hash scatters them. */
+  ctx.fillStyle = a.shades[Math.floor(jit(c, r, 91) * 4)];
+  ctx.fillRect(x, y, TILE, TILE);
 
-  ctx.fillStyle = 'rgba(255,255,255,' + (0.05 + jit(c, r, 7) * 0.07).toFixed(3) + ')';
-  ctx.beginPath();
-  ctx.ellipse(cx, cy - h * 0.18, ts * 0.32, h * 0.20, 0, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillStyle = a.blob;
+  for (i = 0; i < a.n; i++) {
+    ctx.beginPath();
+    ctx.ellipse(x + jit(c, r + i, 51) * TILE, y + jit(c + i, r, 52) * TILE,
+                TILE * (a.r0 + jit(c, r, 53 + i) * a.r1),
+                TILE * (a.r0 * 0.75 + jit(c + i, r, 63 + i) * a.r1 * 0.75),
+                0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (t.ter === 'water') {
+    /* The bubbles are big. Measured off the reference water tile: a white disc about a sixth of
+       the tile across, not the pinprick this started as. Two of them, hard white, no soft edge. */
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.beginPath();
+    ctx.arc(x + TILE * (0.26 + jit(c, r, 81) * 0.34), y + TILE * (0.20 + jit(c, r, 82) * 0.26),
+            TILE * 0.150, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x + TILE * (0.34 + jit(c, r, 83) * 0.34), y + TILE * (0.60 + jit(c, r, 84) * 0.26),
+            TILE * 0.115, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   if (t.seeds > 0 && t.ter === 'grass' && !t.alien && !t.obj) {
-    /* Seed left in the ground, waiting for rain. This is the thing the whole game turns on, and
-       a single flat smudge was too easy to read as dirt, so it is a scatter of seeds now. */
+    /* Seed left in the ground, waiting for rain. The whole game turns on this, so it is a scatter
+       of seeds rather than one smudge you could mistake for dirt. */
     var sn = Math.min(4, t.seeds), sk;
-    ctx.fillStyle = 'rgba(110,86,46,0.66)';
+    ctx.fillStyle = 'rgba(96,72,36,0.72)';
     for (sk = 0; sk < sn; sk++) {
-      var ax = cx + (jit(c + sk, r, 21) - 0.5) * ts * 0.46;
-      var ay = cy + (jit(c, r + sk, 31) - 0.5) * h * 0.40;
       ctx.beginPath();
-      ctx.ellipse(ax, ay, ts * 0.043, h * 0.033, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + TILE * (0.22 + jit(c + sk, r, 31) * 0.56),
+                  y + TILE * (0.22 + jit(c, r + sk, 32) * 0.46),
+                  TILE * 0.032, TILE * 0.024, 0, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -951,16 +1085,36 @@ function shadow(cx, cy, rx, ry) {
   ctx.fill();
 }
 
+/* The old forest that was never cut. It is terrain rather than a planted tree, so it needs a
+   canopy of its own — without one the forest remnant was a dark green rectangle with no trees in
+   it, which is exactly what the first strip screenshot showed. */
+function drawForestCanopy(cx, base, s) {
+  ctx.fillStyle = '#33694a';
+  ctx.beginPath(); ctx.ellipse(cx, base - s * 0.42, s * 0.52, s * 0.38, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2b5c40';
+  ctx.beginPath(); ctx.ellipse(cx - s * 0.28, base - s * 0.58, s * 0.30, s * 0.26, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + s * 0.30, base - s * 0.54, s * 0.28, s * 0.24, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#3d7554';
+  ctx.beginPath(); ctx.ellipse(cx + s * 0.06, base - s * 0.76, s * 0.26, s * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2b5c40';
+  ctx.beginPath(); ctx.ellipse(cx - s * 0.16, base - s * 0.90, s * 0.18, s * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+/* The aliens have to be tellable from the trees you are growing back, at a glance, from a phone.
+   Two honest differences carry it: their foliage is a dull yellow-olive where the indigenous
+   canopies are a clean green, and their bark is pale grey where the indigenous trunks are warm
+   brown. Wattle and pine really do have greyish bark, so this is drawn from the plant, not
+   invented for the palette. */
 function drawAlien(kind, cx, base, s) {
   shadow(cx, base, s * 0.40, s * 0.13);
   var i;
   if (kind === 'pine') {
-    ctx.fillStyle = '#6b5433';
+    ctx.fillStyle = '#7d7568';
     ctx.fillRect(cx - s * 0.05, base - s * 0.30, s * 0.10, s * 0.30);
     for (i = 0; i < 3; i++) {
       var yy = base - s * (0.30 + i * 0.22);
       var ww = s * (0.42 - i * 0.10);
-      ctx.fillStyle = i === 2 ? '#4e7a3c' : '#3d6a31';
+      ctx.fillStyle = i === 2 ? '#40684a' : '#345740';
       ctx.beginPath();
       ctx.moveTo(cx, yy - s * 0.28);
       ctx.lineTo(cx + ww, yy);
@@ -969,25 +1123,32 @@ function drawAlien(kind, cx, base, s) {
       ctx.fill();
     }
   } else if (kind === 'wattle') {
-    ctx.fillStyle = '#6b5433';
-    ctx.fillRect(cx - s * 0.05, base - s * 0.44, s * 0.10, s * 0.44);
-    ctx.fillStyle = '#9fb84a';
-    ctx.beginPath(); ctx.ellipse(cx, base - s * 0.60, s * 0.32, s * 0.28, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#8aa83c';
-    ctx.beginPath(); ctx.ellipse(cx + s * 0.13, base - s * 0.74, s * 0.19, s * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+    /* Black wattle comes up multi-stemmed. A single thin stick under a wide flat canopy read as
+       a mushroom, so it has two stems and a third lobe low down. */
+    ctx.fillStyle = '#7d7568';
+    ctx.fillRect(cx - s * 0.11, base - s * 0.40, s * 0.09, s * 0.40);
+    ctx.fillRect(cx + s * 0.03, base - s * 0.44, s * 0.09, s * 0.44);
+    ctx.fillStyle = '#93a052';
+    ctx.beginPath(); ctx.ellipse(cx - s * 0.08, base - s * 0.54, s * 0.26, s * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#829046';
+    ctx.beginPath(); ctx.ellipse(cx + s * 0.15, base - s * 0.64, s * 0.22, s * 0.19, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#9dab58';
+    ctx.beginPath(); ctx.ellipse(cx + s * 0.02, base - s * 0.76, s * 0.20, s * 0.17, 0, 0, Math.PI * 2); ctx.fill();
   } else if (kind === 'bugweed') {
-    ctx.fillStyle = '#5f7a3c';
+    ctx.fillStyle = '#6f7a52';
     ctx.fillRect(cx - s * 0.04, base - s * 0.24, s * 0.08, s * 0.24);
-    ctx.fillStyle = '#8fae4c';
+    ctx.fillStyle = '#7d9550';
     ctx.beginPath(); ctx.ellipse(cx, base - s * 0.42, s * 0.38, s * 0.29, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#e0d264';
+    /* The berries are the giveaway: bugweed fruits all year round, and that is why the birds
+       carry it up the hill. */
+    ctx.fillStyle = '#dcd06a';
     for (i = 0; i < 4; i++) {
       ctx.beginPath();
       ctx.arc(cx + (jit(i, 1, 3) - 0.5) * s * 0.56, base - s * 0.42 + (jit(i, 2, 4) - 0.5) * s * 0.36, s * 0.055, 0, Math.PI * 2);
       ctx.fill();
     }
   } else {
-    ctx.strokeStyle = '#7d9a44';
+    ctx.strokeStyle = '#7b9349';
     ctx.lineWidth = Math.max(1.4, s * 0.045);
     for (i = 0; i < 7; i++) {
       var ang = i / 7 * Math.PI * 2;
@@ -997,7 +1158,7 @@ function drawAlien(kind, cx, base, s) {
                            cx + Math.cos(ang) * s * 0.36, base - s * 0.06);
       ctx.stroke();
     }
-    ctx.fillStyle = '#93b04e';
+    ctx.fillStyle = '#8aa355';
     ctx.beginPath(); ctx.ellipse(cx, base - s * 0.16, s * 0.20, s * 0.12, 0, 0, Math.PI * 2); ctx.fill();
   }
 }
@@ -1041,84 +1202,185 @@ function drawTree(sp, stage, cx, base, s, hollow) {
   }
 }
 
+/* A rectangular wall under a pitched roof. The first pass used rounded squircles for the walls
+   and a flat quadratic cap for the roof, and the whole thing read as a loaf of bread. It is also
+   sized to sit inside its own tile, so the house at the village end is not clipped by the edge
+   of the canvas on the first screen a new player sees. */
 function drawHouse(cx, base, s) {
-  shadow(cx, base, s * 0.54, s * 0.15);
-  ctx.fillStyle = '#b98f5c';
-  squircle(cx, base - s * 0.30, s * 0.94, s * 0.58, 5, false, 0); ctx.fill();
-  ctx.fillStyle = '#6d4f30';
-  squircle(cx, base - s * 0.22, s * 0.76, s * 0.38, 5, false, 0); ctx.fill();
-  ctx.fillStyle = '#f2d79c';
-  squircle(cx, base - s * 0.20, s * 0.64, s * 0.29, 5, false, 0); ctx.fill();
-  ctx.fillStyle = '#8a5f34';
-  ctx.fillRect(cx - s * 0.22, base - s * 0.25, s * 0.15, s * 0.06);
-  ctx.fillStyle = '#c99a52';
-  ctx.fillRect(cx + s * 0.10, base - s * 0.30, s * 0.13, s * 0.15);
-  ctx.fillStyle = '#f8e8b4';
-  ctx.beginPath(); ctx.arc(cx + s * 0.165, base - s * 0.345, s * 0.042, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#c9a558';
+  shadow(cx, base, s * 0.48, s * 0.13);
+  ctx.fillStyle = '#e2cda6';
+  ctx.fillRect(cx - s * 0.38, base - s * 0.52, s * 0.76, s * 0.52);
+  ctx.fillStyle = '#c9b087';
+  ctx.fillRect(cx + s * 0.22, base - s * 0.52, s * 0.16, s * 0.52);
+  ctx.fillStyle = '#a8623c';
   ctx.beginPath();
-  ctx.moveTo(cx - s * 0.60, base - s * 0.52);
-  ctx.quadraticCurveTo(cx, base - s * 1.00, cx + s * 0.60, base - s * 0.52);
-  ctx.quadraticCurveTo(cx, base - s * 0.62, cx - s * 0.60, base - s * 0.52);
+  ctx.moveTo(cx - s * 0.48, base - s * 0.50);
+  ctx.lineTo(cx, base - s * 0.90);
+  ctx.lineTo(cx + s * 0.48, base - s * 0.50);
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#a8853f';
+  ctx.fillStyle = '#8c4e2d';
   ctx.beginPath();
-  ctx.moveTo(cx - s * 0.60, base - s * 0.52);
-  ctx.quadraticCurveTo(cx, base - s * 0.62, cx + s * 0.60, base - s * 0.52);
-  ctx.lineTo(cx + s * 0.55, base - s * 0.47);
-  ctx.quadraticCurveTo(cx, base - s * 0.57, cx - s * 0.55, base - s * 0.47);
+  ctx.moveTo(cx, base - s * 0.90);
+  ctx.lineTo(cx + s * 0.48, base - s * 0.50);
+  ctx.lineTo(cx + s * 0.38, base - s * 0.50);
+  ctx.lineTo(cx, base - s * 0.82);
   ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#8d6b4a';
-  ctx.fillRect(cx + s * 0.29, base - s * 0.86, s * 0.10, s * 0.23);
+  ctx.fillStyle = '#9c8a76';
+  ctx.fillRect(cx + s * 0.16, base - s * 1.02, s * 0.11, s * 0.26);
+  ctx.fillStyle = '#7a5636';
+  ctx.fillRect(cx - s * 0.30, base - s * 0.34, s * 0.19, s * 0.34);
+  ctx.fillStyle = '#f6e6b8';
+  ctx.fillRect(cx - s * 0.03, base - s * 0.44, s * 0.17, s * 0.16);
+  ctx.fillRect(cx + s * 0.19, base - s * 0.44, s * 0.13, s * 0.16);
+  ctx.fillStyle = 'rgba(90,66,38,0.5)';
+  ctx.fillRect(cx - s * 0.03, base - s * 0.37, s * 0.17, s * 0.02);
+  ctx.fillRect(cx + s * 0.19, base - s * 0.37, s * 0.13, s * 0.02);
 }
 
+/* A shade-cloth tunnel, in pale grey-green so it reads as cloth stretched over a frame. The first
+   pass painted it a dark grey-green and it read as a mound of earth. */
 function drawNursery(cx, base, s) {
   shadow(cx, base, s * 0.50, s * 0.14);
-  ctx.fillStyle = '#4a5a4e';
+  ctx.fillStyle = '#9aab9d';
   ctx.beginPath();
   ctx.moveTo(cx - s * 0.46, base - s * 0.06);
-  ctx.quadraticCurveTo(cx, base - s * 0.58, cx + s * 0.46, base - s * 0.06);
+  ctx.quadraticCurveTo(cx, base - s * 0.62, cx + s * 0.46, base - s * 0.06);
   ctx.closePath(); ctx.fill();
-  ctx.strokeStyle = 'rgba(220,235,220,0.20)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = Math.max(1.2, s * 0.014);
   var i;
   for (i = 0; i < 4; i++) {
     ctx.beginPath();
     ctx.moveTo(cx - s * 0.40 + i * s * 0.05, base - s * 0.08);
-    ctx.quadraticCurveTo(cx, base - s * 0.54, cx + s * 0.40 - i * s * 0.05, base - s * 0.08);
+    ctx.quadraticCurveTo(cx, base - s * 0.58, cx + s * 0.40 - i * s * 0.05, base - s * 0.08);
     ctx.stroke();
   }
-  ctx.fillStyle = '#7a5a38';
-  ctx.fillRect(cx - s * 0.42, base - s * 0.06, s * 0.84, s * 0.09);
+  ctx.fillStyle = '#3f4a42';
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.16, base - s * 0.06);
+  ctx.quadraticCurveTo(cx, base - s * 0.34, cx + s * 0.16, base - s * 0.06);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#8a6a44';
+  ctx.fillRect(cx - s * 0.44, base - s * 0.08, s * 0.88, s * 0.10);
   ctx.fillStyle = '#8fbf5a';
   for (i = 0; i < 6; i++) {
     ctx.beginPath();
-    ctx.ellipse(cx - s * 0.32 + i * s * 0.128, base - s * 0.10, s * 0.042, s * 0.052, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx - s * 0.34 + i * s * 0.136, base - s * 0.12, s * 0.040, s * 0.050, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
 function drawBin(cx, base, s, full) {
-  shadow(cx, base, s * 0.28, s * 0.10);
+  var bx = cx - s * 0.16;   /* the bin sits left; the baboon has the right-hand side */
+  shadow(bx, base, s * 0.26, s * 0.09);
   ctx.fillStyle = '#4f7fa8';
   ctx.beginPath();
-  ctx.moveTo(cx - s * 0.21, base - s * 0.38);
-  ctx.lineTo(cx + s * 0.21, base - s * 0.38);
-  ctx.lineTo(cx + s * 0.16, base - s * 0.02);
-  ctx.lineTo(cx - s * 0.16, base - s * 0.02);
+  ctx.moveTo(bx - s * 0.20, base - s * 0.36);
+  ctx.lineTo(bx + s * 0.20, base - s * 0.36);
+  ctx.lineTo(bx + s * 0.15, base - s * 0.02);
+  ctx.lineTo(bx - s * 0.15, base - s * 0.02);
   ctx.closePath(); ctx.fill();
   ctx.fillStyle = '#3d6a8f';
-  ctx.fillRect(cx - s * 0.24, base - s * 0.42, s * 0.48, s * 0.06);
+  ctx.fillRect(bx - s * 0.23, base - s * 0.40, s * 0.46, s * 0.055);
   ctx.fillStyle = '#8fb8d4';
-  ctx.fillRect(cx - s * 0.10, base - s * 0.29, s * 0.20, s * 0.17);
+  ctx.fillRect(bx - s * 0.10, base - s * 0.28, s * 0.20, s * 0.16);
   if (full) {
     ctx.fillStyle = '#7d9a44';
-    ctx.beginPath(); ctx.ellipse(cx, base - s * 0.45, s * 0.19, s * 0.085, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(bx, base - s * 0.43, s * 0.18, s * 0.08, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#6b8a38';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.moveTo(cx - s * 0.06, base - s * 0.48); ctx.lineTo(cx - s * 0.12, base - s * 0.58); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(cx + s * 0.04, base - s * 0.48); ctx.lineTo(cx + s * 0.10, base - s * 0.56); ctx.stroke();
+    ctx.lineWidth = Math.max(1.4, s * 0.018);
+    ctx.beginPath(); ctx.moveTo(bx - s * 0.06, base - s * 0.46); ctx.lineTo(bx - s * 0.12, base - s * 0.56); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx + s * 0.04, base - s * 0.46); ctx.lineTo(bx + s * 0.10, base - s * 0.54); ctx.stroke();
   }
+  drawBinBaboon(cx + s * 0.28, base, s * 0.82);
+}
+
+/* A chacma baboon has worked out that this bin gets emptied, so it waits at the bin instead of
+   going through the village. Grey-brown coat, a dark near-black face with a pale muzzle, a short
+   cocked tail, and a hunched sit with one hand on the rim. */
+function drawBinBaboon(cx, base, s) {
+  shadow(cx, base, s * 0.26, s * 0.09);
+  ctx.fillStyle = '#8a7a63';
+  ctx.beginPath(); ctx.ellipse(cx, base - s * 0.24, s * 0.20, s * 0.24, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#7a6b55';
+  ctx.beginPath(); ctx.ellipse(cx + s * 0.06, base - s * 0.13, s * 0.13, s * 0.11, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.strokeStyle = '#8a7a63';
+  ctx.lineWidth = Math.max(2.5, s * 0.075);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.10, base - s * 0.40);
+  ctx.quadraticCurveTo(cx - s * 0.26, base - s * 0.38, cx - s * 0.35, base - s * 0.44);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx + s * 0.18, base - s * 0.16);
+  ctx.quadraticCurveTo(cx + s * 0.34, base - s * 0.20, cx + s * 0.28, base - s * 0.40);
+  ctx.stroke();
+
+  ctx.fillStyle = '#8a7a63';
+  ctx.beginPath(); ctx.arc(cx - s * 0.03, base - s * 0.52, s * 0.13, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#7a6b55';
+  ctx.beginPath(); ctx.arc(cx - s * 0.15, base - s * 0.54, s * 0.045, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + s * 0.09, base - s * 0.54, s * 0.045, 0, Math.PI * 2); ctx.fill();
+
+  /* The long dog-like muzzle is the thing that makes this a baboon and not a monkey. */
+  ctx.fillStyle = '#3d3830';
+  ctx.beginPath(); ctx.ellipse(cx - s * 0.08, base - s * 0.49, s * 0.090, s * 0.078, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#c9bda4';
+  ctx.beginPath(); ctx.ellipse(cx - s * 0.10, base - s * 0.455, s * 0.052, s * 0.030, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2a2620';
+  ctx.beginPath(); ctx.arc(cx - s * 0.10, base - s * 0.440, s * 0.015, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx - s * 0.11, base - s * 0.535, s * 0.015, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + s * 0.01, base - s * 0.535, s * 0.015, 0, Math.PI * 2); ctx.fill();
+}
+
+/* Vandijkophrynus amatolicus — the Amathole toad. Under 4 cm, dark grey or olive-brown with a
+   distinct pale stripe down the middle of its back, well-developed parotoid glands behind the
+   eyes and small flattened warts all over. It lives in the grassland around Hogsback and nowhere
+   else on earth, and the plantations are what took that grassland away. */
+function drawToad(cx, base, s) {
+  shadow(cx, base, s * 0.26, s * 0.075);
+  var i;
+  ctx.fillStyle = '#5c5443';
+  ctx.beginPath(); ctx.ellipse(cx + s * 0.20, base - s * 0.10, s * 0.13, s * 0.085, -0.35, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx - s * 0.20, base - s * 0.10, s * 0.12, s * 0.080, 0.35, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = '#6f6551';
+  ctx.beginPath(); ctx.ellipse(cx, base - s * 0.21, s * 0.32, s * 0.19, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx - s * 0.06, base - s * 0.28, s * 0.21, s * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+
+  /* The parotoid glands: the two fat lumps behind the eyes that make this a toad and not a frog.
+     They are well developed on this species, so they are drawn as a real shape and not a dot. */
+  ctx.fillStyle = '#7d7259';
+  ctx.beginPath(); ctx.ellipse(cx - s * 0.21, base - s * 0.29, s * 0.075, s * 0.048, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + s * 0.10, base - s * 0.32, s * 0.075, s * 0.048, -0.3, 0, Math.PI * 2); ctx.fill();
+
+  /* The pale vertebral stripe. If you only draw one thing on this toad, draw this. */
+  ctx.fillStyle = '#cfc6a6';
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.30, base - s * 0.24);
+  ctx.quadraticCurveTo(cx, base - s * 0.46, cx + s * 0.30, base - s * 0.22);
+  ctx.lineTo(cx + s * 0.30, base - s * 0.17);
+  ctx.quadraticCurveTo(cx, base - s * 0.39, cx - s * 0.30, base - s * 0.19);
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = '#5a5242';
+  for (i = 0; i < 7; i++) {
+    ctx.beginPath();
+    ctx.ellipse(cx + (jit(i, 1, 41) - 0.5) * s * 0.52, base - s * (0.14 + jit(i, 2, 42) * 0.18),
+                s * 0.028, s * 0.019, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = '#4a4436';
+  ctx.beginPath(); ctx.arc(cx - s * 0.16, base - s * 0.37, s * 0.045, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + s * 0.04, base - s * 0.39, s * 0.045, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#1d1a14';
+  ctx.beginPath(); ctx.arc(cx - s * 0.16, base - s * 0.37, s * 0.022, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + s * 0.04, base - s * 0.39, s * 0.022, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = 'rgba(214,205,178,0.75)';
+  ctx.beginPath(); ctx.ellipse(cx - s * 0.06, base - s * 0.13, s * 0.16, s * 0.045, 0, 0, Math.PI * 2); ctx.fill();
 }
 
 function drawSign(cx, base, s) {
@@ -1189,20 +1451,50 @@ function drawDecor(kind, cx, base, s) {
   }
 }
 
+/* Props are drawn at roughly a tile tall and they overhang the tiles behind them, which is how
+   the reference gets depth out of a flat grid. Rows are drawn back to front, and each row's
+   entities go down before the next row's ground, so a front tile hides the feet of the thing
+   standing behind it. */
 function drawRowEntities(r) {
   var c;
   for (c = 0; c < COLS; c++) {
+    var x = tileX(c);
+    if (x + TILE < 0 || x > W) continue;
     var t = cell(c, r);
-    var ts = tileSize(r), cx = tileX(c, r) + ts / 2, base = tileY(r) + ts * 0.72;
-    if (t.alien) drawAlien(t.alien, cx, base, ts * 0.92);
-    else if (t.sp) drawTree(t.sp, t.stage, cx, base, ts * 0.92, t.hollow);
-    if (t.obj === 'house') drawHouse(cx, base, ts * 1.02);
-    else if (t.obj === 'nursery') drawNursery(cx, base, ts * 0.96);
-    else if (t.obj === 'bin') drawBin(cx, base, ts * 0.90, binItems >= BIN_LOAD);
-    else if (t.obj === 'sign') drawSign(cx, base, ts * 0.88);
-    else if (t.obj === 'jetty') drawJetty(cx, base, ts * 0.96);
-    else if (DECOR[t.obj]) drawDecor(t.obj, cx, base, ts * 0.88);
+    var cx = x + TILE / 2, base = tileY(r) + TILE * 0.94;
+    /* Trees and aliens get a little size and position scatter. Every one of them the same size on
+       the same pitch is wallpaper, and wallpaper is what makes a tile world read as generated
+       rather than grown. The landmarks — house, nursery, bin, sign, jetty — do NOT move; they are
+       placed, not scattered. */
+    var vs = 0.80 + jit(c, r, 71) * 0.24;
+    var tx = cx + (jit(c, r, 72) - 0.5) * TILE * 0.22;
+    var tb = base + (jit(c, r, 73) - 0.5) * TILE * 0.05;
+    /* The forest remnant is terrain, not a planted tree, so it needs a canopy of its own or the
+       old forest is a dark green rectangle with no trees in it. It stays on the tile centre so the
+       canopy runs as one continuous hedge. */
+    if (t.ter === 'forest' && !t.alien && !t.sp && !t.obj) {
+      drawForestCanopy(cx, base, TILE * (0.88 + jit(c, r, 74) * 0.10));
+    }
+    if (t.alien) drawAlien(t.alien, tx, tb, TILE * 0.92 * vs);
+    else if (t.sp) drawTree(t.sp, t.stage, tx, tb, TILE * 0.92 * vs, t.hollow);
+    if (t.obj === 'house') drawHouse(cx, base, TILE * 1.02);
+    else if (t.obj === 'nursery') drawNursery(cx, base, TILE * 1.00);
+    else if (t.obj === 'bin') drawBin(cx, base, TILE * 0.92, binItems >= BIN_LOAD);
+    else if (t.obj === 'sign') drawSign(cx, base, TILE * 0.92);
+    else if (t.obj === 'jetty') drawJetty(cx, base, TILE * 1.00);
+    else if (DECOR[t.obj]) drawDecor(t.obj, cx, base, TILE * 0.92);
+    if (toad && toad.r === r && toad.c === c) drawToad(cx, tileY(r) + TILE * 0.90, TILE * 0.72);
   }
+}
+
+/* Distance haze, laid flat over a row once it is complete. Flat tint, not a gradient — it is the
+   only thing telling you row 0 is further away than row 2. */
+function depthWash(r) {
+  if (r >= ROWS - 1) return;
+  var a = r === 0 ? 0.20 : 0.09;
+  var top = tileY(r) - (r === 0 ? 74 : 0);
+  ctx.fillStyle = 'rgba(186,208,218,' + a + ')';
+  ctx.fillRect(0, top, W, tileY(r) + TILE - top);
 }
 
 function drawCritter(kind, cx, base, s) {
@@ -1257,42 +1549,39 @@ function drawCritter(kind, cx, base, s) {
   }
 }
 
+/* Anything that walks keeps a WORLD x and only becomes a screen position here, so it stays put
+   when the camera pans instead of sliding along with the view. */
 function drawActors(dt) {
   var i;
   for (i = actors.length - 1; i >= 0; i--) {
     var a = actors[i];
     a.t += dt;
     if (a.t > a.life) { actors.splice(i, 1); continue; }
-    var ts = tileSize(a.row);
     ctx.globalAlpha = Math.min(1, Math.min(a.t, a.life - a.t) / 300);
-    drawCritter(a.kind, a.x, tileY(a.row) + ts * 0.74, ts * 0.60);
+    drawCritter(a.kind, a.x - camX, tileY(a.row) + TILE * 0.88, TILE * 0.72);
     ctx.globalAlpha = 1;
     a.x += a.dir * a.speed * dt;
   }
   if (troop) {
     troop.t += dt;
     troop.x += troop.dir * 0.055 * dt;
-    if (troop.x > W + 70) troop = null;
+    if (troop.x > worldW() + 70) troop = null;
     else {
-      var ty = tileY(troop.row) + tileSize(troop.row) * 0.74;
-      for (i = 0; i < 4; i++) drawCritter('monkey', troop.x - i * 16, ty, tileSize(troop.row) * 0.52);
+      var ty = tileY(troop.row) + TILE * 0.88;
+      for (i = 0; i < 4; i++) drawCritter('monkey', troop.x - i * 46 - camX, ty, TILE * 0.78);
     }
   }
   if (parrot) {
     parrot.t += dt;
     var p = Math.min(1, parrot.t / 2200);
     parrot.x = -60 + (parrot.tx + 60) * p;
-    parrot.y = 120 + (parrot.ty - 120) * p - Math.sin(p * Math.PI) * 40;
+    parrot.y = SKY - 60 + (parrot.ty - (SKY - 60)) * p - Math.sin(p * Math.PI) * 40;
     /* This bird is the payoff of the whole game, and it used to be a six-pixel smudge that
-       vanished against the leaves. It is drawn bigger now, with its own halo so it reads against
-       a green canopy, and with the red forehead patch that makes it a Cape parrot rather than
-       any parrot. */
+       vanished against the leaves. It is drawn bigger now, with a flat halo so it reads against
+       a green canopy, and with the red forehead patch that makes it a Cape parrot. */
     var bob = Math.sin(parrot.t / 260) * 3.2;
-    var px = parrot.x, py = parrot.y + bob;
-    var pg = ctx.createRadialGradient(px, py, 0, px, py, 36);
-    pg.addColorStop(0, 'rgba(255,248,214,0.55)');
-    pg.addColorStop(1, 'rgba(255,248,214,0)');
-    ctx.fillStyle = pg;
+    var px = parrot.x - camX, py = parrot.y + bob;
+    ctx.fillStyle = 'rgba(255,248,214,0.30)';
     ctx.beginPath(); ctx.arc(px, py, 36, 0, Math.PI * 2); ctx.fill();
 
     ctx.strokeStyle = '#4e8a44';
@@ -1359,8 +1648,8 @@ function drawWeather(w) {
        the edges so nothing is sliced by the boundary. */
     for (i = 0; i < 4; i++) {
       var mx = 200 + i * 108 + Math.sin(t / (3400 + i * 700)) * 34;
-      var my = 430 + i * 155;
-      var rr = 190;
+      var my = SKY + 80 + i * 130;
+      var rr = 150;
       ctx.save();
       ctx.translate(mx, my);
       ctx.scale(1, 0.34);
@@ -1377,10 +1666,43 @@ function drawWeather(w) {
     ctx.fillStyle = 'rgba(226,242,250,0.32)';
     for (i = 0; i < 40; i++) {
       ctx.beginPath();
-      ctx.arc(jit(i, 7, 7) * W, 380 + jit(i, 8, 8) * (H - 380), 1.4, 0, Math.PI * 2);
+      ctx.arc(jit(i, 7, 7) * W, SKY + jit(i, 8, 8) * (H - SKY), 1.4, 0, Math.PI * 2);
       ctx.fill();
     }
   }
+}
+
+/* One tick per column of the whole strip, coloured by the worst thing on that column, with a
+   bracket showing where the camera is. Twenty tiles is too much world to navigate blind — but it
+   has to read as a minimap, not as a stripe of paint across the bottom of the picture. So the bar
+   is tall and dark and the ticks are SHORT and inset inside it: the frame is what says "this is
+   UI". At 9px tall with a 1px frame it read as a glitch. */
+function railColour(c) {
+  var r, t, anyAlien = false, anyMature = false;
+  for (r = 0; r < ROWS; r++) {
+    t = state.tiles[idx(c, r)];
+    if (t.alien) anyAlien = true;
+    if (t.sp && t.stage === 3) anyMature = true;
+  }
+  if (anyAlien) return '#ad9440';
+  if (anyMature) return '#2f6d4a';
+  t = state.tiles[idx(c, ROWS - 1)];
+  if (t.ter === 'water') return '#4a9cc0';
+  return '#7ec25c';
+}
+
+function drawRail() {
+  var y = H - RAIL_H, c, tw = W / COLS, th = 7, ty = y + (RAIL_H - th) / 2;
+  ctx.fillStyle = 'rgba(10,20,15,0.72)';
+  ctx.fillRect(0, y, W, RAIL_H);
+  for (c = 0; c < COLS; c++) {
+    ctx.fillStyle = railColour(c);
+    ctx.fillRect(c * tw + 1, ty, tw - 2, th);
+  }
+  var vw = W / worldW() * W;
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(camX / worldW() * W + 1, y + 1.5, vw - 2, RAIL_H - 3);
 }
 
 var _last = 0;
@@ -1392,17 +1714,19 @@ function frame(ts) {
   var w = state.weather || fallbackFor(new Date().getMonth());
   /* Clear the whole canvas first. drawSky only paints the sky band, so without this the tile
      field and the margins are never erased — and every translucent thing drawn over them (mist,
-     rain, frost sheen) builds up frame after frame. It looked fine in a single screenshot and
-     turned the seams between tiles solid white after a few seconds of play. */
+     rain, frost sheen, the depth wash) builds up frame after frame. It looked fine in a single
+     screenshot and turned the seams between tiles solid white after a few seconds of play. */
   ctx.clearRect(0, 0, W, H);
   drawSky(w);
   var r, c;
   for (r = 0; r < ROWS; r++) {
     for (c = 0; c < COLS; c++) drawTile(c, r);
     drawRowEntities(r);
+    depthWash(r);
   }
   drawActors(dt);
   drawWeather(w);
+  drawRail();
   if (binFlash > 0) {
     binFlash -= dt;
     ctx.fillStyle = 'rgba(255,244,200,' + Math.max(0, binFlash / 700 * 0.20) + ')';
@@ -1632,6 +1956,9 @@ function act(c, r) {
     if (clearAt(c, r)) {
       boardProgress('cuts', 1);
       spawnCritter(c, r);
+      /* Check straight away, not just on the day roll: the toad is the reward for opening the
+         grass up, and it should land on the tap that did it. */
+      toadCheck();
       saveLocal(); renderHud(); renderBoard();
     }
     return;
@@ -1656,7 +1983,7 @@ function spawnCritter(c, r) {
   if (Math.random() > 0.22) return;
   var kinds = ['bushbuck', 'monkey', 'porcupine', 'turaco'];
   actors.push({ kind: kinds[Math.floor(Math.random() * kinds.length)],
-                row: r, x: tileX(c, r) + 12, dir: Math.random() < 0.5 ? -1 : 1,
+                row: r, x: c * TILE + TILE / 2, dir: Math.random() < 0.5 ? -1 : 1,
                 speed: 0.018 + Math.random() * 0.026, t: 0, life: 4200 + Math.random() * 2600 });
   if (actors.length > 8) actors.shift();
 }
@@ -1736,17 +2063,36 @@ function boot() {
   });
 
   if (cv && cv.addEventListener) {
-    var dragging = false;
+    var down = false, moved = 0, lastCx = 0, downC = -1, downR = -1, scale = 1;
     var pick = function (ev) {
       var box = cv.getBoundingClientRect ? cv.getBoundingClientRect() : null;
       if (!box || !box.width) return null;
       return hitTest((ev.clientX - box.left) / box.width * W, (ev.clientY - box.top) / box.height * H);
     };
-    cv.addEventListener('pointerdown', function (ev) { dragging = true; var p = pick(ev); if (p) act(p.c, p.r); });
-    cv.addEventListener('pointermove', function (ev) { if (dragging) { var p = pick(ev); if (p) act(p.c, p.r); } });
-    cv.addEventListener('pointerup', function () { dragging = false; });
-    cv.addEventListener('pointercancel', function () { dragging = false; });
-    cv.addEventListener('pointerleave', function () { dragging = false; });
+    /* A drag pans now instead of cutting a line of tiles. With twenty tiles across there is more
+       hillside than screen, so dragging has to mean "look over there"; a tap still acts, and a day
+       is only twelve action points, so taps are enough to play it. The dead zone is what keeps a
+       slightly shaky tap from being read as a pan. */
+    cv.addEventListener('pointerdown', function (ev) {
+      var box = cv.getBoundingClientRect ? cv.getBoundingClientRect() : null;
+      if (box && box.width) scale = W / box.width;
+      down = true; moved = 0; lastCx = ev.clientX;
+      var p = pick(ev);
+      downC = p ? p.c : -1; downR = p ? p.r : -1;
+      if (cv.setPointerCapture) { try { cv.setPointerCapture(ev.pointerId); } catch (e) {} }
+    });
+    cv.addEventListener('pointermove', function (ev) {
+      if (!down) return;
+      var dx = ev.clientX - lastCx;
+      lastCx = ev.clientX;
+      moved += Math.abs(dx);
+      if (moved > 5) camX = clampCam(camX - dx * scale);
+    });
+    cv.addEventListener('pointerup', function () {
+      if (down && moved <= 5 && downC >= 0) act(downC, downR);
+      down = false;
+    });
+    cv.addEventListener('pointercancel', function () { down = false; });
   }
 
   renderHud(); renderBoard(); renderShop();
@@ -1757,10 +2103,10 @@ function boot() {
 /* ============================================================ exports */
 
 var API = {
-  VERSION: VERSION, GRID: { COLS: COLS, ROWS: ROWS, NTILES: NTILES },
+  VERSION: VERSION, GRID: { COLS: COLS, ROWS: ROWS, NTILES: NTILES, TILE: TILE, SKY: SKY, W: W, H: H },
   ALIENS: ALIENS, SPECIES: SPECIES, DECOR: DECOR, TOKENS: TOKENS,
   ALIEN_KEYS: ALIEN_KEYS, SP_KEYS: SP_KEYS, DECOR_KEYS: DECOR_KEYS, SEASON: SEASON,
-  AP_MAX: AP_MAX, BIN_LOAD: BIN_LOAD, PLACES: PLACES,
+  AP_MAX: AP_MAX, BIN_LOAD: BIN_LOAD, PLACES: PLACES, TILE_ART: TILE_ART, TOAD_AT: TOAD_AT,
   newState: newState, getState: function () { return state; }, setState: function (s) { state = s; },
   setTool: function (t) { tool = t; }, terrainAt: terrainAt,
   tickDay: tickDay, clearAt: clearAt, plantAt: plantAt, placeDecor: placeDecor,
@@ -1768,15 +2114,22 @@ var API = {
   getBin: function () { return binItems; }, setBin: function (n) { binItems = n; },
   encodeSave: encodeSave, decodeSave: decodeSave, checksum: checksum,
   weatherFrom: weatherFrom, fallbackFor: fallbackFor, classify: classify,
-  weatherWord: weatherWord, tokenOf: tokenOf, baboonPass: baboonPass, parrotCheck: parrotCheck,
+  weatherWord: weatherWord, tokenOf: tokenOf, skyKey: skyKey,
+  baboonPass: baboonPass, parrotCheck: parrotCheck, toadCheck: toadCheck,
   fruitingIndigenous: fruitingIndigenous, matureAround: matureAround, plantable: plantable,
-  stats: stats, hitTest: hitTest, tileX: tileX, tileY: tileY, tileSize: tileSize,
+  stats: stats, hitTest: hitTest, tileX: tileX, tileY: tileY,
+  worldW: worldW, clampCam: clampCam, centreOn: centreOn, railColour: railColour,
+  getCam: function () { return camX; }, setCam: function (x) { camX = clampCam(x); },
   rollBoard: rollBoard, boardTasks: boardTasks, boardProgress: boardProgress,
   boardDone: boardDone, claimBoard: claimBoard, taskGot: taskGot, taskDone: taskDone,
   voiceFor: voiceFor, VOICES: VOICES,
   parrotState: function () { return parrot ? { x: parrot.x, y: parrot.y, t: parrot.t } : null; },
+  toadState: function () { return toad ? { c: toad.c, r: toad.r } : null; },
   troopState: function () { return troop ? { x: troop.x, row: troop.row } : null; },
   actors: function () { return actors; },
+  /* Module state outlives a test fixture: a parrot still on the wing or a toad from an earlier
+     case will make the next case fail for the wrong reason. This is the handle that clears it. */
+  resetDiscoveries: function () { parrot = null; toad = null; troop = null; actors.length = 0; },
   frame: frame, boot: boot, note: note, renderHud: renderHud,
   renderShop: renderShop, renderBoard: renderBoard
 };
