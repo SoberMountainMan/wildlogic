@@ -96,7 +96,12 @@
      last two decorations could never be bought at all. They just wrap now. Four columns, because
      the palette grew from four species to eight and at three columns the nursery ran past the
      bottom of the sheet and buried the purchase button. */
-  .shoprow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
+  /* minmax(0,1fr), not 1fr. A grid track of 1fr still has an automatic minimum of min-content, so
+     four columns of "White stinkwood" refused to shrink and the row ran 38px past the sheet on a
+     320px phone — the 4th column (White pear, Ironwood) was clipped at the panel edge with no
+     scrollbar to say so. minmax(0,1fr) lets the tracks go below min-content. No change on a wide
+     phone, where 1fr already fitted. */
+  .shoprow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:10px}
   .item{flex:1;background:#fff;border:2px solid #d6e6ea;border-radius:13px;padding:6px 3px;cursor:pointer;
     display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:800;color:#3a4b52;text-align:center}
   .item[aria-pressed="true"]{border-color:#5aa85a;background:#f2fbf2}
