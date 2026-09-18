@@ -2888,6 +2888,28 @@ function boot() {
   if (els.cardOk) els.cardOk.addEventListener('click', function () { hideModal(els.mCard); });
   if (els.btnGear) els.btnGear.addEventListener('click', function () { renderBoard(); showModal(els.mBoard); });
   if (els.btnBox) els.btnBox.addEventListener('click', function () { renderShop(); showModal(els.mShop); });
+
+  /* AN ESCAPE FROM EVERY SHEET. The nursery lists eight seeds, five decor items, a stepper, a buy
+     button and a four-chip trade row, so on a phone the sheet is taller than the glass and its own
+     Close button sits below the fold — measured 4.1px below on a 390x844, 60.4px on the 390x780
+     reference, 205.3px on a 360x640 and 425.3px in landscape. With no backdrop tap and no Escape,
+     the ONLY way out of the shop was to scroll the whole catalogue. These two handlers change no
+     pixels; they just stop the sheet being a room with the door behind the furniture.
+     The guard `ev.target === m` matters: without it a tap on any control inside the sheet bubbles up
+     to the modal and closes the panel the player is using.
+     boot() tolerates a partial DOM on purpose (it is guarded on document.getElementById), so this
+     asks for querySelectorAll rather than assuming it — the canvas gate runs the whole game against
+     a minimal DOM stub and a hard call here took the gate down at boot. */
+  var modalEls = (typeof document.querySelectorAll === 'function')
+    ? Array.prototype.slice.call(document.querySelectorAll('.modal')) : [];
+  modalEls.forEach(function (m) {
+    m.addEventListener('click', function (ev) { if (ev.target === m) m.hidden = true; });
+  });
+  if (document.addEventListener) {
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') modalEls.forEach(function (m) { m.hidden = true; });
+    });
+  }
   if (els.qMinus) els.qMinus.addEventListener('click', function () { state.qty = Math.max(1, state.qty - 1); renderShop(); });
   if (els.qPlus) els.qPlus.addEventListener('click', function () { state.qty = Math.min(9, state.qty + 1); renderShop(); });
   if (els.btnBuy) els.btnBuy.addEventListener('click', function () {
