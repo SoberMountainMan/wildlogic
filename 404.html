@@ -1326,9 +1326,12 @@ paintSound();
 // v6.6: the owner added a second song and made a playlist, so this points at the SET. The widget
 // then advances by itself, which turns the old one-track loop into a trap — see the FINISH
 // handler below.
+// v6.7: the first attempt at that handler was still wrong, because it did arithmetic on a number
+// the widget had already moved on from. The FINISH handler's comment is the whole story, and it is
+// there because the numbers it quotes were measured against the live widget, not reasoned about.
 const SC_SET = 'https://soundcloud.com/oom-hogsback/sets/oom-hogsback';
 let scWidget = null, scReady = false, musicWanted = false;
-let scCount = 0;            // tracks in the set; 0 = not known yet, and never guessed
+let scEndTimer = 0;         // pending "has the set run out?" check — see the FINISH handler
 
 function loadMusic(){
   if(scWidget) return;
@@ -1345,30 +1348,50 @@ function loadMusic(){
         scWidget = SC.Widget(f);
         scWidget.bind(SC.Widget.Events.READY, function(){
           scReady = true;
-          // Read the set length ONCE, so the FINISH handler can tell the last track from the rest.
-          // Not hardcoded: the owner adds songs to the set without touching this file.
-          try{ scWidget.getSounds(function(l){ try{ scCount = (l && l.length) || 0; }catch(e){ scCount = 0; } }); }catch(e){}
           if(musicWanted && soundOn) scWidget.play();
         });
-        // v6.6 — THIS HANDLER USED TO LOOP ONE TRACK, AND WITH A SET THAT IS NOW THE BUG. Against a
-        // single 4:54 track, rewinding on FINISH was right ("loop it rather than fall silent").
-        // Against a SET the widget advances on its own, so a blind rewind would drag it back to
-        // track 1 every time and the second song would never be reached — the exact point of the
-        // change. Only the LAST track is ours to handle: restart the set so a long run never falls
-        // silent. If the length is unknown, do NOTHING and let the widget advance — a wrong skip is
-        // worse than a quiet set, and "plays through once" is an acceptable outcome.
+        // v6.7 — ASK WHAT THE WIDGET DID. DO NOT DO ARITHMETIC ON THE INDEX.
+        //
+        // v6.6 asked "am I on the last track?" by comparing getCurrentSoundIndex() against the set
+        // length. Measured against the live widget on 2026-09-13, that question cannot be answered
+        // that way: at the end of a track the widget has ALREADY advanced before it dispatches
+        // PAUSE / FINISH / PLAY, so the index read inside this handler is the track that has just
+        // STARTED, never the one that ended. On this two-track set the FINISH for track 1 reported
+        // index 1 — the last index — so `i >= scCount - 1` passed on the FIRST track and dragged
+        // the set back to the top. Track 2 was never heard and the game repeated track 1 forever,
+        // which is exactly what the owner reported.
+        //
+        // Both boundaries, one run, measured:
+        //   mid-set (track 1 -> 2):  PAUSE -> FINISH -> PLAY    index 1    isPaused false
+        //   end     (track 2):       PAUSE -> FINISH            index 1    isPaused true
+        // The index is 1 in BOTH cases, so it carries no information here and is not consulted. The
+        // one thing that separates "the set moved on" from "the set has run out" is whether the
+        // widget STOPPED. That is the only question this handler asks.
+        //
+        // The check is delayed on purpose. PAUSE, FINISH and PLAY all fire inside the same
+        // millisecond at a boundary, so asking immediately would race the widget's own PAUSE and
+        // could read "stopped" on a track that is in fact mid-set — which would put the bug back.
+        // A second later the answer has settled.
+        //
+        // Stopped means the set has run out, so it is restarted from the top and a long run never
+        // falls silent. Still playing always means hands off: a needless restart on a stall costs
+        // nothing, but a wrong skip mid-set costs the rotation the owner asked for.
         scWidget.bind(SC.Widget.Events.FINISH, function(){
-          try{
-            if(!(scCount > 0)) return;
-            scWidget.getCurrentSoundIndex(function(i){
-              try{
-                if(typeof i === 'number' && i >= scCount - 1){
+          if(scEndTimer) clearTimeout(scEndTimer);
+          scEndTimer = setTimeout(function(){
+            scEndTimer = 0;
+            try{
+              if(!scWidget) return;
+              scWidget.isPaused(function(p){
+                try{
+                  if(!p) return;                     // the widget advanced by itself — hands off
+                  if(!musicWanted || !soundOn) return;
                   scWidget.skip(0);
-                  if(musicWanted && soundOn) scWidget.play();
-                }
-              }catch(e){}
-            });
-          }catch(e){}
+                  scWidget.play();
+                }catch(e){}
+              });
+            }catch(e){}
+          }, 1500);
         });
       }catch(e){ scWidget = null; }
     };
