@@ -105,7 +105,11 @@
   .item{flex:1;background:#fff;border:2px solid #d6e6ea;border-radius:13px;padding:6px 3px;cursor:pointer;
     display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:800;color:#3a4b52;text-align:center}
   .item[aria-pressed="true"]{border-color:#5aa85a;background:#f2fbf2}
-  .item canvas{width:38px;height:38px}
+  /* 44px so a whole tree fits its frame: iconGeom() needs 1.46 units of height for the tallest
+     silhouette, which at 38px only left room for a 29px tree. This number and `ic.width` in
+     fillShopRow must agree — the stylesheet sets the display size, the script sets the backing
+     store. */
+  .item canvas{width:44px;height:44px}
   .price{display:flex;align-items:center;gap:3px;font-size:12px}
   .buy{width:100%;border:none;border-radius:15px;padding:13px;font:inherit;font-size:16px;font-weight:800;
     color:#fff;background:#5aa85a;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
@@ -134,8 +138,17 @@
     border:1px solid #2c4436;background:#0f1a14;color:#cfe0d4}
   .coderow button{font:inherit;font-size:11.5px;font-weight:800;padding:8px 10px;border-radius:9px;
     border:1px solid #2c4436;background:#22362b;color:#dbe8de;cursor:pointer}
-  footer{padding:10px 0 0;color:#6f8a7a;font-size:11.5px}
-  footer a{color:#8fb6a2}
+  /* The footer credit is a real link and has to be tappable. As inline text its box was 90x15px —
+     under the 32px floor `_gate_mistbelt_layout.js` fails on, because a text link's box is only its
+     line box. Padding grows the HIT AREA and the negative margin cancels it, so the link stays
+     exactly where it was and NOT ONE PIXEL MOVES — the same zero-visual-change trick as the
+     backdrop-tap escape. The footer gains 4px of bottom padding so the enlarged hit area cannot
+     reach the Close button 10px below it and steal a tap meant for it.
+     Sizing this is only worth doing because the link is permanent: it is the Open-Meteo attribution,
+     which CC BY 4.0 makes mandatory. The sibling link that WAS a judgement call (the Cape Parrot
+     Project) is gone until they approve the prototype — see the footer markup. */
+  footer{padding:10px 0 4px;color:#6f8a7a;font-size:11.5px}
+  footer a{color:#8fb6a2;display:inline-block;padding:10px 6px;margin:-10px -6px}
 </style>
 </head>
 <body>
@@ -177,9 +190,14 @@
       </div>
     </div>
     <footer>
-      The Cape Parrot Project works on this forest, out of Hogsback since 2009 —
-      <a href="https://www.wildbirdtrust.com/projects/cape-parrot-project" target="_blank" rel="noopener">wildbirdtrust.com</a>.
-      Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>.
+      <!-- The Cape Parrot Project is named, but NOT linked. Owner ruling 2026-09-18: they are fine
+           with a non-public prototype, and the link comes back only once they have approved the
+           whole working prototype. Do not "helpfully" re-add it. A plain-text mention credits them
+           without pointing traffic at them or implying an endorsement that has not been given.
+           The Open-Meteo credit is NOT optional and must not be removed with it: their data is
+           CC BY 4.0 and the licence requires a link wherever the data is displayed. -->
+      The Cape Parrot Project works on this forest, out of Hogsback since 2009. Weather data by
+      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a>.
     </footer>
     <button class="close" id="notesClose">Close</button>
   </div>
@@ -342,47 +360,57 @@ var ALIENS = {
      are dominated by emergent trees of Afrocarpus falcatus");
      South African Reforestation Trust planting list (scientific names, and the pioneer notes).
    Three layers, and the layer is the mechanic. */
-var TIER_NURSE = 1, TIER_MID = 2, TIER_CLIMAX = 3;
-var TIER_NAME = { 1: 'pioneer', 2: 'mid-storey', 3: 'climax' };
+var TIER_NURSE = 1, TIER_MID = 2, TIER_OLDGROWTH = 3;
+/* The third layer is 'old-growth', not 'climax' (owner, 2026-09-18: "i dont like the word
+   climax"). It is the same rule and the same tier number \u2014 only the name a player reads
+   changed, and it is the better term anyway: what the tier actually means is old, slow, and
+   hollow-bearing, which is exactly what the parrot needs. */
+var TIER_NAME = { 1: 'pioneer', 2: 'mid-storey', 3: 'old-growth' };
+/* "a pioneer tree" but "an old-growth tree" \u2014 the article has to agree with the name, and the
+   third tier's does not start with a consonant. */
+function tierPhrase(t) {
+  var n = TIER_NAME[t] || '';
+  return (/^[aeiou]/i.test(n) ? 'an ' : 'a ') + n;
+}
 
 var SP_KEYS = ['yellowwood', 'stinkwood', 'chestnut', 'knobwood',
                'outeniqua', 'ironwood', 'wildpeach', 'whitepair'];
 var SPECIES = {
-  yellowwood: { name: 'Real yellowwood',       short: 'Yellowwood',  tier: TIER_CLIMAX,
+  yellowwood: { name: 'Real yellowwood',       short: 'Yellowwood',  tier: TIER_OLDGROWTH,
                 sci: 'Podocarpus latifolius',  cost: 5, token: 'mist', slow: true,  fruit: false, hollow: true,
-                leaf: '#2f6d4a', dark: '#255639', tall: 1.06,
+                leaf: '#163a1c', dark: '#0f2c15', tall: 1.06, form: 'dense',
                 note: 'Slow, and it lives for centuries. The old ones grow hollow, and that hollow is ' +
                       'where a parrot nests.' },
   stinkwood:  { name: 'White stinkwood',       short: 'Stinkwood',   tier: TIER_MID,
                 sci: 'Celtis africana',        cost: 3, token: 'rain', slow: false, fruit: true,  hollow: false,
-                leaf: '#48965f', dark: '#377a4b', tall: 0.94,
+                leaf: '#48965f', dark: '#377a4b', tall: 0.94, form: 'tiered',
                 note: 'One of the few South African trees that drops its leaves. It shades the ground ' +
                       'within a few seasons, and the baboons come for the fruit.' },
   chestnut:   { name: 'Cape chestnut',         short: 'Chestnut',    tier: TIER_NURSE,
                 sci: 'Calodendrum capense',    cost: 3, token: 'sun',  slow: false, fruit: false, hollow: false,
-                leaf: '#57a866', dark: '#428a52', tall: 0.90,
+                leaf: '#57a866', dark: '#428a52', tall: 0.90, form: 'flowering',
                 note: 'A forest-margin tree. It wants the light, and it flowers for the sunbirds.' },
   knobwood:   { name: 'Forest knobwood',       short: 'Knobwood',    tier: TIER_MID,
                 sci: 'Zanthoxylum davyi',      cost: 4, token: 'snow', slow: false, fruit: true,  hollow: false,
-                leaf: '#3d8558', dark: '#2d6a45', tall: 0.88,
+                leaf: '#3d8558', dark: '#2d6a45', tall: 0.88, form: 'knobbly',
                 note: 'Thorny, and the seed is worth cracking open.' },
-  outeniqua:  { name: 'Outeniqua yellowwood',  short: 'Outeniqua',   tier: TIER_CLIMAX,
+  outeniqua:  { name: 'Outeniqua yellowwood',  short: 'Outeniqua',   tier: TIER_OLDGROWTH,
                 sci: 'Afrocarpus falcatus',    cost: 5, token: 'mist', slow: true,  fruit: true,  hollow: true,
-                leaf: '#276040', dark: '#1d4a31', tall: 1.20,
+                leaf: '#0e332e', dark: '#08241f', tall: 1.20, form: 'emergent',
                 note: 'The Amathole mistbelt forest is built around this one \u2014 the tallest trees ' +
                       'in it are all Outeniqua yellowwoods. It fruits, and the parrots come for it.' },
-  ironwood:   { name: 'Ironwood',              short: 'Ironwood',    tier: TIER_CLIMAX,
+  ironwood:   { name: 'Ironwood',              short: 'Ironwood',    tier: TIER_OLDGROWTH,
                 sci: 'Olea capensis',          cost: 4, token: 'mist', slow: true,  fruit: false, hollow: false,
-                leaf: '#356b4c', dark: '#28543b', tall: 1.10,
+                leaf: '#5e7a6a', dark: '#2a3d31', tall: 1.10, form: 'rounded',
                 note: 'One of the common trees of these forests. Slow, and it lives long.' },
   wildpeach:  { name: 'Wild peach',            short: 'Wild peach',  tier: TIER_NURSE,
                 sci: 'Kiggelaria africana',    cost: 2, token: 'sun',  slow: false, fruit: false, hollow: false,
-                leaf: '#6aa872', dark: '#548a5c', tall: 0.86,
+                leaf: '#6aa872', dark: '#548a5c', tall: 0.86, form: 'spreading',
                 note: 'Fast, and it coppices back after cutting. This is the tree that takes open ' +
                       'ground first, and it makes the shade the others need.' },
   whitepair:  { name: 'White pear',            short: 'White pear',  tier: TIER_MID,
                 sci: 'Apodytes dimidiata',     cost: 3, token: 'rain', slow: false, fruit: true,  hollow: false,
-                leaf: '#4d9a68', dark: '#3b7c52', tall: 0.96,
+                leaf: '#4d9a68', dark: '#3b7c52', tall: 0.96, form: 'neat',
                 note: 'The most forgiving of the forest trees \u2014 it takes dry ground and wet ' +
                       'ground alike.' }
 };
@@ -527,7 +555,7 @@ function newState() {
   return {
     v: VERSION, day: 1, ap: AP_MAX,
     tokens: { sun: 0, mist: 2, rain: 4, snow: 0 },
-    /* Two pioneers, not two climax trees. A new player handed a yellowwood learns nothing. One
+    /* Two pioneers, not two old-growth trees. A new player handed a yellowwood learns nothing. One
        handed a wild peach and a Cape chestnut plants them, watches the shade close, and finds out
        for themselves that the yellowwood will not go in until the shade is there. */
     bag: { wildpeach: 1, chestnut: 1, stinkwood: 0, whitepair: 0, knobwood: 0,
@@ -537,6 +565,8 @@ function newState() {
     seen: { seedbank: false, baboon: false, parrot: false, shade: false,
             toad: false, binbaboon: false, needshade: false, parrotwait: false },
     log: [], cleared: 0, planted: 0, bought: 0, recycled: 0,
+    /* Parrots resident in the forest. A count, not a flag — see parrotCapacity(). */
+    parrots: 0,
     board: null, qty: 1, pick: 'wildpeach'
   };
 }
@@ -623,17 +653,17 @@ function matureAround(c, r) {
 }
 
 /* The succession rule, and the reason the game is about a forest rather than about yellowwoods.
-   A climax tree will not take in open ground: in a mistbelt forest the Podocarpus comes up in the
-   shade of a canopy that is already there, so it is one of the last trees in and never the first.
-   Plant the pioneers, let them close over the ground, and then the yellowwoods will go in. */
-var SHADE_FOR_CLIMAX = 2;
+   An old-growth tree will not take in open ground: in a mistbelt forest the Podocarpus comes up in
+   the shade of a canopy that is already there, so it is one of the last trees in and never the
+   first. Plant the pioneers, let them close over the ground, and then the yellowwoods will go in. */
+var SHADE_FOR_OLDGROWTH = 2;
 
 function needsShade(spKey) {
   var def = SPECIES[spKey];
-  return !!def && def.tier >= TIER_CLIMAX;
+  return !!def && def.tier >= TIER_OLDGROWTH;
 }
 function shadeShort(c, r, spKey) {
-  return needsShade(spKey) && matureAround(c, r) < SHADE_FOR_CLIMAX;
+  return needsShade(spKey) && matureAround(c, r) < SHADE_FOR_OLDGROWTH;
 }
 
 /* Say it once, properly, then keep it short. The first time a player tries to put a yellowwood into
@@ -645,14 +675,14 @@ function explainShade(spKey, c, r) {
   if (!state.seen.needshade) {
     state.seen.needshade = true;
     card(def.name + ' will not take in the open',
-      def.name + ' (' + def.sci + ') is a ' + TIER_NAME[def.tier] + ' tree \u2014 one of the last ' +
+      def.name + ' (' + def.sci + ') is ' + tierPhrase(def.tier) + ' tree \u2014 one of the last ' +
       'in, never the first. An Amathole forest is built in layers: the pioneers take the open ' +
       'ground and make the shade, the mid-storey trees fruit and feed the birds, and only then do ' +
-      'the yellowwoods and the ironwood come. Get ' + SHADE_FOR_CLIMAX + ' mature trees around ' +
+      'the yellowwoods and the ironwood come. Get ' + SHADE_FOR_OLDGROWTH + ' mature trees around ' +
       'this spot and it will go in.', null);
     saveLocal();
   } else {
-    note(def.name + ' needs shade \u2014 ' + SHADE_FOR_CLIMAX +
+    note(def.name + ' needs shade \u2014 ' + SHADE_FOR_OLDGROWTH +
          ' mature trees around the spot first.', 'warn');
   }
 }
@@ -674,6 +704,7 @@ function stats() {
   var growing = count(function (t) { return t.sp && t.stage > 0 && t.stage < 3; });
   var grass = count(function (t) { return t.ter === 'grass'; });
   return { alien: alien, mature: mature, growing: growing, total: NTILES, grass: grass,
+           parrots: state.parrots || 0,
            alienPct: Math.round(alien / Math.max(1, grass) * 100),
            forestPct: Math.round(mature / Math.max(1, grass) * 100) };
 }
@@ -791,9 +822,19 @@ function baboonPass() {
 
 /* A parrot does not move into one yellowwood standing on its own in the open. It wants a hollow to
    nest in AND a mixed canopy around it to feed in. So the parrot is the indicator species, not the
-   finish line: it arrives when the forest does, which is the whole point. */
-var PARROT_MIX = 3;      /* different indigenous species, mature */
-var PARROT_CANOPY = 6;   /* mature indigenous trees in all */
+   finish line: it arrives when the forest does, which is the whole point.
+
+   AND IT IS A COUNT, NOT A ONE-OFF EVENT. Owner, 2026-09-18: "Parrot should keep coming back to
+   its new home as long as its there? See how many parrots you can get to come to your forest?"
+   The old version fired once, ever, and then the parrot was finished. Now the forest holds as many
+   birds as it can feed and house, and that number is the score. It goes UP as the forest grows and
+   it goes DOWN if the forest is cut back, because a resident that stays through anything is not a
+   resident, and not an indicator species either. */
+var PARROT_MIX = 3;           /* species in the mix, mature, for the first bird */
+var PARROT_CANOPY = 6;        /* mature indigenous trees in all, for the first bird */
+var PARROT_STEP_CANOPY = 3;   /* each bird after the first wants three more mature trees */
+var PARROT_STEP_MIX = 1;      /* ...and one more species in the mix */
+var PARROT_MAX = 12;          /* a ceiling, so the ladder cannot run away */
 
 function forestMix() {
   var seen = {}, i, n = 0;
@@ -804,49 +845,103 @@ function forestMix() {
   return n;
 }
 
-function parrotCheck() {
-  if (state.seen.parrot) return false;
-  var i, hollowIdx = -1;
+/* A parrot nests in a hollow, so N parrots need N hollow old-growth trees. That is why the count
+   cannot be farmed with one big yellowwood standing in the open. */
+function hollowTrees() {
+  var n = 0, i;
   for (i = 0; i < NTILES; i++) {
     var t = state.tiles[i];
-    if (t.sp && SPECIES[t.sp] && SPECIES[t.sp].hollow && t.stage === 3) { hollowIdx = i; break; }
+    if (t.sp && SPECIES[t.sp] && SPECIES[t.sp].hollow && t.stage === 3) n++;
   }
-  if (hollowIdx < 0) return false;
-  var st = stats(), mix = forestMix();
-  if (mix < PARROT_MIX || st.mature < PARROT_CANOPY) {
-    if (!state.seen.parrotwait) {
-      state.seen.parrotwait = true;
-      card('Not yet \u2014 one tree is not a forest',
-        'The hollow is there, and a hollow is what a parrot nests in. But it will not move into a ' +
-        'single tree standing in the open ground. It wants a mixed canopy around it to feed in: ' +
-        PARROT_MIX + ' different indigenous species mature, and ' + PARROT_CANOPY +
-        ' mature trees in all. You have ' + mix + ' species and ' + st.mature + ' trees. ' +
-        'Restoring the Amathole is more than yellowwoods.', null);
+  return n;
+}
+
+/* The first hollow-capable mature tree with no nest in it yet, or -1 if there is none. */
+function nestFor() {
+  var i;
+  for (i = 0; i < NTILES; i++) {
+    var t = state.tiles[i];
+    if (t.sp && SPECIES[t.sp] && SPECIES[t.sp].hollow && t.stage === 3 && !t.hollow) return i;
+  }
+  return -1;
+}
+
+/* How many parrots this forest can hold TODAY. Recomputed every time, never remembered, so it
+   tracks the forest in both directions and a cut-back forest loses birds. */
+function parrotCapacity() {
+  var mature = stats().mature, mix = forestMix(), hol = hollowTrees(), n = 0;
+  while (n < PARROT_MAX && n < hol &&
+         mature >= PARROT_CANOPY + n * PARROT_STEP_CANOPY &&
+         mix >= PARROT_MIX + n * PARROT_STEP_MIX) n++;
+  return n;
+}
+
+function parrotCheck() {
+  var cap = parrotCapacity(), st, mix;
+
+  if (cap > state.parrots) {
+    /* One bird a day, so a growing forest gets a trickle of arrivals rather than the whole flock
+       at once — and so the count is something the player watches climb. */
+    var idx = nestFor();
+    if (idx < 0) return false;
+    state.tiles[idx].hollow = true;
+    state.parrots += 1;
+    if (state.seen.parrot) {
       saveLocal();
+      note('Another Cape parrot moved in \u2014 ' + state.parrots + ' in the forest now.', 'good');
+      return true;
     }
+    state.seen.parrot = true;
+    var pc = idx % COLS, pr = Math.floor(idx / COLS);
+    /* The camera is back, so the bird has to be brought into frame AND anchored to the world: v3
+       chased it with the camera and the flight drifted, v4 had no camera at all. Here panTo brings
+       the tree into frame only if it is not already there, and the bird's start and end are both
+       world coordinates, so a player who drags mid-flight still sees it arrive at the right tree. */
+    panTo(pc, pr);
+    var tp = project(pc, pr, groundZ(pc, pr));
+    var wx = tp[0] + camX, wy = tp[1] + camY;
+    parrot = { fromX: camX - 70, fromY: camY + 30, x: camX - 70, y: camY + 30,
+               tx: wx, ty: wy - TH * 1.1, t: 0 };
+    /* NO LINK ARGUMENT, deliberately. Owner ruling 2026-09-18: the Cape Parrot Project is fine with a
+       non-public prototype, but nothing points at them until they have approved the working version.
+       card() already treats a missing third argument as "hide the Learn more link", so this is the
+       whole change — the text still names them, and no traffic is sent their way. */
+    card('A Cape parrot lands in the yellowwood',
+      'South Africa\u2019s only endemic parrot, and fewer than two thousand are left in the wild. ' +
+      'It nests in the hollow of an old yellowwood, high off the ground, and it feeds on the seed ' +
+      'of the trees that grow here. The Cape Parrot Project started in this village in 2009, ' +
+      'growing indigenous seedlings in community nurseries and putting them back into the mistbelt. ' +
+      'This is the first to move in. Grow the canopy and more will come \u2014 and if you cut the ' +
+      'forest back, they will leave again.');
+    note('A Cape parrot landed in the yellowwood you grew.', 'good');
+    return true;
+  }
+
+  if (cap < state.parrots) {
+    /* The forest has been cut back below what it was holding. Residents leave. */
+    var gone = state.parrots - cap;
+    state.parrots = cap;
+    saveLocal();
+    note(gone === 1
+      ? 'A parrot moved on \u2014 the forest cannot hold it any more.'
+      : gone + ' parrots moved on \u2014 the forest cannot hold them any more.', 'warn');
     return false;
   }
-  var ht = state.tiles[hollowIdx];
-  ht.hollow = true;
-  state.seen.parrot = true;
-  var pc = hollowIdx % COLS, pr = Math.floor(hollowIdx / COLS);
-  /* The camera is back, so the bird has to be brought into frame AND anchored to the world: v3
-     chased it with the camera and the flight drifted, v4 had no camera at all. Here panTo brings
-     the tree into frame only if it is not already there, and the bird's start and end are both
-     world coordinates, so a player who drags mid-flight still sees it arrive at the right tree. */
-  panTo(pc, pr);
-  var tp = project(pc, pr, groundZ(pc, pr));
-  var wx = tp[0] + camX, wy = tp[1] + camY;
-  parrot = { fromX: camX - 70, fromY: camY + 30, x: camX - 70, y: camY + 30,
-             tx: wx, ty: wy - TH * 1.1, t: 0 };
-  card('A Cape parrot lands in the yellowwood',
-    'South Africa\u2019s only endemic parrot, and fewer than two thousand are left in the wild. ' +
-    'It nests in the hollow of an old yellowwood, high off the ground, and it feeds on the seed ' +
-    'of the trees that grow here. The Cape Parrot Project started in this village in 2009, ' +
-    'growing indigenous seedlings in community nurseries and putting them back into the mistbelt.',
-    'https://www.wildbirdtrust.com/projects/cape-parrot-project');
-  note('A Cape parrot landed in the yellowwood you grew.', 'good');
-  return true;
+
+  /* Nothing changed. If a hollow is there but the forest is not yet enough for a bird, say so ONCE:
+     that is the moment the whole premise lands. */
+  if (!state.seen.parrot && !state.seen.parrotwait && hollowTrees() > 0) {
+    state.seen.parrotwait = true;
+    st = stats(); mix = forestMix();
+    card('Not yet \u2014 one tree is not a forest',
+      'The hollow is there, and a hollow is what a parrot nests in. But it will not move into a ' +
+      'single tree standing in the open ground. It wants a mixed canopy around it to feed in: ' +
+      PARROT_MIX + ' different indigenous species mature, and ' + PARROT_CANOPY +
+      ' mature trees in all. You have ' + mix + ' species and ' + st.mature + ' trees. ' +
+      'Restoring the Amathole is more than yellowwoods.', null);
+    saveLocal();
+  }
+  return false;
 }
 
 /* The toad is the other half of the story, and the reason the game is not simply "plant
@@ -986,8 +1081,8 @@ function plantAt(c, r, spKey) {
   if (!t || t.sp || t.alien || !plantable(c, r)) return false;
   var def = SPECIES[spKey];
   if (!def) return false;
-  /* Enforced here as well as in act(), so no other caller and no save code can slip a climax tree
-     into open ground. */
+  /* Enforced here as well as in act(), so no other caller and no save code can slip an old-growth
+     tree into open ground. */
   if (shadeShort(c, r, spKey)) return false;
   var have = (state.bag && state.bag[spKey]) || 0;
   if (have > 0) state.bag[spKey] = have - 1;
@@ -1189,6 +1284,11 @@ function encodeSave(s) {
   var payload = { v: s.v, d: s.day, a: s.ap, s: seen, l: s.cleared, p: s.planted,
                   b: s.bought, y: s.recycled, k: s.lastDayKey, t: encodeTiles(s.tiles),
                   g: bag, c: dec, n: clamp(binItems, 0, 99),
+                  /* pr is a NEW field. decodeSave reads every field with a default, so a save code
+                     written before this existed simply comes back with 0 parrots rather than
+                     failing to load — which is why adding it did not need a VERSION bump, and why
+                     VERSION must still not move (decodeSave refuses any other value). */
+                  pr: clamp(s.parrots || 0, 0, 99),
                   tk: s.tokens.sun + '.' + s.tokens.mist + '.' + s.tokens.rain + '.' + s.tokens.snow };
   var body = b64encode(JSON.stringify(payload));
   return 'MB2-' + body + '-' + checksum(body);
@@ -1223,6 +1323,7 @@ function decodeSave(code) {
      otherwise a player who cuts two aliens and comes back finds the bin empty and the cuttings
      gone. decodeSave is the only thing that knows what was in it. */
   binItems = clamp(p.n || 0, 0, 99);
+  s.parrots = clamp(p.pr || 0, 0, 99);
   return s;
 }
 
@@ -1280,6 +1381,20 @@ var gx = 0, gy = 0;
 
 function project(c, r, z) {
   return [(c - r) * (TW / 2) + gx - camX, (c + r) * (TH / 2) - z * BH + gy - camY];
+}
+
+/* Where a world point lands in the BAKED GROUND CACHE — which is NOT where project() puts it.
+   buildGround() parks the camera at the origin and sets gx/gy to the cache offset while it paints,
+   then restores both, so project() answers in live-camera space and the cache is a different
+   coordinate system entirely. Anything that wants to read a pixel out of the bake has to come
+   through here.
+
+   This exists because the page check did not, and paid for it: it sampled every grid vertex with
+   project() and reported "0 of 532 show the cliff through the seam" against a game whose seams
+   were plainly wrong. The samples were landing a camera-width from the vertices they claimed to
+   be reading. A check that reads the wrong pixel is worse than no check, because it is green. */
+function bakePoint(c, r, z) {
+  return [(c - r) * (TW / 2) + WX0, (c + r) * (TH / 2) - z * BH + WY0];
 }
 
 /* Keep the camera inside the world. When the world is smaller than the viewport at the current
@@ -1519,21 +1634,73 @@ function onRim(c, r) {
   return Math.min(Math.min(c, COLS - 1 - c), Math.min(r, ROWS - 1 - r)) === 0;
 }
 
-/* The cliff. It is the plateau's whole silhouette, so it is drawn NARROWER than the ground (0.86
-   against the tile's 0.97) — that makes the plateau overhang it. Drawing the wall the same width,
-   or wider, makes it read as a curtain hanging off the island rather than a cliff the ground is
-   sitting on, which is exactly how the look prototype's first pass read. The tones are lifted
-   straight off the reference: the cliff there is a warm olive-brown, not a black slab. */
-function drawCliffColumn(c, r) {
-  if (!onRim(c, r)) return;
-  var z = groundZ(c, r);
-  var p = project(c, r, z);
-  var foot = project(c, r, CLIFF);
-  var g = ctx.createLinearGradient(0, p[1], 0, foot[1]);
-  g.addColorStop(0, '#7a6844');
-  g.addColorStop(0.40, '#5f5133');
-  g.addColorStop(1, '#3d3423');
-  extrude(c, r, z, CLIFF, g, CLIFF_K);
+/* THE CLIFF IS ONE SOLID, NOT 156 COLUMNS.
+   The wall has to be drawn NARROWER than the ground, or it reads as a curtain hanging off the
+   island rather than a cliff the plateau is sitting on — that much was learned the hard way, and
+   CLIFF_K is how it is done. But the first version did it per rim tile, extruding each tile's OWN
+   diamond inset to 0.86, and that leaves SKY BETWEEN EVERY PAIR OF COLUMNS.
+   Insetting a union is not the union of the insets. Two neighbours along the rim are each pulled
+   0.14 * TH/2 = 2.17px short of the corner they share, so a 4.34px-wide wedge of sky runs the full
+   40.5px height of the wall between every adjacent pair — 156 of them round the rim — and the
+   plateau reads as bunting with the sky showing through it rather than a cliff. Nothing numeric
+   could see it: the silhouette's four extreme vertices land in exactly the right place, so every
+   extent and framing check passed. Only the glass showed it.
+   The plateau's outline is a rhombus, so it is offset as ONE rhombus. Moving each edge inward by
+   the perpendicular distance the tile inset produced reproduces the per-tile wall's four extreme
+   vertices EXACTLY — the overhang is unchanged, the wall is still 0.86 against the ground's 0.985 —
+   and the edges come out straight, continuous and gapless. On this 2:1 grid that offset is
+   (1 - CLIFF_K) * TH across and (1 - CLIFF_K) * TH / 2 down, which is what plateauOutline takes. */
+function plateauOutline(ix, iy) {
+  return [
+    [0, -TH / 2 + iy],                                            /* N */
+    [COLS * TW / 2 - ix, (COLS - 1) * TH / 2],                    /* E */
+    [(COLS - ROWS) * TW / 2, (COLS + ROWS - 1) * TH / 2 - iy],    /* S */
+    [-ROWS * TW / 2 + ix, (ROWS - 1) * TH / 2]                    /* W */
+  ];
+}
+
+/* The three tones are lifted straight off the reference: the cliff there is a warm olive-brown, not
+   a black slab. They are sampled per slab instead of being handed to one canvas gradient, because
+   the wall's light-to-dark run is vertical and only 40.5px tall — a gradient spanning the whole
+   1240px silhouette would make the cliff at the near corner darker than the cliff at the far one.
+   Colouring each slab from its own fraction down the wall keeps the top lip light all the way
+   round, which is what the per-tile version looked like. */
+var CLIFF_STOPS = [[0, 0x7a, 0x68, 0x44], [0.40, 0x5f, 0x51, 0x33], [1, 0x3d, 0x34, 0x23]];
+function cliffTone(t) {
+  var i, a, b, u;
+  for (i = 1; i < CLIFF_STOPS.length; i++) {
+    if (t <= CLIFF_STOPS[i][0] || i === CLIFF_STOPS.length - 1) {
+      a = CLIFF_STOPS[i - 1]; b = CLIFF_STOPS[i];
+      u = (t - a[0]) / (b[0] - a[0]);
+      if (u < 0) u = 0; if (u > 1) u = 1;
+      return 'rgb(' + Math.round(a[1] + (b[1] - a[1]) * u) + ',' +
+                      Math.round(a[2] + (b[2] - a[2]) * u) + ',' +
+                      Math.round(a[3] + (b[3] - a[3]) * u) + ')';
+    }
+  }
+  return 'rgb(61,52,35)';
+}
+
+function cliffPath(o, z) {
+  var p0 = project(0, 0, z), i;
+  ctx.beginPath();
+  for (i = 0; i < 4; i++) {
+    if (i === 0) ctx.moveTo(p0[0] + o[i][0], p0[1] + o[i][1]);
+    else ctx.lineTo(p0[0] + o[i][0], p0[1] + o[i][1]);
+  }
+  ctx.closePath();
+}
+
+/* Loop-filling the outline at every height IS the prism silhouette, exactly — the same trick
+   extrude() uses for one tile, now done once for the whole plateau. 38 fills instead of 5,900. */
+function drawCliff() {
+  var top = groundZ(0, 0), z, o = plateauOutline((1 - CLIFF_K) * TH, (1 - CLIFF_K) * TH / 2);
+  for (z = CLIFF; z < top; z += 0.12) {
+    ctx.fillStyle = cliffTone((top - z) / (top - CLIFF));
+    cliffPath(o, z); ctx.fill();
+  }
+  ctx.fillStyle = cliffTone(0);
+  cliffPath(o, top); ctx.fill();
 }
 
 /* Straight off the reference: a ground tile is ONE flat colour with a handful of soft blobs of a
@@ -1585,8 +1752,9 @@ function drawGroundTile(c, r) {
   var z = groundZ(c, r), p = project(c, r, z);
   var i, u, v, rr;
 
-  /* The step down at the rim. The rim's own wall is drawn by drawCliffColumn, which runs first, so
-     this only handles an interior step. */
+  /* The step down at the rim. The plateau's own wall is drawn by drawCliff, which runs first, so
+     this only handles an interior step. It never fires while groundZ() is one flat level, which is
+     the world we ship — kept because it is the honest general case for a plateau that is not flat. */
   var lo = lowestNeighbourZ(c, r);
   if (lo < z && lo > CLIFF) extrude(c, r, z, lo, '#1d2f22', TILE_K);
 
@@ -1686,12 +1854,13 @@ function buildGround() {
      keeps using project() and none of them has to know it is painting a cache. */
   camX = 0; camY = 0; gx = WX0; gy = WY0;
   var d, c, r;
+  /* The wall goes down first, as one solid, because it is the backdrop every tile sits on. */
+  drawCliff();
   /* Back to front. On a 2:1 grid, (c + r) ascending IS back to front — no sorting pass needed. */
   for (d = 0; d <= (COLS - 1) + (ROWS - 1); d++) {
     for (c = 0; c < COLS; c++) {
       r = d - c;
       if (r < 0 || r >= ROWS) continue;
-      drawCliffColumn(c, r);
       drawGroundTile(c, r);
     }
   }
@@ -1745,17 +1914,26 @@ function drawForestCanopy(cx, base, s) {
    Two honest differences carry it: their foliage is a dull yellow-olive where the indigenous
    canopies are a clean green, and their bark is pale grey where the indigenous trunks are warm
    brown. Wattle and pine really do have greyish bark, so this is drawn from the plant, not
-   invented for the palette. */
+   invented for the palette.
+
+   THE PINE IS THE ONE EXCEPTION, and it is a measurement rather than a taste call. Its old foliage
+   was #345740 \u2014 three units of 255 from the grass, contrast ratio 1.078 \u2014 so the alien the player
+   is hunting was the one thing they could not see (measured in _tree_contrast.js). The obvious fix,
+   a DARKER pine, fails for the same reason the dark trees did: green carries 0.7152 of the WCAG
+   luminance weight, so #2a5262 keeps green at 82 and still scores only 1.110. It has to go PALE AND
+   COLD instead \u2014 a misty blue-grey conifer, which is unmistakably not one of the warm indigenous
+   greens, and is the right read for an invasive pine anyway. Numbers and the full proposal:
+   PALETTE-PROPOSAL-2026-09-18.md. */
 function drawAlien(kind, cx, base, s) {
   shadow(cx, base, s * 0.40, s * 0.13);
   var i;
   if (kind === 'pine') {
-    ctx.fillStyle = '#7d7568';
+    ctx.fillStyle = '#6d8894';
     ctx.fillRect(cx - s * 0.05, base - s * 0.30, s * 0.10, s * 0.30);
     for (i = 0; i < 3; i++) {
       var yy = base - s * (0.30 + i * 0.22);
       var ww = s * (0.42 - i * 0.10);
-      ctx.fillStyle = i === 2 ? '#40684a' : '#345740';
+      ctx.fillStyle = i === 2 ? '#8aa3ad' : '#546f7b';
       ctx.beginPath();
       ctx.moveTo(cx, yy - s * 0.28);
       ctx.lineTo(cx + ww, yy);
@@ -1814,15 +1992,39 @@ function drawAlien(kind, cx, base, s) {
   }
 }
 
-function drawTree(sp, stage, cx, base, s, hollow, seed) {
-  /* Foliage colour and stature come off the species table, so adding a tree to the palette is a
-     row of data and not a new branch in here. `tall` is the species' stature: an Outeniqua
-     yellowwood is the emergent of the Amathole mistbelt and it should stand over the pioneers.
+/* Two shared primitives, because every form below is a trunk and some lobes. Plain functions, not
+   closures inside drawTree: this runs once per tree per frame, and a hundred closures a frame on a
+   phone is a cost that buys nothing. */
+function treeLobe(x, y, rx, ry, col) {
+  ctx.fillStyle = col;
+  ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
+}
+function treeTrunk(cx, base, w, h) {
+  ctx.fillStyle = '#5b4327';
+  ctx.fillRect(cx - w / 2, base - h, w, h);
+}
 
-     `seed` is the tile, and it is what stops a closed canopy reading as broccoli. The first version
-     drew every mature tree as the same three ellipses in the same three places, so a hundred of
-     them on a plateau made a carpet of identical green blobs — the colour varied and the shape did
-     not. Four hashed offsets is all it takes for no two trees to be the same tree. */
+/* THE SILHOUETTE IS PER SPECIES, and that is the fix for a real complaint. Owner, 2026-09-18:
+   *"you have a button that says wild peach 2 sun, but alot of people dont know which one you
+   referring to, they need a visual."* He was right, and the cause was here: every species used to
+   be drawn as the same three ellipses in the same three places, so a wild peach and a Cape chestnut
+   were the same tree in different greens. The `jit()` offsets below vary a tree from its own
+   neighbours — they cannot make two SPECIES tellable, which is a different job.
+
+   So the canopy branches on `def.form`, one silhouette per species, taken from the plant:
+     emergent  the Outeniqua yellowwood, the emergent of the Amathole mistbelt — a narrow spire that
+               stands OVER the canopy, which is exactly why the forest is named for it
+     dense     real yellowwood: a dense dark oval on a straight bole
+     tiered    white stinkwood: a visible trunk under flat horizontal layers
+     flowering Cape chestnut: a broad round crown that carries the flowers
+     knobbly   forest knobwood: corky bosses up the trunk and a sparse, lopsided crown
+     rounded   ironwood: dense and rounded, and grey-green rather than green
+     spreading wild peach: low, wide and flat — the pioneer that takes open ground
+     neat      white pear: a compact upright oval
+
+   Adding a tree is still a row of data: `form` is a field, and an unknown form falls back to the
+   old shape, so a species added without one cannot crash the draw. */
+function drawTree(sp, stage, cx, base, s, hollow, seed) {
   var def = SPECIES[sp] || {};
   var scale = stage === 1 ? 0.26 : stage === 2 ? 0.56 : 1;
   var hs = s * scale * (def.tall || 1);
@@ -1833,44 +2035,92 @@ function drawTree(sp, stage, cx, base, s, hollow, seed) {
     ctx.beginPath(); ctx.ellipse(cx, base - hs * 0.16, hs * 0.17, hs * 0.17, 0, 0, Math.PI * 2); ctx.fill();
     return;
   }
-  shadow(cx, base, hs * (0.38 + k1 * 0.10), hs * 0.13);
-  ctx.fillStyle = '#5b4327';
-  ctx.fillRect(cx - hs * 0.055, base - hs * (0.46 + k2 * 0.12), hs * 0.11, hs * (0.46 + k2 * 0.12));
   var tone = def.leaf || '#48965f';
   var dark = def.dark || '#377a4b';
-  /* the main mass, then two lobes that sit where this particular tree put them */
-  ctx.fillStyle = tone;
-  ctx.beginPath();
-  ctx.ellipse(cx + (k1 - 0.5) * hs * 0.14, base - hs * (0.66 + k3 * 0.10),
-              hs * (0.42 + k4 * 0.14), hs * (0.30 + k2 * 0.13), 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = dark;
-  ctx.beginPath();
-  ctx.ellipse(cx + hs * (0.12 + k2 * 0.18), base - hs * (0.82 + k4 * 0.16),
-              hs * (0.22 + k3 * 0.14), hs * (0.17 + k1 * 0.11), 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = tone;
-  ctx.beginPath();
-  ctx.ellipse(cx - hs * (0.12 + k4 * 0.18), base - hs * (0.84 + k1 * 0.16),
-              hs * (0.20 + k1 * 0.12), hs * (0.15 + k3 * 0.10), 0, 0, Math.PI * 2);
-  ctx.fill();
+  var form = def.form || 'rounded';
+  /* The extras below (the nest hollow, the chestnut's flowers, the fruit dots) belong ON the canopy,
+     so each form reports where its canopy ended up rather than them being pinned to one shape. */
+  var cy = base - hs * 0.78, cw = hs * 0.40;
+
+  shadow(cx, base, hs * (0.34 + k1 * 0.10), hs * 0.13);
+
+  if (form === 'emergent') {
+    treeTrunk(cx, base, hs * 0.11, hs * (0.66 + k2 * 0.06));
+    cy = base - hs * 0.95; cw = hs * 0.30;
+    var ei;
+    for (ei = 0; ei < 4; ei++) {
+      var ef = ei / 3;
+      treeLobe(cx + (k1 - 0.5) * hs * 0.08 * (1 - ef), base - hs * (0.72 + ef * 0.50),
+               hs * (0.32 - ef * 0.19 + k3 * 0.03), hs * (0.16 - ef * 0.08 + k2 * 0.03),
+               ei % 2 ? tone : dark);
+    }
+  } else if (form === 'dense') {
+    treeTrunk(cx, base, hs * 0.12, hs * (0.52 + k2 * 0.08));
+    cy = base - hs * 0.80; cw = hs * 0.40;
+    treeLobe(cx + (k1 - 0.5) * hs * 0.08, cy, hs * (0.40 + k4 * 0.05), hs * (0.34 + k2 * 0.05), tone);
+    treeLobe(cx + hs * (0.20 + k2 * 0.10), base - hs * (0.96 + k4 * 0.06), hs * (0.20 + k3 * 0.06), hs * 0.16, dark);
+    treeLobe(cx - hs * (0.20 + k4 * 0.10), base - hs * (0.94 + k1 * 0.06), hs * 0.19, hs * 0.15, dark);
+  } else if (form === 'tiered') {
+    treeTrunk(cx, base, hs * 0.10, hs * (0.58 + k2 * 0.06));
+    cy = base - hs * 0.80; cw = hs * 0.42;
+    treeLobe(cx + (k1 - 0.5) * hs * 0.06, base - hs * 0.62, hs * (0.42 + k3 * 0.04), hs * 0.14, tone);
+    treeLobe(cx - (k2 - 0.5) * hs * 0.06, base - hs * 0.80, hs * (0.36 + k1 * 0.04), hs * 0.13, dark);
+    treeLobe(cx + (k4 - 0.5) * hs * 0.06, base - hs * 0.96, hs * (0.27 + k2 * 0.04), hs * 0.11, tone);
+  } else if (form === 'flowering') {
+    treeTrunk(cx, base, hs * 0.12, hs * (0.46 + k2 * 0.08));
+    cy = base - hs * 0.76; cw = hs * 0.46;
+    treeLobe(cx + (k1 - 0.5) * hs * 0.08, cy, hs * (0.46 + k4 * 0.05), hs * (0.34 + k2 * 0.05), tone);
+    treeLobe(cx + hs * (0.24 + k2 * 0.12), base - hs * (0.90 + k4 * 0.08), hs * 0.20, hs * 0.16, dark);
+    treeLobe(cx - hs * (0.24 + k4 * 0.12), base - hs * (0.88 + k1 * 0.08), hs * 0.19, hs * 0.15, dark);
+  } else if (form === 'knobbly') {
+    /* The knobs are the tell. Zanthoxylum davyi is named for the corky bosses on its trunk, and a
+       thorny tree with a sparse lopsided crown is a different object from a round pioneer. */
+    treeTrunk(cx, base, hs * 0.11, hs * (0.50 + k2 * 0.08));
+    ctx.fillStyle = '#4a3620';
+    var kn = [[0.06, 0.16], [-0.07, 0.29], [0.05, 0.41]], ki;
+    for (ki = 0; ki < 3; ki++) {
+      ctx.beginPath();
+      ctx.arc(cx + hs * kn[ki][0], base - hs * kn[ki][1], hs * 0.045, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    cy = base - hs * 0.78; cw = hs * 0.34;
+    treeLobe(cx + (k1 - 0.5) * hs * 0.12, cy, hs * (0.32 + k3 * 0.06), hs * (0.24 + k2 * 0.05), tone);
+    treeLobe(cx + hs * (0.26 + k2 * 0.10), base - hs * (0.90 + k4 * 0.08), hs * 0.17, hs * 0.13, dark);
+  } else if (form === 'spreading') {
+    treeTrunk(cx, base, hs * 0.13, hs * (0.38 + k2 * 0.06));
+    cy = base - hs * 0.60; cw = hs * 0.50;
+    treeLobe(cx + (k1 - 0.5) * hs * 0.06, cy, hs * (0.50 + k4 * 0.05), hs * (0.24 + k2 * 0.04), tone);
+    treeLobe(cx - hs * (0.30 + k3 * 0.08), base - hs * 0.68, hs * 0.22, hs * 0.17, dark);
+    treeLobe(cx + hs * (0.30 + k1 * 0.08), base - hs * 0.70, hs * 0.21, hs * 0.16, tone);
+  } else if (form === 'neat') {
+    treeTrunk(cx, base, hs * 0.11, hs * (0.50 + k2 * 0.06));
+    cy = base - hs * 0.82; cw = hs * 0.32;
+    treeLobe(cx + (k1 - 0.5) * hs * 0.05, cy, hs * (0.32 + k4 * 0.04), hs * (0.38 + k2 * 0.04), tone);
+    treeLobe(cx + hs * (0.14 + k3 * 0.08), base - hs * 0.96, hs * 0.15, hs * 0.13, dark);
+  } else {
+    treeTrunk(cx, base, hs * 0.12, hs * (0.46 + k2 * 0.08));
+    cy = base - hs * 0.78; cw = hs * 0.42;
+    treeLobe(cx + (k1 - 0.5) * hs * 0.06, cy, hs * (0.42 + k4 * 0.05), hs * (0.32 + k2 * 0.05), tone);
+    treeLobe(cx - hs * (0.16 + k3 * 0.10), base - hs * (0.92 + k1 * 0.06), hs * 0.18, hs * 0.14, dark);
+  }
+
   if (stage === 3 && hollow) {
     ctx.fillStyle = 'rgba(28,36,26,0.85)';
-    ctx.beginPath(); ctx.ellipse(cx + hs * 0.06, base - hs * 0.40, hs * 0.09, hs * 0.13, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + cw * 0.16, cy + hs * 0.16, hs * 0.09, hs * 0.13, 0, 0, Math.PI * 2); ctx.fill();
   }
   if (stage === 3 && sp === 'chestnut') {
     ctx.fillStyle = '#f2a8c4';
     var i;
     for (i = 0; i < 5; i++) {
       ctx.beginPath();
-      ctx.arc(cx + (jit(i, 3, 5) - 0.5) * hs * 0.9, base - hs * 0.72 + (jit(i, 4, 6) - 0.5) * hs * 0.5, hs * 0.05, 0, Math.PI * 2);
+      ctx.arc(cx + (jit(i, 3, 5) - 0.5) * cw * 1.6, cy + (jit(i, 4, 6) - 0.5) * hs * 0.42, hs * 0.05, 0, Math.PI * 2);
       ctx.fill();
     }
   }
   if (stage === 3 && SPECIES[sp] && SPECIES[sp].fruit) {
     ctx.fillStyle = '#e0c060';
-    ctx.beginPath(); ctx.arc(cx - hs * 0.30, base - hs * 0.62, 2.4, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(cx + hs * 0.32, base - hs * 0.78, 2.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx - cw * 0.62, cy + hs * 0.04, 2.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + cw * 0.70, cy - hs * 0.12, 2.4, 0, Math.PI * 2); ctx.fill();
   }
 }
 
@@ -1918,23 +2168,30 @@ function drawHouse(cx, base, s) {
   ctx.arc(cx + s * 0.07, base - s * 0.17, s * 0.022, 0, Math.PI * 2);
   ctx.fill();
 
-  /* the window, lit, with the room showing through it */
+  /* the window, lit, with the room showing through it.
+     It sits ON the stem, in the band between the doorway and the wall. It used to be drawn at
+     cx + s*0.33 with rx s*0.115, but the stem's half-width is only s*0.23 — it bulges to s*0.25 at
+     this height and no further — so the window was drawn about 60% off the side of the house,
+     floating over the grass with its own dark outline and its glow lapping back onto the wall. A
+     window has to be on a wall. The free band between the door's right edge (s*0.13) and the stem's
+     (s*0.25 at this height) is s*0.12 wide, and that is what sizes this: rx s*0.053 centred at
+     s*0.190 leaves about a pixel of stem on each side at the 118px the house is actually drawn at. */
   ctx.fillStyle = '#f4d98d';
   ctx.beginPath();
-  ctx.ellipse(cx + s * 0.33, base - s * 0.30, s * 0.115, s * 0.135, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx + s * 0.190, base - s * 0.30, s * 0.053, s * 0.075, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = 'rgba(150,108,52,0.55)';
-  ctx.fillRect(cx + s * 0.245, base - s * 0.315, s * 0.17, s * 0.022);
+  ctx.fillRect(cx + s * 0.137, base - s * 0.311, s * 0.106, s * 0.022);
   ctx.fillStyle = '#7a5636';
-  ctx.lineWidth = Math.max(1.4, s * 0.018);
+  ctx.lineWidth = Math.max(1.1, s * 0.012);
   ctx.strokeStyle = '#7a5636';
   ctx.beginPath();
-  ctx.ellipse(cx + s * 0.33, base - s * 0.30, s * 0.115, s * 0.135, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx + s * 0.190, base - s * 0.30, s * 0.053, s * 0.075, 0, 0, Math.PI * 2);
   ctx.stroke();
   /* the glow it throws on the stem */
   ctx.fillStyle = 'rgba(244,217,141,0.16)';
   ctx.beginPath();
-  ctx.ellipse(cx + s * 0.33, base - s * 0.30, s * 0.24, s * 0.26, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx + s * 0.190, base - s * 0.30, s * 0.10, s * 0.115, 0, 0, Math.PI * 2);
   ctx.fill();
 
   /* the cap. A dome seen slightly from below: the underside band is drawn first and darkest, then
@@ -2223,9 +2480,17 @@ function drawWorld() {
 function drawTileProp(c, r) {
   var t = cell(c, r);
   if (!t) return;
+  /* THE TOAD LIVES ON A TILE THIS CULL THROWS AWAY, so it has to be asked about first. toadCheck
+     picks `ter === 'grass' && !alien && !sp && !obj` — every one of which is a bail condition — so
+     v5 shipped a toad that the game announced with a card, announced again with a field note, and
+     panned the camera to, and then painted nowhere. The player was told "An Amathole toad sat down
+     on the open grass" and saw bare grass. The creature the whole keep-a-piece-of-the-hillside-open
+     mechanic exists to reward was invisible, and nothing numeric could see it: the toad's tile was
+     on the glass and the tile was in the visible set, so every cull and framing check passed. */
+  var isToad = !!(toad && toad.c === c && toad.r === r);
   /* Most of a 40x40 map is bare grass with nothing standing on it. Bail before doing any geometry,
      or the cull above just moves the cost from the loop into the body. */
-  if (!t.alien && !t.sp && !t.obj && !(t.seeds > 0) && t.ter !== 'forest') return;
+  if (!isToad && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) && t.ter !== 'forest') return;
   var p = project(c, r, groundZ(c, r));
   var cx = p[0], base = p[1] + TH * 0.46;
   /* Trees and aliens get a little size and position scatter. Every one of them the same size on
@@ -2261,7 +2526,7 @@ function drawTileProp(c, r) {
   else if (t.obj === 'jetty') drawJetty(cx, base, TW * 1.10);
   else if (DECOR[t.obj]) drawDecor(t.obj, cx, base, TW * 0.98);
 
-  if (toad && toad.c === c && toad.r === r) drawToad(cx, base - TH * 0.06, TW * 0.78);
+  if (isToad) drawToad(cx, base - TH * 0.06, TW * 0.78);
 }
 
 function drawCritter(kind, cx, base, s) {
@@ -2600,7 +2865,7 @@ function renderHud() {
 function renderDock() {
   var dock = els.dock;
   if (!dock) return;
-  /* Shown by layer, not by storage order: pioneer, mid-storey, climax. The order in the dock is
+  /* Shown by layer, not by storage order: pioneer, mid-storey, old-growth. The order in the dock is
      the order you plant them in, which is the whole game. */
   var wanted = ['cut'].concat(SP_BY_TIER);
   var i;
@@ -2722,34 +2987,81 @@ function fillShopRow(host, keys) {
       el.className = 'item';
       el.setAttribute('data-key', k);
       el.setAttribute('aria-pressed', state.pick === k ? 'true' : 'false');
+      /* 44px, not 38. A tree's frame needs 1.46 units of height (see iconGeom), so a 38px box only
+         holds a 29px tree — and the shelf is the one place a player looks at a tree to decide what
+         to buy, which is the whole complaint this pass answers. 44px holds a 35px tree, which is the
+         size the old hardcoded geometry drew at, so the shelf keeps the size it had AND stops
+         clipping the tallest tree in the game. `.item canvas` in the stylesheet sets the same 44px
+         for display; these two numbers must agree. */
       var ic = document.createElement('canvas');
-      ic.width = 38; ic.height = 38;
+      ic.width = 44; ic.height = 44;
       el.appendChild(ic);
       var nm = document.createElement('div');
       nm.textContent = def.name;
       var pr = document.createElement('div');
       pr.className = 'price';
-      /* The layer is on the label because it is the rule: a climax tree will not go into open
+      /* The layer is on the label because it is the rule: an old-growth tree will not go into open
          ground, so the shelf has to say which trees are the pioneers. */
       pr.innerHTML = TOKEN_ICON[def.token] + ' ' + def.cost +
         (SPECIES[k] && TIER_NAME[SPECIES[k].tier] ? ' \u00b7 ' + TIER_NAME[SPECIES[k].tier] : '');
       el.appendChild(nm); el.appendChild(pr);
       el.addEventListener('click', function () { state.pick = k; renderShop(); });
       host.appendChild(el);
-      drawShopIcon(ic, k);
+      drawShopIcon(ic, k, 44);
     })(keys[i]);
   }
 }
 
-function drawShopIcon(canvasEl, key) {
+/* Draw ANY icon — a forest species, a weed, or a decoration — into a caller's canvas. Used at 38px
+   by the nursery shelf and at 72px by the field-guide reference sheet, so BOTH render from this one
+   function: a reference image that re-implements the drawing is a reference for something the game
+   does not draw, and it drifts the first time the art changes.
+
+   THE FRAME IS DERIVED FROM THE ART, not chosen. Every icon is sized from the measured extent of
+   what it has to hold, so the box cannot come out a little too small:
+     a tree — the tallest silhouette is `emergent` (Outeniqua): its lobes run to base - hs*1.33, and
+              the ground shadow is an ellipse on the base with ry = hs*0.13. Extent 1.46 units.
+     a weed — drawn at the same unit as a tree in the world, so it shares that box.
+     decor  — the tallest is the lantern, whose glow reaches base - s*0.74, and the deepest shadow is
+              the bird hide's at base + s*0.11. Extent 0.85 units.
+
+   This replaced two hardcoded numbers (base 36, unit 26.5) that happened to be right for nothing in
+   particular. At 38px they left the emergent crown 0.76px of headroom and cut 1.4px off its shadow:
+   the tallest tree in the game was clipped at BOTH ends of its own icon, and the reason nobody saw
+   it is that the form being clipped is the one that reads as a spire. Cut the tip off a spire and it
+   is a different tree. */
+var ICON_MARGIN = 3;
+function iconGeom(key, size) {
+  var m = ICON_MARGIN;
+  if (DECOR[key]) {
+    var ds = (size - 2 * m) / 0.85;
+    return { cx: size / 2, base: m + 0.74 * ds, unit: ds };
+  }
+  var us = (size - 2 * m) / 1.46;
+  return { cx: size / 2, base: m + 1.33 * us, unit: us };
+}
+
+function drawShopIcon(canvasEl, key, size0, cx0, base0, unit0) {
   if (!canvasEl || !canvasEl.getContext) return;
   var g = canvasEl.getContext('2d');
   if (!g) return;
   var saved = ctx;
   ctx = g;
-  /* Normalised by the species' stature, or the emergent outeniqua overflows the 38px shelf icon. */
-  if (SPECIES[key]) drawTree(key, 3, 19, 35, 38 / (SPECIES[key].tall || 1), false, 7);
-  else drawDecor(key, 19, 35, 38);
+  var geo = iconGeom(key, size0 === undefined ? 38 : size0);
+  var cx = cx0 === undefined ? geo.cx : cx0;
+  var base = base0 === undefined ? geo.base : base0;
+  var unit = unit0 === undefined ? geo.unit : unit0;
+  /* Normalising a tree to one height unit is what fits the whole silhouette: hs comes out as `unit`
+     for every species, so the SPECIES difference is carried by the form rather than by size. The
+     stature difference still shows in the world, where there is ground under it and it means
+     something. */
+  if (SPECIES[key]) drawTree(key, 3, cx, base, unit / (SPECIES[key].tall || 1), false, 7);
+  /* The weeds come through the same door, so the field guide can show a pine next to a yellowwood
+     without a second drawing path that could disagree with this one. In the world an alien and a
+     tree are drawn at the SAME unit (s = TW * 0.78), so an alien takes `unit` unnormalised: the
+     four weeds are not stature-scaled against each other the way the eight forest species are. */
+  else if (ALIENS[key]) drawAlien(key, cx, base, unit);
+  else drawDecor(key, cx, base, unit);
   ctx = saved;
 }
 
@@ -2784,7 +3096,7 @@ function act(c, r) {
   if (SPECIES[tool] && shadeShort(c, r, tool)) { explainShade(tool, c, r); return; }
   if (plantAt(c, r, tool)) {
     boardProgress('plants', 1);
-    if (matureAround(c, r) >= SHADE_FOR_CLIMAX && !state.seen.shade) {
+    if (matureAround(c, r) >= SHADE_FOR_OLDGROWTH && !state.seen.shade) {
       state.seen.shade = true;
       card('The shade does the work',
         'Indigenous canopy closes over the ground, and the alien seed under it comes up far less. ' +
@@ -3074,8 +3386,9 @@ var API = {
   WORLD_W: WORLD_W, WORLD_H: WORLD_H, WX0: WX0, WY0: WY0, GCX: GCX, GCY: GCY,
   WORLD_X0: WX_MIN, WORLD_Y0: WY_MIN,
   VILLAGE: VILLAGE, REMNANT: REMNANT,
-  project: project, groundZ: groundZ, buildGround: buildGround, blitGround: blitGround,
+  project: project, bakePoint: bakePoint, groundZ: groundZ, buildGround: buildGround, blitGround: blitGround,
   tilePath: tilePath, extrude: extrude, onRim: onRim, eachVisible: eachVisible,
+  drawCliff: drawCliff, cliffTone: cliffTone,
   TILE_K: TILE_K, TILE_F: TILE_F, CLIFF_K: CLIFF_K,
   lowestNeighbourZ: lowestNeighbourZ, alienDensity: alienDensity,
   /* The camera. Exported as getters rather than as values, because these change every time a
@@ -3095,9 +3408,12 @@ var API = {
   ALIENS: ALIENS, SPECIES: SPECIES, DECOR: DECOR, TOKENS: TOKENS,
   ALIEN_KEYS: ALIEN_KEYS, SP_KEYS: SP_KEYS, SP_BY_TIER: SP_BY_TIER, DECOR_KEYS: DECOR_KEYS,
   SEASON: SEASON, SP_CODE: SP_CODE, SP_FROM: SP_FROM,
-  TIER_NURSE: TIER_NURSE, TIER_MID: TIER_MID, TIER_CLIMAX: TIER_CLIMAX, TIER_NAME: TIER_NAME,
-  SHADE_FOR_CLIMAX: SHADE_FOR_CLIMAX, needsShade: needsShade, shadeShort: shadeShort,
+  TIER_NURSE: TIER_NURSE, TIER_MID: TIER_MID, TIER_OLDGROWTH: TIER_OLDGROWTH, TIER_NAME: TIER_NAME,
+  tierPhrase: tierPhrase,
+  SHADE_FOR_OLDGROWTH: SHADE_FOR_OLDGROWTH, needsShade: needsShade, shadeShort: shadeShort,
   PARROT_MIX: PARROT_MIX, PARROT_CANOPY: PARROT_CANOPY, forestMix: forestMix,
+  PARROT_STEP_CANOPY: PARROT_STEP_CANOPY, PARROT_STEP_MIX: PARROT_STEP_MIX, PARROT_MAX: PARROT_MAX,
+  hollowTrees: hollowTrees, nestFor: nestFor, parrotCapacity: parrotCapacity, parrotCheck: parrotCheck,
   AP_MAX: AP_MAX, BIN_LOAD: BIN_LOAD, PLACES: PLACES, TILE_ART: TILE_ART, TOAD_AT: TOAD_AT,
   newState: newState, getState: function () { return state; }, setState: function (s) { state = s; },
   setTool: function (t) { tool = t; }, terrainAt: terrainAt,
@@ -3110,6 +3426,11 @@ var API = {
   baboonPass: baboonPass, parrotCheck: parrotCheck, toadCheck: toadCheck,
   fruitingIndigenous: fruitingIndigenous, matureAround: matureAround, plantable: plantable,
   stats: stats, hitTest: hitTest, drawWorld: drawWorld, POND: POND, pondDist: pondDist,
+  /* THE DRAWERS, exported so a reference image can be rendered from the SAME code the game draws
+     with. Owner, 2026-09-18: "they need a visual." A field guide that re-implements the tree art is
+     a guide to something the game does not draw, and it drifts the first time the art changes. */
+  drawShopIcon: drawShopIcon, drawTree: drawTree, drawAlien: drawAlien, drawDecor: drawDecor,
+  TOKEN_ICON: TOKEN_ICON,
   rollBoard: rollBoard, boardTasks: boardTasks, boardProgress: boardProgress,
   boardDone: boardDone, claimBoard: claimBoard, taskGot: taskGot, taskDone: taskDone,
   voiceFor: voiceFor, VOICES: VOICES,
