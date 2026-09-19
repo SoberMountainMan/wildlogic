@@ -39,7 +39,7 @@
      and lands straight on top of it. (Found by rendering it, not by reading the CSS.) The sky up
      here is empty, the HUD is top-right and the name box is bottom-centre, so nothing competes.
      Hidden until the music actually starts, so a visitor who never taps sees no extra chrome.
-     It is a real link to the track — that is the point of having the music here at all.
+     It is a real link to the SET — that is the point of having the music here at all.
 
      v6.3: moved to TOP-CENTRE on a player report — "someones left thumb is accidently hitting it
      because she taps jump above the hog on left". The whole canvas is a jump zone (cv pointerdown
@@ -90,12 +90,13 @@
 <a id="home" href="/">&#8592; wildlogic.co.za</a>
 <button id="mu" type="button" aria-pressed="true" title="Sound on">&#128266;</button>
 <button id="pz" type="button" title="Pause" hidden>&#10074;&#10074;</button>
-<!-- v6.0: no src on the iframe. It is pointed at the track lazily, on the first gesture, so a
+<!-- v6.0: no src on the iframe. It is pointed at the set lazily, on the first gesture, so a
      visitor who bounces off the 404 costs no SoundCloud request at all. -->
-<iframe id="sc" title="Oom Hogsback — Tussen Hogsback en N&#234;rens" allow="autoplay"
+<iframe id="sc" title="Oom Hogsback — the playlist" allow="autoplay"
         scrolling="no" frameborder="no" width="120" height="120" aria-hidden="true"></iframe>
-<a id="np" hidden href="https://soundcloud.com/oom-hogsback/tussen-hogsback-en-nerens"
-   target="_blank" rel="noopener">&#9834; Oom Hogsback — Tussen Hogsback en N&#234;rens</a>
+<a id="np" hidden href="https://soundcloud.com/oom-hogsback/sets/oom-hogsback"
+   target="_blank" rel="noopener"
+   title="Oom Hogsback — Drie Been Droom + Tussen Hogsback en N&#234;rens">&#9834; Oom Hogsback — the playlist</a>
 <div id="wrap"><canvas id="cv"></canvas></div>
 <button id="sh" hidden>⚔️ Challenge a chommie</button>
 <div id="nm" hidden>
@@ -1307,7 +1308,7 @@ try{
 }catch(e){}
 paintSound();
 
-// ---- MUSIC — Oom Hogsback, "Tussen Hogsback en Nêrens" (v6.0) -----------------------------
+// ---- MUSIC — Oom Hogsback, the "Oom Hogsback" playlist (v6.0; a SET since v6.6) -----------
 // The owner's own band, and the reason it is in the game is to get it PLAYED. So this drives the
 // OFFICIAL SoundCloud widget instead of hotlinking a stream: plays then register on SoundCloud,
 // where they are worth something, and it stays inside their terms. (A hotlinked stream URL would
@@ -1322,15 +1323,19 @@ paintSound();
 //   3. IT CANNOT BREAK THE GAME. A blocked iframe, a dead network or a missing script must leave
 //      the game exactly as it was: silent, and fully playable. Every path is wrapped, and the
 //      widget is only ever consulted behind a `scWidget` null check.
-const SC_TRACK = 'https://soundcloud.com/oom-hogsback/tussen-hogsback-en-nerens';
+// v6.6: the owner added a second song and made a playlist, so this points at the SET. The widget
+// then advances by itself, which turns the old one-track loop into a trap — see the FINISH
+// handler below.
+const SC_SET = 'https://soundcloud.com/oom-hogsback/sets/oom-hogsback';
 let scWidget = null, scReady = false, musicWanted = false;
+let scCount = 0;            // tracks in the set; 0 = not known yet, and never guessed
 
 function loadMusic(){
   if(scWidget) return;
   try{
     const f = document.getElementById('sc');
     if(!f) return;
-    f.src = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(SC_TRACK) +
+    f.src = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(SC_SET) +
             '&color=%23ffd75e&auto_play=false&hide_related=true&show_comments=false' +
             '&show_user=false&show_reposts=false&show_teaser=false&visual=false';
     const tag = document.createElement('script');
@@ -1340,11 +1345,30 @@ function loadMusic(){
         scWidget = SC.Widget(f);
         scWidget.bind(SC.Widget.Events.READY, function(){
           scReady = true;
+          // Read the set length ONCE, so the FINISH handler can tell the last track from the rest.
+          // Not hardcoded: the owner adds songs to the set without touching this file.
+          try{ scWidget.getSounds(function(l){ try{ scCount = (l && l.length) || 0; }catch(e){ scCount = 0; } }); }catch(e){}
           if(musicWanted && soundOn) scWidget.play();
         });
-        // 4:54 against a session that can run for hours — loop it rather than fall silent.
+        // v6.6 — THIS HANDLER USED TO LOOP ONE TRACK, AND WITH A SET THAT IS NOW THE BUG. Against a
+        // single 4:54 track, rewinding on FINISH was right ("loop it rather than fall silent").
+        // Against a SET the widget advances on its own, so a blind rewind would drag it back to
+        // track 1 every time and the second song would never be reached — the exact point of the
+        // change. Only the LAST track is ours to handle: restart the set so a long run never falls
+        // silent. If the length is unknown, do NOTHING and let the widget advance — a wrong skip is
+        // worse than a quiet set, and "plays through once" is an acceptable outcome.
         scWidget.bind(SC.Widget.Events.FINISH, function(){
-          try{ scWidget.seekTo(0); if(musicWanted && soundOn) scWidget.play(); }catch(e){}
+          try{
+            if(!(scCount > 0)) return;
+            scWidget.getCurrentSoundIndex(function(i){
+              try{
+                if(typeof i === 'number' && i >= scCount - 1){
+                  scWidget.skip(0);
+                  if(musicWanted && soundOn) scWidget.play();
+                }
+              }catch(e){}
+            });
+          }catch(e){}
         });
       }catch(e){ scWidget = null; }
     };
