@@ -138,6 +138,36 @@
     border:1px solid #2c4436;background:#0f1a14;color:#cfe0d4}
   .coderow button{font:inherit;font-size:11.5px;font-weight:800;padding:8px 10px;border-radius:9px;
     border:1px solid #2c4436;background:#22362b;color:#dbe8de;cursor:pointer}
+  /* ---- THE FIELD GUIDE. Owner, 2026-09-21: "we cant tell what alien is what." The guide existed
+     only as a PNG in `_shots` — a file on the build machine, not a thing a player can open — so a
+     cut naming its weed was the only identification the game gave. This puts it in the game, and it
+     draws every icon through drawShopIcon(), the SAME function the nursery shelf uses, so the guide
+     cannot show a plant the game does not draw. */
+  .weed{display:flex;align-items:center;gap:9px;background:#1e3329;border:1px solid #2c4436;
+    border-radius:12px;padding:7px 9px;margin-bottom:6px}
+  .weed canvas{width:44px;height:44px;flex:0 0 auto}
+  .weed .wt{flex:1;min-width:0}
+  .weed .wn{font-size:12px;font-weight:800;color:#dbe8de}
+  .weed .ws{font-size:9.5px;color:#6f8f7c;font-style:italic}
+  .weed .wd{font-size:11px;line-height:1.35;color:#9fbcac;margin-top:3px}
+  .weed .wc{font-size:10.5px;font-weight:800;color:#e0b070;white-space:nowrap;text-align:right}
+  /* A guide card is NOT a control. `.item` sets cursor:pointer and the pressed state, which would
+     promise a tap that does nothing — the same lie as a silent refusal, in CSS. */
+  .item.plain{cursor:default}
+  .item.plain[aria-pressed="true"]{border-color:#d6e6ea;background:#fff}
+  /* The guide is the one long sheet in the game — four weeds with a line of words each, then eight
+     trees — so on the smallest phone the Close button sat 524px below the fold, reachable only by
+     scrolling. A sticky Close keeps it reachable at any scroll position. It needs its own background
+     because `.close` is transparent, and the guide's text would otherwise scroll through the button
+     and read as a rendering fault. It also needs the rule and the shadow, or the band reads as
+     content being CLIPPED rather than as a footer — measured by `_gate_mistbelt_layout.js`, which
+     prints the Close button's distance below the fold for every panel at every shape. */
+  .sheet .close.sticky{position:sticky;bottom:0;background:#16241d;border-top:1px solid #2c4436;
+    box-shadow:0 -8px 14px rgba(0,0,0,.35)}
+  /* A real 44px target, because the layout gate fails anything under 32px and this is the one
+     control that opens the guide. Padding, not a taller line box, so the hit area is the box. */
+  .guidebtn{width:100%;margin-top:10px;padding:13px;border-radius:15px;border:1px solid #2c4436;
+    background:#22362b;color:#dbe8de;font:inherit;font-size:13.5px;font-weight:800;cursor:pointer}
   /* The footer credit is a real link and has to be tappable. As inline text its box was 90x15px —
      under the 32px floor `_gate_mistbelt_layout.js` fails on, because a text link's box is only its
      line box. Padding grows the HIT AREA and the negative margin cancels it, so the link stays
@@ -199,7 +229,24 @@
       The Cape Parrot Project works on this forest, out of Hogsback since 2009. Weather data by
       <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a>.
     </footer>
+    <button class="guidebtn" id="btnGuide">Field guide &mdash; what to cut, what to plant</button>
     <button class="close" id="notesClose">Close</button>
+  </div>
+</div>
+
+<div class="modal" id="mGuide" hidden>
+  <div class="sheet dark">
+    <h2 style="color:#dbe8de">Field guide</h2>
+    <p class="sub" style="color:#7d9686">Every plant here is drawn by the game itself</p>
+    <div class="notes">
+      <h3>The four weeds &mdash; what to cut</h3>
+      <div id="guideWeeds"></div>
+      <h3 style="margin-top:12px">The eight trees &mdash; what to plant</h3>
+      <div class="shoprow" id="guideTrees"></div>
+      <p class="dim" style="margin-top:10px">Cut weeds cost action points; they come back when the
+      day rolls over. A cut weed leaves its seed in the soil, so it can come up again.</p>
+    </div>
+    <button class="close sticky" id="guideClose">Close</button>
   </div>
 </div>
 
@@ -338,14 +385,25 @@ var TOKEN_ICON = {
 
 /* Real Amathole / Hogsback species. */
 var ALIEN_KEYS = ['wattle', 'pine', 'bugweed', 'bramble'];
+/* `tell` is what a player can SEE from the tile they are standing on, and it exists because the art
+   alone cannot finish this job: two weeds drawn from the same green palette in the same isometric
+   cell will always overlap somewhat, so "which one is this?" needs words as well as pixels. Owner,
+   2026-09-21: "we cant tell what alien is what." Each line below describes the drawing above it —
+   if the art changes, this line is wrong, so they are kept together deliberately. */
 var ALIENS = {
   wattle:  { name: 'Black wattle',     sci: 'Acacia mearnsii',     ap: 2, bank: 3, spread: 3, fruit: true,
+             tell: 'Pale and feathery \u2014 many small yellow-green leaflets on grey stems. The ' +
+                   'lightest of the four.',
              note: 'Its seed sits in the soil for decades, so a stump is not the end of it.' },
   pine:    { name: 'Patula pine',      sci: 'Pinus patula',        ap: 2, bank: 3, spread: 2, fruit: false,
+             tell: 'Blue-grey, and the only conifer here \u2014 a stack of triangles with no leaves ' +
+                   'at all.',
              note: 'Planted for timber. The cones hold their seed until the heat opens them.' },
   bugweed: { name: 'Bugweed',          sci: 'Solanum mauritianum', ap: 1, bank: 2, spread: 4, fruit: true,
+             tell: 'Big soft grey-green leaves on one stem, with yellow berries in the middle.',
              note: 'Birds carry the fruit uphill. It fruits the whole year round.' },
   bramble: { name: 'American bramble', sci: 'Rubus cuneifolius',   ap: 1, bank: 2, spread: 3, fruit: true,
+             tell: 'Low and dark green, with long pale thorns and a single red berry.',
              note: 'Roots sucker back after cutting. It takes the light from everything under it.' }
 };
 
@@ -3075,6 +3133,67 @@ function fillShopRow(host, keys) {
   }
 }
 
+/* THE FIELD GUIDE, IN THE GAME. Owner, 2026-09-21: "we cant tell what alien is what." The guide
+   existed only as `_shots/reference/fieldguide.png` — a file on the build machine, not a thing a
+   player can open. A cut naming its weed was therefore the ONLY identification the game gave, and
+   that arrives AFTER the decision rather than before it. This is the same content, drawn through
+   drawShopIcon() — the function the nursery shelf already uses — so the guide cannot show a plant
+   the game does not draw, and it cannot drift the first time the art changes.
+
+   The weeds are listed first and get a full-width row each, because `tell` is the whole point: the
+   art alone cannot finish this job (two weeds in one isometric cell will always overlap somewhat),
+   so the words are load-bearing and need room. The trees are a 4-column shelf, like the nursery. */
+function renderGuide() {
+  var i, k, d;
+  if (els.guideWeeds) {
+    els.guideWeeds.textContent = '';
+    for (i = 0; i < ALIEN_KEYS.length; i++) {
+      k = ALIEN_KEYS[i]; d = ALIENS[k];
+      var row = document.createElement('div');
+      row.className = 'weed';
+      var ic = document.createElement('canvas');
+      ic.width = 44; ic.height = 44;
+      var wt = document.createElement('div');
+      wt.className = 'wt';
+      var wn = document.createElement('div');
+      wn.className = 'wn'; wn.textContent = d.name;
+      var ws = document.createElement('div');
+      ws.className = 'ws'; ws.textContent = d.sci;
+      var wd = document.createElement('div');
+      wd.className = 'wd'; wd.textContent = d.tell;
+      wt.appendChild(wn); wt.appendChild(ws); wt.appendChild(wd);
+      var wc = document.createElement('div');
+      wc.className = 'wc';
+      wc.textContent = d.ap + ' AP \u00b7 ' + d.bank + ' seed';
+      row.appendChild(ic); row.appendChild(wt); row.appendChild(wc);
+      els.guideWeeds.appendChild(row);
+      drawShopIcon(ic, k, 44);
+    }
+  }
+  if (els.guideTrees) {
+    els.guideTrees.textContent = '';
+    for (i = 0; i < SP_BY_TIER.length; i++) {
+      k = SP_BY_TIER[i]; d = SPECIES[k];
+      var el = document.createElement('div');
+      /* `plain` because a guide card is not a control — `.item` sets cursor:pointer, which would
+         promise a tap that does nothing. That is the same lie as a silent refusal, in CSS. */
+      el.className = 'item plain';
+      var c2 = document.createElement('canvas');
+      c2.width = 44; c2.height = 44;
+      el.appendChild(c2);
+      var nm2 = document.createElement('div');
+      nm2.textContent = d.name;
+      el.appendChild(nm2);
+      var pr = document.createElement('div');
+      pr.className = 'price';
+      pr.textContent = TIER_NAME[d.tier] || '';
+      el.appendChild(pr);
+      els.guideTrees.appendChild(el);
+      drawShopIcon(c2, k, 44);
+    }
+  }
+}
+
 /* Draw ANY icon — a forest species, a weed, or a decoration — into a caller's canvas. Used at 38px
    by the nursery shelf and at 72px by the field-guide reference sheet, so BOTH render from this one
    function: a reference image that re-implements the drawing is a reference for something the game
@@ -3099,6 +3218,21 @@ function iconGeom(key, size) {
   if (DECOR[key]) {
     var ds = (size - 2 * m) / 0.85;
     return { cx: size / 2, base: m + 0.74 * ds, unit: ds };
+  }
+  /* A WEED IS NOT A TREE, and it was borrowing the tree's frame. Measured, not chosen
+     (`_measure_alien_extent.js`): the tallest alien reaches 1.02 units of s above its base and the
+     deepest shadow 0.13 below — **1.15 units in all**, against the tree frame's 1.46. So every weed
+     in the field guide was drawn at 26/33 of the size its own box allowed, filling about 55% of it —
+     which is the "you cannot tell them apart" problem the guide exists to fix, reproduced inside the
+     fix. The gate counted 12 canvases and 276 draw calls and was green about all of it; the
+     screenshot is what showed the icons were half the size of the trees beside them.
+
+     ONE frame for all four, derived from the TALLEST, so the pine fills its box and the bugweed
+     stays visibly shorter than the pine. The relative stature is information and it is preserved —
+     what changes is that the box is now used. */
+  if (ALIENS[key]) {
+    var as = (size - 2 * m) / 1.15;
+    return { cx: size / 2, base: m + 1.02 * as, unit: as };
   }
   var us = (size - 2 * m) / 1.46;
   return { cx: size / 2, base: m + 1.33 * us, unit: us };
@@ -3264,6 +3398,7 @@ function resize() {
 function boot() {
   var ids = ['cv', 'stage', 'wxIcon', 'wxText', 'tokenBar', 'btnGear', 'btnBox', 'binBadge', 'dock',
              'notes', 'btnHome', 'btnNotes', 'mNotes', 'notesClose',
+             'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
              'codeIn', 'btnSave', 'btnLoad', 'mBoard', 'boardDate', 'boardList', 'boardReward',
              'boardClose', 'mShop', 'shopDate', 'shopSeeds', 'shopDecor', 'shopName', 'qty',
              'qMinus', 'qPlus', 'btnBuy', 'tradeRow', 'shopClose', 'mCard', 'cardTitle', 'cardBody',
@@ -3480,6 +3615,8 @@ function boot() {
   });
   if (els.notesClose) els.notesClose.addEventListener('click', function () { hideModal(els.mNotes); });
   if (els.btnNotes) els.btnNotes.addEventListener('click', function () { showModal(els.mNotes); });
+  if (els.btnGuide) els.btnGuide.addEventListener('click', function () { renderGuide(); showModal(els.mGuide); });
+  if (els.guideClose) els.guideClose.addEventListener('click', function () { hideModal(els.mGuide); });
 
   renderHud(); renderBoard(); renderShop();
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(frame);
@@ -3544,6 +3681,9 @@ var API = {
      with. Owner, 2026-09-18: "they need a visual." A field guide that re-implements the tree art is
      a guide to something the game does not draw, and it drifts the first time the art changes. */
   drawShopIcon: drawShopIcon, drawTree: drawTree, drawAlien: drawAlien, drawDecor: drawDecor,
+  /* The guide is exported so a gate can open it and count what it actually built. A guide that is
+     only reachable by a finger is a guide no check can see. */
+  renderGuide: renderGuide,
   TOKEN_ICON: TOKEN_ICON,
   rollBoard: rollBoard, boardTasks: boardTasks, boardProgress: boardProgress,
   boardDone: boardDone, claimBoard: claimBoard, taskGot: taskGot, taskDone: taskDone,
