@@ -3156,8 +3156,11 @@ function act(c, r) {
          actually is. */
       var cd = ALIENS[t.lastAlien];
       if (cd && state.seen.seedbank) {
-        toast('Cut ' + cd.name + ' \u2014 ' + cd.ap + ' action points. ' + cd.bank +
-              ' lots of seed left in the soil.', 'good');
+        /* "1 action points" was live for a few minutes on 2026-09-21 — bugweed and bramble both
+           cost 1 AP, and the string was hardcoded plural. The probe caught it, not the eye. */
+        toast('Cut ' + cd.name + ' \u2014 ' + cd.ap + ' action point' + (cd.ap === 1 ? '' : 's') +
+              '. ' + cd.bank + ' lot' + (cd.bank === 1 ? '' : 's') +
+              ' of seed left in the soil.', 'good');
       }
       saveLocal(); renderHud(); renderBoard();
     } else if (t.alien) {
@@ -3168,7 +3171,8 @@ function act(c, r) {
          A silent no-op is the bug; the weed that stays is only the symptom. */
       var bd = ALIENS[t.alien];
       if (bd && state.ap < bd.ap) {
-        toast(bd.name + ' needs ' + bd.ap + ' action points and you have ' + state.ap +
+        toast(bd.name + ' needs ' + bd.ap + ' action point' + (bd.ap === 1 ? '' : 's') +
+              ' and you have ' + state.ap +
               '. They come back when the day rolls over.', 'warn');
       } else {
         toast('That one will not come out.', 'warn');
