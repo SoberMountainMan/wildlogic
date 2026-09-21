@@ -1825,8 +1825,11 @@ function drawSeedMarkers(c, r) {
     var u = jit(c + sk, r, 31) * 2 - 1;
     var v = jit(c, r + sk, 32) * 2 - 1;
     ctx.beginPath();
+    /* Bigger than they were. At TW*0.026 a seed was 1.6px across, so a tile with three lots of
+       seed left in it looked like a tile with nothing on it — and "nothing on it, but it will not
+       cut" is exactly the state the owner read as "sometimes they dont remove". */
     ctx.ellipse(p[0] + (u - v) * (TW / 2) * 0.62, p[1] + (u + v) * (TH / 2) * 0.62,
-                TW * 0.026, TH * 0.020, 0, 0, Math.PI * 2);
+                TW * 0.042, TH * 0.032, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -1942,53 +1945,76 @@ function drawAlien(kind, cx, base, s) {
       ctx.fill();
     }
   } else if (kind === 'wattle') {
-    /* Black wattle comes up multi-stemmed. A single thin stick under a wide flat canopy read as
-       a mushroom, so it has two stems and a third lobe low down. */
+    /* BLACK WATTLE IS THE PALE, FEATHERY ONE. Owner, 2026-09-21: "we cant tell what alien is
+       what." Measured cause: the four weeds shared a colour family — bugweed and bramble used the
+       EXACT same green (#6d8349) — and the only tells were a 3.9px berry and a 1px thorn. Wattle
+       now carries the palest canopy of the four, because bipinnate leaflets catch the light and
+       that is what makes a wattle stand out on a hillside, and the crown is drawn as many small
+       leaflets rather than three big lobes — fine foliage is what an Acacia actually looks like.
+       Colour AND texture, so it is tellable at a glance and not only side by side. */
     ctx.fillStyle = '#7d7568';
-    ctx.fillRect(cx - s * 0.11, base - s * 0.40, s * 0.09, s * 0.40);
-    ctx.fillRect(cx + s * 0.03, base - s * 0.44, s * 0.09, s * 0.44);
-    ctx.fillStyle = '#7f8a52';
-    ctx.beginPath(); ctx.ellipse(cx - s * 0.08, base - s * 0.54, s * 0.26, s * 0.22, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#71804a';
-    ctx.beginPath(); ctx.ellipse(cx + s * 0.15, base - s * 0.64, s * 0.22, s * 0.19, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#8b955a';
-    ctx.beginPath(); ctx.ellipse(cx + s * 0.02, base - s * 0.76, s * 0.20, s * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(cx - s * 0.12, base - s * 0.38, s * 0.09, s * 0.38);
+    ctx.fillRect(cx + s * 0.03, base - s * 0.42, s * 0.09, s * 0.42);
+    ctx.fillStyle = '#7d7568';
+    ctx.fillRect(cx - s * 0.02, base - s * 0.30, s * 0.07, s * 0.30);
+    var wc = ['#b9c47a', '#a8b56a', '#c8d089'], wi;
+    for (wi = 0; wi < 11; wi++) {
+      var wa = wi * 2.399;
+      var wr = s * (0.10 + (wi % 4) * 0.085);
+      ctx.fillStyle = wc[wi % 3];
+      ctx.beginPath();
+      ctx.ellipse(cx + Math.cos(wa) * wr, base - s * (0.52 + (wi % 5) * 0.075),
+                  s * 0.115, s * 0.070, wa * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
   } else if (kind === 'bugweed') {
-    ctx.fillStyle = '#65704a';
-    ctx.fillRect(cx - s * 0.04, base - s * 0.24, s * 0.08, s * 0.24);
-    ctx.fillStyle = '#6d8349';
-    ctx.beginPath(); ctx.ellipse(cx, base - s * 0.42, s * 0.38, s * 0.29, 0, 0, Math.PI * 2); ctx.fill();
+    /* BUGWEED IS THE BIG-LEAVED GREY ONE. Solanum mauritianum is a tall soft shrub whose whole
+       character is the LEAF — large, velvety, grey-green — and a single round blob threw that
+       away. It is now four big leaves on one stem, drawn greyer and less yellow than the wattle,
+       with the berries larger and higher so they read from across a tile. */
+    ctx.fillStyle = '#6f6a52';
+    ctx.fillRect(cx - s * 0.035, base - s * 0.42, s * 0.07, s * 0.42);
+    var bl = [[-0.30, 0.40, -0.55], [0.30, 0.40, 0.55], [-0.24, 0.62, -0.40], [0.24, 0.62, 0.40]], bi;
+    for (bi = 0; bi < 4; bi++) {
+      ctx.fillStyle = bi % 2 ? '#79815f' : '#8a9270';
+      ctx.beginPath();
+      ctx.ellipse(cx + bl[bi][0] * s, base - bl[bi][1] * s, s * 0.21, s * 0.115, bl[bi][2], 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#6d7554';
+    ctx.beginPath(); ctx.ellipse(cx, base - s * 0.78, s * 0.17, s * 0.12, 0, 0, Math.PI * 2); ctx.fill();
     /* The berries are the giveaway: bugweed fruits all year round, and that is why the birds
        carry it up the hill. */
-    ctx.fillStyle = '#cfc46a';
-    for (i = 0; i < 4; i++) {
+    ctx.fillStyle = '#e0d472';
+    for (i = 0; i < 5; i++) {
       ctx.beginPath();
-      ctx.arc(cx + (jit(i, 1, 3) - 0.5) * s * 0.56, base - s * 0.42 + (jit(i, 2, 4) - 0.5) * s * 0.36, s * 0.055, 0, Math.PI * 2);
+      ctx.arc(cx + (jit(i, 1, 3) - 0.5) * s * 0.46, base - s * (0.68 + jit(i, 2, 4) * 0.18), s * 0.062, 0, Math.PI * 2);
       ctx.fill();
     }
   } else {
     /* American bramble is a low, sprawling, thorny MAT — it does not stand up. The first version
        drew seven stems radiating from a single point, and seven radial strokes with a body in the
        middle read as a green bug lying on the tile, not as a plant. A mat has to lie down. */
-    ctx.fillStyle = '#6d8349';
+    ctx.fillStyle = '#5d6b32';
     ctx.beginPath(); ctx.ellipse(cx - s * 0.16, base - s * 0.13, s * 0.34, s * 0.15, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#7b9349';
+    ctx.fillStyle = '#6b7a3c';
     ctx.beginPath(); ctx.ellipse(cx + s * 0.16, base - s * 0.17, s * 0.30, s * 0.14, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#88a052';
+    ctx.fillStyle = '#7a8a46';
     ctx.beginPath(); ctx.ellipse(cx, base - s * 0.26, s * 0.24, s * 0.12, 0, 0, Math.PI * 2); ctx.fill();
-    /* the thorns, which are the whole reason it is a problem to walk through */
-    ctx.strokeStyle = '#5c7040';
-    ctx.lineWidth = Math.max(1, s * 0.020);
+    /* the thorns, which are the whole reason it is a problem to walk through — longer and paler
+       than they were, because at 1px they were invisible and they are the bramble's whole tell */
+    ctx.strokeStyle = '#cfd6a8';
+    ctx.lineWidth = Math.max(1.4, s * 0.028);
     for (i = 0; i < 5; i++) {
       var thx = (i - 2) * s * 0.22;
       ctx.beginPath();
-      ctx.moveTo(cx + thx, base - s * 0.24);
-      ctx.lineTo(cx + thx + s * 0.04, base - s * 0.36);
+      ctx.moveTo(cx + thx, base - s * 0.22);
+      ctx.lineTo(cx + thx + s * 0.05, base - s * 0.44);
       ctx.stroke();
     }
     /* one berry, because bramble fruits and the birds are how it travels uphill */
-    ctx.fillStyle = '#c05a63';
-    ctx.beginPath(); ctx.arc(cx + s * 0.26, base - s * 0.20, s * 0.045, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#d4626b';
+    ctx.beginPath(); ctx.arc(cx + s * 0.26, base - s * 0.20, s * 0.060, 0, Math.PI * 2); ctx.fill();
   }
 }
 
@@ -2031,8 +2057,45 @@ function drawTree(sp, stage, cx, base, s, hollow, seed) {
   seed = seed || 0;
   var k1 = jit(seed, 1, 21), k2 = jit(seed, 2, 22), k3 = jit(seed, 3, 23), k4 = jit(seed, 4, 24);
   if (stage === 1) {
-    ctx.fillStyle = '#4f8a4a';
-    ctx.beginPath(); ctx.ellipse(cx, base - hs * 0.16, hs * 0.17, hs * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+    /* A SAPLING IS A PLANT, NOT A DOT. Owner, 2026-09-21: "i dont like that when you plant
+       something its a green dot. we need a better thing for a new tree going in. like a sapling."
+       He was right, and the measurement was worse than the complaint: this branch drew ONE flat
+       ellipse, in ONE colour (#4f8a4a), for all eight species, 3.7-5.1px across — and it returned
+       BEFORE shadow(), so a newly planted tree was the only object in the world standing on no
+       shadow at all. On the glass it read as a dropped pixel, not as something you had planted.
+       A sapling now gets a stem, leaves in its OWN species colours, a shadow, and a silhouette
+       that follows its species' form: a spire for the conifer-shaped trees, a low spread for the
+       pioneer, opposite leaves for the broadleaves. It is still 26% of the tree it becomes — it
+       is just a plant at that size rather than a dot. */
+    var sf = def.form || 'rounded';
+    var sl = def.leaf || '#48965f', sd = def.dark || '#377a4b';
+    var sh = hs * 0.92, lw = hs * 0.26, lh = hs * 0.15;
+    shadow(cx, base, hs * 0.24, hs * 0.085);
+    ctx.fillStyle = '#6a5334';
+    var sw = Math.max(1.2, hs * 0.06);
+    ctx.fillRect(cx - sw / 2, base - sh, sw, sh);
+    if (sf === 'emergent' || sf === 'neat') {
+      ctx.fillStyle = sl;
+      ctx.beginPath(); ctx.ellipse(cx, base - sh * 0.60, lw * 0.80, lh * 0.90, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = sd;
+      ctx.beginPath(); ctx.ellipse(cx, base - sh * 0.86, lw * 0.60, lh * 0.80, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = sl;
+      ctx.beginPath(); ctx.ellipse(cx, base - sh * 1.08, lw * 0.36, lh * 0.70, 0, 0, Math.PI * 2); ctx.fill();
+    } else if (sf === 'spreading') {
+      ctx.fillStyle = sl;
+      ctx.beginPath(); ctx.ellipse(cx - lw * 1.15, base - sh * 0.84, lw, lh * 0.80, -0.38, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + lw * 1.15, base - sh * 0.84, lw, lh * 0.80, 0.38, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = sd;
+      ctx.beginPath(); ctx.ellipse(cx, base - sh * 1.00, lw * 0.55, lh * 0.80, 0, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.fillStyle = sd;
+      ctx.beginPath(); ctx.ellipse(cx - lw * 1.00, base - sh * 0.70, lw, lh * 0.82, -0.50, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + lw * 1.00, base - sh * 0.70, lw, lh * 0.82, 0.50, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = sl;
+      ctx.beginPath(); ctx.ellipse(cx - lw * 0.55, base - sh * 0.96, lw * 0.85, lh * 0.78, -0.26, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx + lw * 0.55, base - sh * 0.96, lw * 0.85, lh * 0.78, 0.26, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(cx, base - sh * 1.10, lw * 0.46, lh * 0.72, 0, 0, Math.PI * 2); ctx.fill();
+    }
     return;
   }
   var tone = def.leaf || '#48965f';
@@ -3085,7 +3148,39 @@ function act(c, r) {
       /* Check straight away, not just on the day roll: the toad is the reward for opening the
          grass up, and it should land on the tap that did it. */
       toadCheck();
+      /* NAME WHAT WAS CUT. Owner, 2026-09-21: "we cant tell what alien is what." The four weeds
+         are drawn in the field with no label anywhere, and the only naming the game did was the
+         one-off seed-bank card on the very first cut of a save. So a player could clear a whole
+         hillside without ever learning that the pale feathery one is black wattle. Every cut now
+         says what it was — the identification the field guide gives, delivered where the player
+         actually is. */
+      var cd = ALIENS[t.lastAlien];
+      if (cd && state.seen.seedbank) {
+        toast('Cut ' + cd.name + ' \u2014 ' + cd.ap + ' action points. ' + cd.bank +
+              ' lots of seed left in the soil.', 'good');
+      }
       saveLocal(); renderHud(); renderBoard();
+    } else if (t.alien) {
+      /* THE TAP THAT DID NOTHING NOW SAYS WHY. clearAt() refuses for one common reason — not
+         enough action points — and this branch used to `return` in silence, so the player tapped a
+         weed, watched nothing happen, and concluded the game was broken. Owner, 2026-09-21:
+         "sometimes they dont remove." It was action points, every time, and nothing had told him.
+         A silent no-op is the bug; the weed that stays is only the symptom. */
+      var bd = ALIENS[t.alien];
+      if (bd && state.ap < bd.ap) {
+        toast(bd.name + ' needs ' + bd.ap + ' action points and you have ' + state.ap +
+              '. They come back when the day rolls over.', 'warn');
+      } else {
+        toast('That one will not come out.', 'warn');
+      }
+    } else if (t.seeds > 0 && !t.sp) {
+      /* THE OTHER HALF OF "they dont remove". A cut tile keeps its seed bank, and tickDay brings
+         one lot back up on the next wet day — three times for a wattle — and the game explained
+         that exactly ONCE, on the first cut of the first save. After that a weed simply
+         reappeared with no explanation. Tapping the seeded tile with the cut tool now says where
+         it came from. */
+      toast('The seed is in the soil here \u2014 ' + t.seeds + ' lot' + (t.seeds === 1 ? '' : 's') +
+            ' still to come up. Nothing to cut yet.', 'dim');
     }
     return;
   }
@@ -3418,6 +3513,11 @@ var API = {
   newState: newState, getState: function () { return state; }, setState: function (s) { state = s; },
   setTool: function (t) { tool = t; }, terrainAt: terrainAt,
   tickDay: tickDay, clearAt: clearAt, plantAt: plantAt, placeDecor: placeDecor,
+  /* `act` is the TAP — the one entry point a finger actually reaches. It is exported because the
+     three actions above it are the *decision* and `act` is the *reply*: a gate that only calls
+     clearAt() can prove the weed was not cut, but not that the player was left in silence. Owner,
+     2026-09-21: "sometimes they dont remove." */
+  act: act,
   buy: buy, trade: trade, recycle: recycle,
   getBin: function () { return binItems; }, setBin: function (n) { binItems = n; },
   encodeSave: encodeSave, decodeSave: decodeSave, checksum: checksum,
