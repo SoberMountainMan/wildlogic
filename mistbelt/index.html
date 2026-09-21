@@ -3185,6 +3185,16 @@ function act(c, r) {
          it came from. */
       toast('The seed is in the soil here \u2014 ' + t.seeds + ' lot' + (t.seeds === 1 ? '' : 's') +
             ' still to come up. Nothing to cut yet.', 'dim');
+    } else if (t.sp) {
+      /* THE LAST SILENT TAP, and it is the one a player meets FIRST. You plant a tree, you tap it,
+         and nothing happens — because clearAt() only ever cuts ALIEN plants and your own tree is
+         not an alien. Owner, 2026-09-21: "sometimes they dont remove." Three paths now explain
+         themselves; this was the fourth. A refusal with no words is the whole defect, and on the
+         one object in the game the player deliberately put there. */
+      var sd2 = SPECIES[t.sp] || {};
+      var sst = t.stage === 1 ? 'a sapling' : (t.stage === 2 ? 'a young tree' : 'full grown');
+      toast((sd2.name || 'Your tree') + ' is ' + sst + ' \u2014 that one is yours, so there is ' +
+            'nothing to cut. Trees grow on wet days.', 'dim');
     }
     return;
   }
