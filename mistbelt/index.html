@@ -681,7 +681,7 @@ function terrainAt(c, r) {
   return 'grass';
 }
 
-/* The mushroom house, the nursery, the signpost and the bin, on the near edge of the village, and
+/* The cottage, the nursery, the signpost and the bin, on the near edge of the village, and
    the jetty out over the stream. These are absolute because a save restores them by coordinate.
    The jetty is placed by CALLING streamC() rather than by a hardcoded column: the stream meanders,
    so a literal column would drift onto dry ground the first time the meander is touched. */
@@ -2216,16 +2216,82 @@ function shadow(cx, cy, rx, ry) {
 /* The old forest that was never cut. It is terrain rather than a planted tree, so it needs a
    canopy of its own — without one the forest remnant was a dark green rectangle with no trees in
    it, which is exactly what the first strip screenshot showed. */
-function drawForestCanopy(cx, base, s) {
-  ctx.fillStyle = '#33694a';
-  ctx.beginPath(); ctx.ellipse(cx, base - s * 0.42, s * 0.52, s * 0.38, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#2b5c40';
-  ctx.beginPath(); ctx.ellipse(cx - s * 0.28, base - s * 0.58, s * 0.30, s * 0.26, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(cx + s * 0.30, base - s * 0.54, s * 0.28, s * 0.24, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#3d7554';
-  ctx.beginPath(); ctx.ellipse(cx + s * 0.06, base - s * 0.76, s * 0.26, s * 0.22, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = '#2b5c40';
-  ctx.beginPath(); ctx.ellipse(cx - s * 0.16, base - s * 0.90, s * 0.18, s * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+/* THE OLD FOREST IS NOT A PLANTATION.
+   Owner, 2026-09-22: "old growth remnant shouldnt look like a farm of the same trees. it looks like
+   a plantation rather than the end ideal." He is right, and the old version was measurable: ONE
+   crown — five ellipses in five fixed places — stamped on all 49 tiles at a ±4% size jitter. That is
+   the definition of a plantation: even spacing, identical crowns, same age.
+   Old growth is the opposite, so the tile's own hash now drives FIVE things instead of one:
+     form   — three crown archetypes: broad, emergent, spreading
+     size   — 0.80..1.20, against the old 0.96..1.04
+     height — the crown sits at a different height on each tile, so the canopy has depth
+     colour — one of four canopy greens, so no two neighbours are the same green
+     lobes  — every lobe's offset and radius is hashed, so no two crowns share an outline
+   And a crown is drawn WIDER than a tile, so neighbours overlap. A canopy with daylight between the
+   crowns is a row of trees, which is the plantation read all over again. */
+var CANOPY = [
+  /* one crown's three tones — skirt, body, lit top — so each crown is shaded within itself.
+     THE PALETTE IS DARK ON PURPOSE, and the tone was held when the canopy was rewritten. Closing
+     the canopy — which is what the plantation fix had to do — covers more of the dark forest floor
+     with crown, and the first version of the new palette therefore measured 101.1 mean luminance
+     against the old 96.5. Four percent is the kind of drift that reads as "the forest got lighter"
+     without anyone being able to say why. These greens hold the old tone (palette mean 85.8 against
+     the previous 93.3) while still being eleven distinct tones, so a crown can differ from its
+     neighbour AND the remnant is still the darkest thing on the map. */
+  ['#28553b', '#316146', '#3c7352'],
+  ['#234d35', '#2c5a3f', '#376b4b'],
+  ['#2c5a3f', '#35684a', '#407758'],
+  ['#29543c', '#336248', '#3d7051']
+];
+
+/* [dx, dy, rx, ry, tone] in units of the crown's own S. dy is DOWN the screen, so negative is up. */
+var CANOPY_LOBES = [
+  [-0.66, 0.22, 0.34, 0.26, 0],
+  [-0.23, 0.26, 0.37, 0.29, 0],
+  [ 0.23, 0.26, 0.37, 0.29, 0],
+  [ 0.66, 0.22, 0.34, 0.26, 0],
+  [-0.32, -0.02, 0.43, 0.37, 1],
+  [ 0.32, -0.02, 0.43, 0.37, 1],
+  [ 0.00, -0.30, 0.41, 0.35, 2]
+];
+function drawForestCanopy(cx, base, s, c, r) {
+  /* FORM IS A SHAPE, NOT A SIZE — and that is a correction the measurement forced, not a
+     preference. The first version of this varied the crown's WIDTH with the form, and the gate
+     caught what the eye could not: the narrowest crown came out at 0.76 of a tile, so wherever two
+     narrow crowns landed side by side there was a strip of bare ground between them. A regular grid
+     of separated crowns is the plantation read all over again, even when every crown has a
+     different shape — "daylight between the crowns" is the tell, and it survives a variety fix.
+     Width is the one dimension that CLOSES a canopy, so width is the one dimension that must stay
+     put. The variety goes into HEIGHT, which is what gives an old-growth canopy its depth and what
+     the old flat version had none of, plus the lobe layout and the colour. */
+  var form = Math.floor(jit(c, r, 81) * 3);
+  var grow = 0.80 + jit(c, r, 82) * 0.40;   /* the crown's HEIGHT, 0.80..1.20 */
+  var wj = 0.94 + jit(c, r, 89) * 0.12;     /* a small width jitter, 0.94..1.06 — never a gap */
+  var lift = (jit(c, r, 83) - 0.5) * 0.34;
+  var pal = CANOPY[Math.floor(jit(c, r, 84) * CANOPY.length) % CANOPY.length];
+  /* Two scales, because width and height vary independently: S is the vertical scale and W the
+     horizontal. One scale for both is what tied the crown's width to its size and opened the gaps. */
+  var S = s * grow;
+  var W = s * wj;
+  /* an emergent is tall and narrow, an understorey crown is wide and flat, the broad one is between.
+     The widths are set so the narrowest form at the smallest jitter still reaches 1.11 tiles across,
+     which is what the "close into one canopy" check below measures. */
+  var wide = form === 2 ? 0.76 : form === 1 ? 0.58 : 0.62;
+  var tall = form === 1 ? 0.62 : form === 2 ? 0.34 : 0.46;
+  /* placed so the skirt's lowest lobe lands near the tile base, whatever the form's height */
+  var cy = base - S * (0.06 + 0.48 * tall + lift);
+  var i, L, dx, dy, rx, ry;
+  for (i = 0; i < CANOPY_LOBES.length; i++) {
+    L = CANOPY_LOBES[i];
+    dx = L[0] * wide * (0.86 + jit(c + i, r, 85) * 0.28);
+    dy = L[1] * tall * (0.86 + jit(c, r + i, 86) * 0.28);
+    rx = L[2] * wide * W * (0.88 + jit(c + i, r + i, 87) * 0.24);
+    ry = L[3] * tall * S * (0.88 + jit(c, r + i * 3, 88) * 0.24);
+    ctx.fillStyle = pal[L[4]];
+    ctx.beginPath();
+    ctx.ellipse(cx + dx * W, cy + dy * S, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 /* The aliens have to be tellable from the trees you are growing back, at a glance, from a phone.
@@ -2522,95 +2588,119 @@ function drawTree(sp, stage, cx, base, s, hollow, seed) {
    is a dome seen slightly from below (so the underside rim is the dark band), and a handful of
    flat cream spots. No outline anywhere — the shapes are separated by tone, like everything else
    in the scene. */
+/* THE HOUSE IS NOT A TOADSTOOL.
+   Owner, 2026-09-22: "House cant be the same toadstool as Froggys World." It was one, design for
+   design: a red cap with pale spots over a cream stem, which is the mushroom house in the reference
+   game. It is now a Hogsback cottage — the thing the place is actually known for. A steep pitched
+   roof whose eaves overhang the wall, a stone chimney, plastered walls, a stone foot, a porch over
+   the door and two lit windows. The palette is the one the rest of the game already uses, and the
+   light still comes from the left like everything else.
+   The old rule still holds: it is drawn DELIBERATELY wider than its own tile, because it is the
+   landmark a new player steers by, and it must stay whole on the frame the game opens on. */
 function drawHouse(cx, base, s) {
-  shadow(cx, base, s * 0.46, s * 0.15);
+  shadow(cx, base, s * 0.52, s * 0.16);
 
-  /* the stem */
-  var stem = ctx.createLinearGradient(cx - s * 0.24, 0, cx + s * 0.24, 0);
-  stem.addColorStop(0, '#b9a482');
-  stem.addColorStop(0.42, '#efe1c4');
-  stem.addColorStop(1, '#a8956f');
-  ctx.fillStyle = stem;
+  /* PROPORTION IS THE WHOLE DRAWING, AND IT WAS THE THING STILL WRONG. Owner, 2026-09-22: "House
+     cant be the same toadstool as Froggys World." The mushroom was a big cap on a small stem. The
+     first cottage drawn after that ruling was a big roof on a small wall — roof 0.44 of an `s`,
+     wall 0.48 — which is the SAME silhouette one shape up, and it still read as a hat on a box.
+     Changing which shape is on top is not changing the proportion. So the two numbers are named
+     here and the roof is the smaller half: a cottage is a wall with a roof on it, not a roof with a
+     wall under it. Named rather than inlined so the relationship is checkable instead of a matter
+     of eye — the gate reads these two lines. */
+  var WALL = 0.62;                 /* wall height, in units of `s` */
+  var ROOF = 0.38;                 /* roof height above the eave — the smaller half, on purpose */
+  var eave = base - s * WALL;      /* where the wall meets the roof */
+  var ridge = eave - s * ROOF;     /* the ridge line */
+
+  /* THE WALL. Plaster, lit from the left, so it runs warm to cool across its width. */
+  var wall = ctx.createLinearGradient(cx - s * 0.38, 0, cx + s * 0.38, 0);
+  wall.addColorStop(0, '#f1e6ce');
+  wall.addColorStop(0.55, '#e4d6b7');
+  wall.addColorStop(1, '#cab996');
+  ctx.fillStyle = wall;
+  ctx.fillRect(cx - s * 0.38, eave, s * 0.76, base - eave);
+
+  /* THE STONE FOOT: a course of darker stone, so the cottage sits ON the ground rather than in it. */
+  ctx.fillStyle = '#b2a890';
+  ctx.fillRect(cx - s * 0.38, base - s * 0.10, s * 0.76, s * 0.10);
+  ctx.fillStyle = '#9d9279';
+  ctx.fillRect(cx - s * 0.38, base - s * 0.04, s * 0.76, s * 0.04);
+
+  /* THE CHIMNEY, drawn BEFORE the roof so the roof overlaps its foot the way a real one does. It
+     stands just off the ridge and pokes a hand's width above it. */
+  ctx.fillStyle = '#a89d8c';
+  ctx.fillRect(cx + s * 0.04, ridge - s * 0.07, s * 0.12, s * 0.46);
+  ctx.fillStyle = '#8d8271';
+  ctx.fillRect(cx + s * 0.04, ridge - s * 0.07, s * 0.05, s * 0.46);
+  ctx.fillStyle = '#6f665a';
+  ctx.fillRect(cx + s * 0.02, ridge - s * 0.09, s * 0.16, s * 0.035);
+
+  /* THE ROOF. Two slopes meeting at a ridge, with eaves that overhang the wall — that overhang is
+     most of what says "cottage" rather than "shed". The left slope takes the light. */
+  ctx.fillStyle = '#4d565e';
   ctx.beginPath();
-  ctx.moveTo(cx - s * 0.23, base);
-  ctx.quadraticCurveTo(cx - s * 0.28, base - s * 0.34, cx - s * 0.21, base - s * 0.56);
-  ctx.lineTo(cx + s * 0.21, base - s * 0.56);
-  ctx.quadraticCurveTo(cx + s * 0.28, base - s * 0.34, cx + s * 0.23, base);
+  ctx.moveTo(cx - s * 0.47, eave);
+  ctx.lineTo(cx, ridge);
+  ctx.lineTo(cx, eave);
   ctx.closePath();
   ctx.fill();
+  ctx.fillStyle = '#3a4249';
+  ctx.beginPath();
+  ctx.moveTo(cx, eave);
+  ctx.lineTo(cx, ridge);
+  ctx.lineTo(cx + s * 0.47, eave);
+  ctx.closePath();
+  ctx.fill();
+  /* the eave board and the ridge cap, so the roof has a thickness instead of being a flat triangle */
+  ctx.fillStyle = '#333a40';
+  ctx.fillRect(cx - s * 0.50, eave - s * 0.02, s * 1.00, s * 0.05);
+  ctx.fillStyle = '#5d666e';
+  ctx.fillRect(cx - s * 0.03, ridge, s * 0.06, s * 0.03);
 
-  /* the doorway, rounded like everything else here */
+  /* THE PORCH. A lean-to beam on two posts — the front stoep, which is the Hogsback signature. The
+     posts are measured from the eave down to the top of the stone foot, so a taller wall gives
+     taller posts instead of a beam floating away from the ground. */
+  var postTop = eave + s * 0.06;
+  ctx.fillStyle = '#6b5a45';
+  ctx.fillRect(cx - s * 0.17, postTop, s * 0.04, base - s * 0.10 - postTop);
+  ctx.fillRect(cx + s * 0.13, postTop, s * 0.04, base - s * 0.10 - postTop);
+  ctx.fillStyle = '#4a3f31';
+  ctx.fillRect(cx - s * 0.20, eave + s * 0.02, s * 0.40, s * 0.045);
+
+  /* THE DOOR, under the porch, standing on the stone foot with a step in front of it. It is taller
+     than it was, because the wall it is set into is taller — a door that keeps its old height on a
+     taller wall reads as a hatch. Its head sits just above the window heads, which is what a real
+     front door does. */
   ctx.fillStyle = '#6b4a2e';
+  ctx.fillRect(cx - s * 0.09, base - s * 0.50, s * 0.18, s * 0.42);
+  ctx.fillStyle = '#8a6440';
+  ctx.fillRect(cx - s * 0.09, base - s * 0.50, s * 0.18, s * 0.03);
+  ctx.fillStyle = '#d9c07e';
   ctx.beginPath();
-  ctx.moveTo(cx - s * 0.16, base);
-  ctx.lineTo(cx - s * 0.16, base - s * 0.24);
-  ctx.quadraticCurveTo(cx - s * 0.10, base - s * 0.36, cx + s * 0.02, base - s * 0.36);
-  ctx.quadraticCurveTo(cx + s * 0.13, base - s * 0.36, cx + s * 0.13, base - s * 0.24);
-  ctx.lineTo(cx + s * 0.13, base);
-  ctx.closePath();
+  ctx.arc(cx + s * 0.055, base - s * 0.29, s * 0.016, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = '#c9a468';
-  ctx.beginPath();
-  ctx.arc(cx + s * 0.07, base - s * 0.17, s * 0.022, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillStyle = '#9d9279';
+  ctx.fillRect(cx - s * 0.13, base - s * 0.03, s * 0.26, s * 0.03);
 
-  /* the window, lit, with the room showing through it.
-     It sits ON the stem, in the band between the doorway and the wall. It used to be drawn at
-     cx + s*0.33 with rx s*0.115, but the stem's half-width is only s*0.23 — it bulges to s*0.25 at
-     this height and no further — so the window was drawn about 60% off the side of the house,
-     floating over the grass with its own dark outline and its glow lapping back onto the wall. A
-     window has to be on a wall. The free band between the door's right edge (s*0.13) and the stem's
-     (s*0.25 at this height) is s*0.12 wide, and that is what sizes this: rx s*0.053 centred at
-     s*0.190 leaves about a pixel of stem on each side at the 118px the house is actually drawn at. */
-  ctx.fillStyle = '#f4d98d';
-  ctx.beginPath();
-  ctx.ellipse(cx + s * 0.190, base - s * 0.30, s * 0.053, s * 0.075, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(150,108,52,0.55)';
-  ctx.fillRect(cx + s * 0.137, base - s * 0.311, s * 0.106, s * 0.022);
-  ctx.fillStyle = '#7a5636';
-  ctx.lineWidth = Math.max(1.1, s * 0.012);
-  ctx.strokeStyle = '#7a5636';
-  ctx.beginPath();
-  ctx.ellipse(cx + s * 0.190, base - s * 0.30, s * 0.053, s * 0.075, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  /* the glow it throws on the stem */
-  ctx.fillStyle = 'rgba(244,217,141,0.16)';
-  ctx.beginPath();
-  ctx.ellipse(cx + s * 0.190, base - s * 0.30, s * 0.10, s * 0.115, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  /* the cap. A dome seen slightly from below: the underside band is drawn first and darkest, then
-     the dome sits on top of it, so the rim reads as an overhang rather than a hat. */
-  ctx.fillStyle = '#8e3529';
-  ctx.beginPath();
-  ctx.ellipse(cx, base - s * 0.54, s * 0.50, s * 0.17, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#b8483a';
-  ctx.beginPath();
-  ctx.ellipse(cx, base - s * 0.62, s * 0.50, s * 0.34, 0, Math.PI, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#c95646';
-  ctx.beginPath();
-  ctx.ellipse(cx - s * 0.07, base - s * 0.63, s * 0.42, s * 0.29, 0, Math.PI, Math.PI * 2);
-  ctx.fill();
-  /* a soft rim light along the top-left, from the same light as everything else */
-  ctx.strokeStyle = 'rgba(255,222,200,0.30)';
-  ctx.lineWidth = Math.max(1.4, s * 0.022);
-  ctx.beginPath();
-  ctx.ellipse(cx - s * 0.07, base - s * 0.63, s * 0.40, s * 0.275, 0, Math.PI * 1.06, Math.PI * 1.62);
-  ctx.stroke();
-
-  /* the spots */
-  var spots = [[-0.28, -0.70, 0.085], [0.02, -0.83, 0.062], [0.29, -0.68, 0.078],
-               [0.15, -0.63, 0.045], [-0.13, -0.61, 0.048]];
-  ctx.fillStyle = '#f3e8d2';
-  var i;
-  for (i = 0; i < spots.length; i++) {
-    ctx.beginPath();
-    ctx.ellipse(cx + spots[i][0] * s, base + spots[i][1] * s,
-                spots[i][2] * s, spots[i][2] * s * 0.60, 0, 0, Math.PI * 2);
-    ctx.fill();
+  /* TWO LIT WINDOWS, one either side of the door, each in a DARK FRAME with a cross mullion, a
+     stone lintel and a sill. The frame is the fix: without it a lit pane on a pale plaster wall is
+     a flat yellow rectangle, and it read as a patch of light lying on the wall rather than as a
+     window cut into it. The dark surround is what gives the pane an edge to be seen against. */
+  var wx = [-0.27, 0.27], i;
+  for (i = 0; i < 2; i++) {
+    var lx = cx + wx[i] * s - s * 0.065;
+    ctx.fillStyle = '#5a4a33';
+    ctx.fillRect(lx - s * 0.012, base - s * 0.502, s * 0.154, s * 0.205);
+    ctx.fillStyle = '#f4d98d';
+    ctx.fillRect(lx, base - s * 0.49, s * 0.13, s * 0.18);
+    ctx.fillStyle = '#8a6a34';
+    ctx.fillRect(cx + wx[i] * s - s * 0.007, base - s * 0.49, s * 0.014, s * 0.18);
+    ctx.fillRect(lx, base - s * 0.41, s * 0.13, s * 0.013);
+    ctx.fillStyle = '#b9ab8e';
+    ctx.fillRect(lx - s * 0.02, base - s * 0.528, s * 0.178, s * 0.026);
+    ctx.fillStyle = '#8f8570';
+    ctx.fillRect(lx - s * 0.016, base - s * 0.30, s * 0.17, s * 0.022);
   }
 }
 
@@ -2964,10 +3054,11 @@ function drawTileProp(c, r) {
   drawSeedMarkers(c, r);
 
   /* The forest remnant is terrain, not a planted tree, so it needs a canopy of its own or the old
-     forest is a dark green patch with no trees in it. It stays on the tile centre so the canopy
-     runs as one continuous crown. */
+     forest is a dark green patch with no trees in it. The tile's own coordinates go in, because the
+     crown's form, size, height and colour all come off its hash — see drawForestCanopy. It stays on
+     the tile centre so the crowns still close into one canopy. */
   if (t.ter === 'forest' && !t.alien && !t.sp && !t.obj) {
-    drawForestCanopy(cx, base, TW * 0.98 * (0.94 + jit(c, r, 74) * 0.08));
+    drawForestCanopy(cx, base, TW * 1.02, c, r);
   }
   if (t.alien) drawAlien(t.alien, tx, tb, s);
   else if (t.sp) drawTree(t.sp, t.stage, tx, tb, s, t.hollow, c * 31 + r);
