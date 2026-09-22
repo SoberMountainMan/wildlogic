@@ -34,6 +34,29 @@
     background:rgba(255,255,255,.95);box-shadow:0 2px 6px var(--shadow);color:#2f4a58;
     font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
   .hudrow button svg{display:block}
+  /* THE ACTION-POINT COUNTER. It sits on the shoulder opposite the weather pill because those two
+     are the day's two budgets — what the sky gives you, and what your hands can do. Owner,
+     2026-09-22: "how do i continue to play once i use up action points in 2 minutes?" The answer is
+     "come back tomorrow", and the play screen had never said so: `state.ap` reached the DOM in
+     exactly one place, inside the explainer sheet, which opens once and never again. A budget that
+     is enforced but never shown is the same defect as a refusal with no words.
+     It is STACKED rather than one line so the empty message — the one that actually answers the
+     question — still clears the weather pill on a 320px phone. That clearance is measured by the
+     layout check, not trusted from this arithmetic. */
+  .appill{right:12px;top:12px;display:flex;align-items:center;gap:6px;line-height:1.15;
+    font-family:inherit;text-align:left;border:none;cursor:pointer;
+    background:rgba(255,255,255,.93);border-radius:14px;padding:5px 10px 5px 8px;
+    box-shadow:0 2px 6px var(--shadow);color:#2f4a58}
+  .appill svg{display:block;flex:0 0 auto}
+  .appill .apnum{display:flex;flex-direction:column;gap:1px}
+  .appill b{font-size:13px;font-weight:800;line-height:1.1}
+  .appill .aplab{font-size:9.5px;font-weight:700;color:#6b8390;white-space:nowrap}
+  .appill .apdone{display:none}
+  /* Spent out: the pill warms and says what happens next, instead of sitting at 0 saying nothing. */
+  .appill.empty{background:rgba(255,243,209,.96);color:#7d5a1e}
+  .appill.empty .aplab{color:#9a7430}
+  .appill.empty .apdone{display:inline}
+  .appill.empty .aphas{display:none}
   /* The dock floats OVER the canvas rather than sitting under it. On a phone the difference is a
      third of the map: a 60px dock in the layout is 60px of world the player never sees. */
   .dockwrap{position:absolute;left:0;right:0;bottom:0;z-index:6;display:flex;align-items:center;
@@ -162,8 +185,16 @@
      and read as a rendering fault. It also needs the rule and the shadow, or the band reads as
      content being CLIPPED rather than as a footer — measured by `_gate_mistbelt_layout.js`, which
      prints the Close button's distance below the fold for every panel at every shape. */
-  .sheet .close.sticky{position:sticky;bottom:0;background:#16241d;border-top:1px solid #2c4436;
-    box-shadow:0 -8px 14px rgba(0,0,0,.35)}
+  .sheet .close.sticky{position:sticky;bottom:-16px;margin:10px -16px -16px;padding:8px 16px;
+    background:#16241d;border-top:1px solid #2c4436;box-shadow:0 -8px 14px rgba(0,0,0,.35)}
+  /* THE STRIP UNDER THE PINNED BUTTON. A sticky Close sticks to the sheet's PADDING box, so the
+     sheet's own 16px of bottom padding stayed open beneath it and content scrolled through the gap —
+     measured by `_probe_intro_sheet.js` at **19px on all three phone shapes**, with the notes
+     container and a paragraph visibly painting through it. On the explainer's screenshot it read as
+     the last paragraph having escaped the sheet. `bottom:-16px` with matching negative margins
+     pulls the bar down over that padding and out to the sheet's edges, so the band is the bottom of
+     the sheet rather than a button floating above a slot. Same fix covers the field guide, which
+     shares the rule. */
   /* A real 44px target, because the layout gate fails anything under 32px and this is the one
      control that opens the guide. Padding, not a taller line box, so the hit area is the box. */
   .guidebtn{width:100%;margin-top:10px;padding:13px;border-radius:15px;border:1px solid #2c4436;
@@ -186,6 +217,13 @@
   <div id="stage">
     <canvas id="cv" width="390" height="700"></canvas>
     <div class="ov wxpill"><span id="wxIcon"></span><span id="wxText">reading the sky</span></div>
+    <!-- The day's other budget. The number is a placeholder for the first painted frame; renderHud()
+         overwrites it from AP_MAX, and the gate asserts the two agree so the markup cannot drift
+         from the constant the explainer sheet also quotes. -->
+    <button class="ov appill" id="apPill" title="Action points left today">
+      <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M5.4 3h9.2v2.3L10 10l4.6 4.7V17H5.4v-2.3L10 10 5.4 5.3Z" fill="none" stroke="#c08a34" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      <span class="apnum"><b id="apNow">12</b><span class="aplab aphas" id="apHas">left today</span><span class="aplab apdone" id="apDone">back tomorrow</span></span>
+    </button>
     <div class="ov tokens" id="tokenBar"></div>
     <div class="ov hudrow">
       <button id="btnGear" title="The day's board">&#9881;</button>
@@ -230,7 +268,58 @@
       <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a>.
     </footer>
     <button class="guidebtn" id="btnGuide">Field guide &mdash; what to cut, what to plant</button>
+    <button class="guidebtn" id="btnIntro">How this works &mdash; the points, the bin, the seed</button>
     <button class="close" id="notesClose">Close</button>
+  </div>
+</div>
+
+<!-- ============================================================ the explainer
+     THE FIRST THING THE PLAYER SEES, and the owner's ask: "Game probably needs to start with a
+     tutorial and explainer." Every number in here is read from the game's own constants at render
+     time (AP_MAX, BIN_LOAD), not typed into the copy, so the sheet cannot drift from the game the
+     way a hand-written "12 action points" would the day someone changes AP_MAX. The gate asserts
+     that link (§7 of _verify_mistbelt.js).
+     It opens ONCE, on the first load with no save, and is reachable afterwards from the field notes
+     sheet — a one-way door would be the same discoverability failure in a new place. -->
+<div class="modal" id="mIntro" hidden>
+  <div class="sheet dark">
+    <h2 style="color:#dbe8de">How this works</h2>
+    <p class="sub" style="color:#7d9686">Hogsback, the mistbelt forest, and what you spend to bring it back</p>
+    <div class="notes">
+      <h3>What you are doing</h3>
+      <p>Clear the alien trees off the hillside, then plant the indigenous forest back. The
+      yellowwoods at the top of the shelf are the point; everything else is how you get to them.</p>
+
+      <h3>Action points</h3>
+      <p>You get <b id="introAp">12</b> a day, and you have <b id="introLeft">12</b> left today.
+      Cutting a weed and planting a tree both spend them. They come back when the day rolls over —
+      nothing else in the game is rationed, only what you do with your hands.</p>
+
+      <h3>The weather is the currency</h3>
+      <p>The pill at the top is today's real weather at Hogsback. Whatever the day is — sun, mist,
+      rain or snow — is the token you earn, and the seeds cost different tokens. A mist day is worth
+      more here than a sunny one, which is the whole joke of this mountain.</p>
+
+      <h3>The bin is not the shop</h3>
+      <p>The bin in the dock recycles: drop <b id="introBin">3</b> cuttings in and the baboon trades
+      them for a token. To spend tokens on trees, go to the <b>nursery in the village</b>. The bin
+      takes what you cut; the nursery is where you buy what you plant.</p>
+
+      <h3>A cut tree leaves its seed</h3>
+      <p>Cutting an alien drops its seed in the soil, so the same tree can come up again. The small
+      specks left on a cleared tile are that seed — they are why a cleared patch does not stay
+      clear, and why the job is a season rather than an afternoon.</p>
+
+      <h3>The yellowwoods need shade</h3>
+      <p>Old-growth trees will not take in open ground. Plant the pioneers first, let them close
+      over, then put the yellowwoods in underneath. Tapping a tree tells you what it is and what
+      stage it is at.</p>
+    </div>
+    <!-- `sticky`, not a plain Close. Measured by `_probe_intro_sheet.js` on the 390x780 reference
+         phone: the sheet's content is 806px in a 686px sheet, so the button landed **59px below the
+         fold** — the same defect the field guide shipped with. The sheet is the first thing a new
+         player sees, so a Close they cannot reach is the worst possible place for it. -->
+    <button class="close sticky" id="introClose">Start</button>
   </div>
 </div>
 
@@ -395,9 +484,9 @@ var ALIENS = {
              tell: 'Pale and feathery \u2014 many small yellow-green leaflets on grey stems. The ' +
                    'lightest of the four.',
              note: 'Its seed sits in the soil for decades, so a stump is not the end of it.' },
-  pine:    { name: 'Patula pine',      sci: 'Pinus patula',        ap: 2, bank: 3, spread: 2, fruit: false,
-             tell: 'Blue-grey, and the only conifer here \u2014 a stack of triangles with no leaves ' +
-                   'at all.',
+  pine:    { name: 'Pine',             sci: 'Pinus patula',        ap: 2, bank: 3, spread: 2, fruit: false,
+             tell: 'The only conifer here \u2014 a stack of pale green triangles with no leaves at ' +
+                   'all. Nothing else on the plateau is built like it.',
              note: 'Planted for timber. The cones hold their seed until the heat opens them.' },
   bugweed: { name: 'Bugweed',          sci: 'Solanum mauritianum', ap: 1, bank: 2, spread: 4, fruit: true,
              tell: 'Big soft grey-green leaves on one stem, with yellow berries in the middle.',
@@ -537,34 +626,70 @@ function cell(c, r) {
 }
 
 /* The summit, seen from above and to the south. The village sits on the near side of the plateau,
-   the last stand of old forest holds the far corner, and the pond sits up on the eastern shoulder
-   with a bank of wet ground around it and the jetty out over the water.
+   the last stand of old forest holds the far corner, and the stream comes over the north-east rim
+   as a waterfall and runs the whole height of the map, with a bank of wet ground either side of it
+   and the jetty out over the water near the village.
 
    On a 40x40 map these are all DERIVED from VILLAGE rather than being magic numbers, because the
    one thing that must never happen is the village ending up somewhere the camera does not open on. */
 var VILLAGE = { c: 20, r: 26 };
-var POND = { c0: 24, c1: 27, r0: 22, r1: 24 };   /* 4x3, four tiles east and four up from home */
 var REMNANT = 6;                                  /* the old forest is c <= 6, r <= 6 — 49 tiles */
-function pondDist(c, r) {
-  var dc = c < POND.c0 ? POND.c0 - c : (c > POND.c1 ? c - POND.c1 : 0);
-  var dr = r < POND.r0 ? POND.r0 - r : (r > POND.r1 ? r - POND.r1 : 0);
-  return Math.max(dc, dr);
+
+/* THE STREAM, WHICH REPLACES THE RECTANGULAR POND.
+   Owner, 2026-09-21: "instead of one rectangular pond can we get a waterfall at one end that runs a
+   stream across the whole map?"
+   The pond was a 4x3 RECTANGLE pinned to absolute coordinates, so it read as a tank parked on the
+   hillside rather than water that had found its own way down. A stream is a LINE, so it is described
+   as one: for every row there is a column, the water is the tiles on that column, and the bank is
+   either side of it. Two sine terms give the meander so it never repeats on the eye, and both are
+   DAMPED towards the rims — an undamped meander walks the line off the plateau and leaves the
+   stream ending in mid-air a tile short of the edge.
+   The line runs the full height of the map, r = 0 to ROWS-1, which on this grid is the diagonal
+   from the north-east rim to the south-west rim. It crosses every row, so it is a stream you meet
+   wherever you are standing rather than a pond in one corner. */
+/* `half` is how many tiles either side of the centre column are WATER. It was 0 (a one-tile
+   stream) and the owner's verdict on seeing it was "stream is too thin" — measured, that was about
+   **19 CSS px of water on a 390px phone**, a ribbon you had to look for. At half = 1 the water is
+   three tiles across and the bank is one tile either side, which is the widest that still keeps
+   every property the map had: the run is a constant width on every row, it is banked on both sides
+   on every row, it still meanders 6 tiles, and it still clears the village by 4 tiles and the old
+   forest remnant entirely. The cost is **80 of 1431 plantable tiles** (5.6%), measured with
+   `_probe_stream_width.js` before the change rather than guessed at after it. */
+var STREAM = { c: 26, amp: 2.6, half: 1 };
+function streamC(r) {
+  var damp = Math.sin(Math.PI * r / (ROWS - 1));   /* 0 at both rims, 1 in the middle */
+  return STREAM.c + Math.round(damp * (Math.sin(r * 0.55) * STREAM.amp +
+                                       Math.sin(r * 0.23 + 1.7) * STREAM.amp * 0.5));
 }
+function streamDist(c, r) { return Math.abs(c - streamC(r)); }
+/* THE WATERFALL IS THE LAST TILE OF THE RUN, NOT THE FIRST.
+   The first version put it at r = 0 and it never looked like a waterfall however it was drawn —
+   three attempts, each worse. The reason is the MAP'S OWN ORIENTATION, not the art: this plateau is
+   a diamond seen from the south, so r = 0 is the FAR edge. The cliff extrusion runs round the whole
+   outline, but on the far edges the wall is painted and then covered by the plateau's own ground, so
+   the only wall you can SEE is on the near edges — c = 39 and r = 39. A waterfall at r = 0 was
+   therefore falling away from the viewer, behind the plateau, into ground that had already been
+   painted over it. It was invisible by geometry, and the fix was to move it, not to redraw it.
+   At r = ROWS - 1 the stream goes over the near edge and down the wall the player is looking at. */
+function isWaterfall(c, r) { return r === ROWS - 1 && c === streamC(ROWS - 1); }
+
 function terrainAt(c, r) {
-  var d = pondDist(c, r);
-  if (d === 0) return 'water';
-  if (d === 1) return 'bank';
+  var d = streamDist(c, r);
+  if (d <= STREAM.half) return 'water';
+  if (d === STREAM.half + 1) return 'bank';
   if (c <= REMNANT && r <= REMNANT) return 'forest';
   return 'grass';
 }
 
 /* The mushroom house, the nursery, the signpost and the bin, on the near edge of the village, and
-   the jetty out over the pond. These are absolute because a save restores them by coordinate. */
+   the jetty out over the stream. These are absolute because a save restores them by coordinate.
+   The jetty is placed by CALLING streamC() rather than by a hardcoded column: the stream meanders,
+   so a literal column would drift onto dry ground the first time the meander is touched. */
 var PLACES = [[VILLAGE.c, VILLAGE.r, 'house'],
               [VILLAGE.c - 1, VILLAGE.r + 1, 'nursery'],
               [VILLAGE.c + 1, VILLAGE.r + 1, 'sign'],
               [VILLAGE.c, VILLAGE.r + 2, 'bin'],
-              [25, POND.r0 - 1, 'jetty']];
+              [streamC(28) - STREAM.half - 1, 28, 'jetty']];
 
 /* How thickly the aliens have taken each tile. It wants to be a FIELD, so it can be thick on the
    open middle and thin where the old forest still shades the ground and where the village keeps
@@ -621,7 +746,7 @@ function newState() {
     decor: { bench: 0, birdbath: 0, sign: 0, hide: 0, lantern: 0 },
     tiles: t, weather: null, lastDayKey: dayKey(new Date()),
     seen: { seedbank: false, baboon: false, parrot: false, shade: false,
-            toad: false, binbaboon: false, needshade: false, parrotwait: false },
+            toad: false, binbaboon: false, needshade: false, parrotwait: false, intro: false },
     log: [], cleared: 0, planted: 0, bought: 0, recycled: 0,
     /* Parrots resident in the forest. A count, not a flag — see parrotCapacity(). */
     parrots: 0,
@@ -716,6 +841,15 @@ function matureAround(c, r) {
    first. Plant the pioneers, let them close over the ground, and then the yellowwoods will go in. */
 var SHADE_FOR_OLDGROWTH = 2;
 
+/* WHEN THE CANOPY IS CLOSED ENOUGH THAT THE SEED BANK UNDER IT STOPS COMING UP. This is the other
+   half of the same idea, and it is what makes clearing worth doing: without it a cut tile keeps its
+   2-3 lots of seed and sprouts them back on a wet day for ever, so the only thing the player can
+   ever do is cut the same weed again. Measured with `_probe_hook.js`: 2,486 cuts in a year moved the
+   alien count from 418 to 1,296 — the hillside put back 1.35 weeds for every one pulled — and the
+   Amathole toad needs 4 or fewer, so a reward the game advertises could never be earned.
+   THREE, because that is what the shade card has always told the player. */
+var SHADE_CLOSES_SEED = 3;
+
 function needsShade(spKey) {
   var def = SPECIES[spKey];
   return !!def && def.tier >= TIER_OLDGROWTH;
@@ -777,7 +911,17 @@ function tickDay(w) {
       t = cell(c, r);
       if (t.ter !== 'grass' || t.obj) continue;
       if (!t.alien && t.seeds > 0 && k.wet) {
-        var chance = Math.max(0.2, 0.55 - 0.12 * matureAround(c, r));
+        /* THE SEED BANK CLOSES UNDER A CLOSED CANOPY.
+           This read `Math.max(0.2, 0.55 - 0.12 * matureAround)` — a FLOOR of 20% that no amount of
+           shade could get under. Measured over a year: 246 wet days, and 1 - 0.8^246 is a certainty,
+           so a tile ringed by eight mature trees still came back every single time. The game's own
+           shade card promises the opposite in as many words — "Two or three mature trees around a
+           patch and the clearing holds itself" — so the floor was the code contradicting the card,
+           and the Amathole toad (which needs 4 aliens or fewer) was unreachable by construction.
+           Now the curve is UNCHANGED at 0, 1 and 2 mature neighbours (0.55 / 0.43 / 0.31, exactly
+           as before) and only closes where the card says it closes: three. */
+        var shade = matureAround(c, r);
+        var chance = shade >= SHADE_CLOSES_SEED ? 0 : Math.max(0.2, 0.55 - 0.12 * shade);
         if (Math.random() < chance) { t.alien = pickAlien(t); t.seeds -= 1; sprouted++; }
       }
       if (t.alien && Math.random() < 0.10 && t.seeds < 6) t.seeds += 1;
@@ -790,13 +934,30 @@ function tickDay(w) {
     for (c = 0; c < COLS; c++) {
       t = cell(c, r);
       if (!t.alien) continue;
+      /* A WEED UNDER CLOSED CANOPY GOES QUIET. The shade already stops seed coming up and stops it
+         arriving; without this third half, a shaded weed is still a seed factory, so the standing
+         population the player is trying to reduce keeps re-supplying the ground the player has not
+         reached yet. Measured, this is the difference between a treadmill and a front: with only the
+         first two rules the alien count fell from 1,347 to 788 over THREE years and the toad's gate
+         of 4 stayed out of reach; the canopy had to be nearly total before the count moved. */
+      if (matureAround(c, r) >= SHADE_CLOSES_SEED) continue;
       var def = ALIENS[t.alien];
       var tries = k.berg ? def.spread + 1 : def.spread;
       for (i = 0; i < tries; i++) {
         if (Math.random() > 0.18) continue;
         var dr = Math.random() < 0.7 ? 1 : (Math.random() < 0.5 ? 0 : -1);
-        var t2 = cell(c + Math.floor(Math.random() * 3) - 1, r + dr);
-        if (t2 && t2.ter === 'grass' && !t2.obj && t2.seeds < 9) { t2.seeds += 1; spread++; }
+        var tc = c + Math.floor(Math.random() * 3) - 1, tr = r + dr;
+        var t2 = cell(tc, tr);
+        /* AND THE SEED DOES NOT ARRIVE WHERE THE CANOPY IS CLOSED EITHER. Closing the seed bank
+           alone was not enough — measured, it moved the year-end alien count from 1,296 to 1,145
+           and left the toad exactly as unreachable, because a tile that cannot sprout still
+           RECEIVES seed, so the moment anything disturbs the canopy the whole bank is waiting.
+           More importantly the map saturates at ~1,300 of 1,347 grass tiles, and against a
+           saturated map the player's 12 AP buys about 8 cuts a day while the standing weeds throw
+           off seed on every one of them. Shade has to be a WALL, not a delay, or clearing can never
+           gain ground on regrowth and the toad's gate of 4 is unreachable by construction. */
+        if (t2 && t2.ter === 'grass' && !t2.obj && t2.seeds < 9 &&
+            matureAround(tc, tr) < SHADE_CLOSES_SEED) { t2.seeds += 1; spread++; }
       }
     }
   }
@@ -1008,17 +1169,47 @@ function parrotCheck() {
    there is bare open grass again. */
 var TOAD_AT = 4;
 
+/* HOW BIG A PIECE OF OPEN GROUND THE TOAD NEEDS, in tiles of radius. The card has always said
+   "Keep a piece of the hillside open and it stays" — a PIECE. The gate did not measure a piece: it
+   measured `stats().alien` across all 1,600 tiles, so the toad waited for the ENTIRE 40x40 map to be
+   down to four weeds. Measured with `_probe_hook.js`, that is unreachable: the hillside saturates at
+   ~1,300 of 1,347 grass tiles within 90 days and the player's 12 action points buy about 8 cuts a
+   day, so four different policies over horizons from one to three years bottomed out at 418, 272
+   and 788 — never once inside a factor of sixty of the gate. A reward the game advertises could not
+   be earned by any play. It now asks for what the toad actually needs: a clean patch out on the far
+   side, which is a thing a player can clear, shade and hold. */
+/* EIGHT, so the toad asks for a 17x17 piece of the hillside — a fifth of the map — that is
+   essentially free of weeds. Measured at boot: the CLEANEST patch of that size on day one holds 23
+   weeds, so the gate cannot be satisfied by the opening map; at radius 3 it held 3, which is why
+   the first attempt at this had the toad arriving on day 1 without the player doing anything. */
+var TOAD_PATCH = 8;
+
+/* Weeds within a square patch of radius `rad` around a tile. Chebyshev, because that is the shape
+   the shade rules already use (matureAround is the 8 neighbours). */
+function aliensNear(c, r, rad) {
+  var n = 0, dc, dr;
+  for (dr = -rad; dr <= rad; dr++) {
+    for (dc = -rad; dc <= rad; dc++) {
+      var t = cell(c + dc, r + dr);
+      if (t && t.alien) n++;
+    }
+  }
+  return n;
+}
+
 function toadCheck() {
   if (state.seen.toad) return false;
-  if (stats().alien > TOAD_AT) return false;
   /* The toad wants open grassland, so it picks the open grass tile FURTHEST from the village —
      which on a 40x40 map is a long way off, and that is the point: the whole far side of the map
-     is now somewhere worth going. panTo below is what makes it findable. */
+     is now somewhere worth going. panTo below is what makes it findable.
+     The tile it settles on also has to be a CLEAN PATCH, not merely a clean tile: one bare tile in
+     the middle of a weed field is not grassland, and a toad on it would be a toad on a weed field. */
   var i, c, r, t, dc, dr, d, best = -1, pick = -1;
   for (i = 0; i < NTILES; i++) {
     c = i % COLS; r = Math.floor(i / COLS);
     t = state.tiles[i];
     if (t.ter !== 'grass' || t.alien || t.sp || t.obj) continue;
+    if (aliensNear(c, r, TOAD_PATCH) > TOAD_AT) continue;
     dc = c - VILLAGE.c; dr = r - VILLAGE.r;
     d = dc * dc + dr * dr;
     if (d > best) { best = d; pick = i; }
@@ -1215,7 +1406,8 @@ function pad2(x) { return x.length >= 2 ? x : '0' + x; }
    record instead of four and the whole tile string came out misaligned. It failed safe (the
    decoder checks `% 4` and refused), which is the only reason it was a five-minute bug and not a
    corrupted-save bug. */
-function pad3(x) { return x.length >= 3 ? x : (x.length === 2 ? '0' : '00') + x; }
+/* pad3() lived here, padding a run count to three characters for the terrain runs. Removed
+   2026-09-21 along with the terrain encoder it served — see encodeTiles(). */
 
 /* ---------------------------------------------------------------- the tile code
 
@@ -1231,8 +1423,18 @@ function pad3(x) { return x.length >= 3 ? x : (x.length === 2 ? '0' : '00') + x;
        rectangular blocks — it run-lengths to about sixty characters for the entire map — and only
        the ~500 tiles that have something on them need a record at all. That is the one that works.
 
+     UPDATE 2026-09-21: TERRAIN IS NO LONGER STORED AT ALL. The paragraph above assumed terrain
+     arrives in "big rectangular blocks". It did, while the water was a 4x3 pond. The stream that
+     replaced it is a meandering ONE-TILE line, which has no long runs: the same encoder costs 696
+     characters for the same map instead of about 60. But decodeTiles() re-derives every tile from
+     terrainAt(c, r) anyway, because the map is allowed to change under a save, so those characters
+     were being written and then ignored on load. Dropping them makes the code SHORTER than the pond
+     build rather than longer, which is why the size check was not simply widened to fit the stream.
+
    So the tile string is `<terrain runs>|<occupant records>`:
-     terrain   four characters per run: a three-character base-36 count, then 0-3 for the terrain.
+     terrain   EMPTY in a code written by this build: terrain is a rule and is re-derived on load.
+               An older code still carries four characters per run (a three-character base-36 count,
+               then 0-3 for the terrain); those are read and validated, then overwritten.
      occupants two base-64 characters of index, then a kind and its detail:
                  o + code            an object (house, nursery, bin, sign, jetty, decor)
                  s + seeds           a bare tile with a seed bank on it
@@ -1245,16 +1447,23 @@ function i64(s) {
   var a = B64A.indexOf(s.charAt(0)), b = B64A.indexOf(s.charAt(1));
   return a < 0 || b < 0 ? -1 : a * 64 + b;
 }
-function terCode(t) { return t.ter === 'grass' ? 0 : t.ter === 'forest' ? 1 : t.ter === 'water' ? 2 : 3; }
+/* terCode() lived here, mapping a terrain to the 0-3 value the terrain runs used. Removed
+   2026-09-21 with the runs themselves. */
 
 function encodeTiles(tiles) {
-  var ter = '', i, run, t, u;
-  for (i = 0; i < tiles.length; i += run) {
-    t = terCode(tiles[i]);
-    run = 1;
-    while (i + run < tiles.length && terCode(tiles[i + run]) === t) run++;
-    ter += pad3(run.toString(36)) + String(t);
-  }
+  /* TERRAIN IS NOT STORED ANY MORE, because it is a RULE rather than save data: decodeTiles()
+     re-derives every tile from terrainAt(c, r), so the terrain runs were being written and then
+     thrown away on load.
+     That only started to matter when the stream replaced the pond. This format was designed around
+     terrain arriving in "big rectangular blocks" that run-length to ~60 characters for the map. A
+     meandering one-tile line has no long runs to collapse, and the same encoder costs 696 characters
+     for the same map — ten times the size, for data nothing reads. Dropping it makes a save code
+     SHORTER than the pond build, not longer, and that is the honest fix: the alternative was to
+     widen the size check until it stopped complaining.
+     The empty section is still written, so the string keeps its `<terrain>|<occupants>` shape. A save
+     written by an older build does carry terrain runs and still decodes — decodeTiles reads them when
+     they are present and ignores what they say either way. */
+  var ter = '', i, t, u;
   var occ = '';
   for (i = 0; i < tiles.length; i++) {
     t = tiles[i];
@@ -1280,22 +1489,35 @@ function decodeTiles(str) {
   var bar = str.indexOf('|');
   if (bar < 0) return null;
   var ter = str.slice(0, bar), occ = str.slice(bar + 1);
-  if (ter.length === 0 || ter.length % 4 !== 0) return null;
   var out = [], i, p, k, v;
-  for (p = 0; p < ter.length; p += 4) {
-    k = parseInt(ter.substr(p, 3), 36);
-    v = parseInt(ter.charAt(p + 3), 10);
-    if (!isFinite(k) || k < 1 || !isFinite(v) || v > 3) return null;
-    for (i = 0; i < k; i++) {
-      out.push({ ter: TER_FROM[v], alien: null, seeds: 0, sp: null, stage: 0, age: 0,
+  if (ter.length === 0) {
+    /* NO TERRAIN IN THE CODE — it is a rule now, re-derived from terrainAt() further down, so the
+       encoder no longer writes it (see encodeTiles). The bare tiles are built here anyway, because
+       the occupant records below are indexes into this array and need somewhere to land. */
+    for (i = 0; i < NTILES; i++) {
+      out.push({ ter: 'grass', alien: null, seeds: 0, sp: null, stage: 0, age: 0,
                  hollow: false, obj: null });
     }
-    /* A run that would take the map past its own size is a corrupt code, and it must be caught HERE
-       rather than by the length check below — a 46655-tile run would otherwise allocate 46655
-       objects before anybody noticed. */
-    if (out.length > NTILES) return null;
+  } else {
+    /* An older code still carries its terrain runs. They are decoded — a malformed run has to be
+       rejected before anything else is trusted — but what they SAY is then overwritten by
+       terrainAt() below, so a map change reaches a save that is already in progress. */
+    if (ter.length % 4 !== 0) return null;
+    for (p = 0; p < ter.length; p += 4) {
+      k = parseInt(ter.substr(p, 3), 36);
+      v = parseInt(ter.charAt(p + 3), 10);
+      if (!isFinite(k) || k < 1 || !isFinite(v) || v > 3) return null;
+      for (i = 0; i < k; i++) {
+        out.push({ ter: TER_FROM[v], alien: null, seeds: 0, sp: null, stage: 0, age: 0,
+                   hollow: false, obj: null });
+      }
+      /* A run that would take the map past its own size is a corrupt code, and it must be caught HERE
+         rather than by the length check below — a 46655-tile run would otherwise allocate 46655
+         objects before anybody noticed. */
+      if (out.length > NTILES) return null;
+    }
+    if (out.length !== NTILES) return null;
   }
-  if (out.length !== NTILES) return null;
 
   i = 0;
   while (i < occ.length) {
@@ -1329,13 +1551,39 @@ function decodeTiles(str) {
       t.hollow = ho === '1';
     } else return null;
   }
+
+  /* ---- TERRAIN IS A RULE, NOT SAVE DATA -------------------------------------------------------
+     The terrain codes above are still decoded, because a malformed run has to be rejected before
+     anything else is trusted. But the terrain itself is then RE-DERIVED from terrainAt(), because
+     the map is allowed to change underneath a save: the rectangular pond became a stream on
+     2026-09-21, and without this a player on day 110 keeps the old pond for ever and never sees the
+     stream. The only alternative is a VERSION bump, which throws their whole game away.
+     It is exact in the other direction too — terrainAt() is a pure function of (c, r), so a save
+     written by this build decodes to precisely what it encoded. */
+  for (i = 0; i < NTILES; i++) out[i].ter = terrainAt(i % COLS, Math.floor(i / COLS));
+
+  /* Whatever the player had standing on a tile that is no longer ground has to go, or a wattle ends
+     up in the middle of the stream. `obj` is NOT touched here — it holds the player's decor as well
+     as the landmarks, and decodeSave re-places the landmarks itself. */
+  for (i = 0; i < NTILES; i++) {
+    if (out[i].ter !== 'grass' && out[i].ter !== 'forest') {
+      out[i].alien = null; out[i].seeds = 0; out[i].sp = null;
+      out[i].stage = 0; out[i].age = 0; out[i].hollow = false;
+    }
+  }
+
   return out;
 }
 
 function encodeSave(s) {
   var seen = (s.seen.seedbank ? 1 : 0) | (s.seen.baboon ? 2 : 0) | (s.seen.parrot ? 4 : 0) |
              (s.seen.shade ? 8 : 0) | (s.seen.toad ? 16 : 0) | (s.seen.binbaboon ? 32 : 0) |
-             (s.seen.needshade ? 64 : 0) | (s.seen.parrotwait ? 128 : 0);
+             (s.seen.needshade ? 64 : 0) | (s.seen.parrotwait ? 128 : 0) |
+             /* bit 256: has the player been shown the explainer. It goes in THIS mask rather than a
+                new top-level field, because decodeSave REBUILDS `seen` from the mask — a flag kept
+                outside it is dropped on every load and the sheet would reopen forever. An old save
+                code has the bit clear, so a returning player sees the explainer once. */
+             (s.seen.intro ? 256 : 0);
   var bag = '', dec = '', i;
   for (i = 0; i < SP_KEYS.length; i++) bag += clamp(s.bag[SP_KEYS[i]] || 0, 0, 9);
   for (i = 0; i < DECOR_KEYS.length; i++) dec += clamp(s.decor[DECOR_KEYS[i]] || 0, 0, 9);
@@ -1369,13 +1617,22 @@ function decodeSave(code) {
   s.lastDayKey = p.k || dayKey(new Date());
   s.seen = { seedbank: !!(p.s & 1), baboon: !!(p.s & 2), parrot: !!(p.s & 4), shade: !!(p.s & 8),
              toad: !!(p.s & 16), binbaboon: !!(p.s & 32), needshade: !!(p.s & 64),
-             parrotwait: !!(p.s & 128) };
+             parrotwait: !!(p.s & 128), intro: !!(p.s & 256) };
   var tk = String(p.tk || '0.0.0.0').split('.');
   s.tokens = { sun: +tk[0] || 0, mist: +tk[1] || 0, rain: +tk[2] || 0, snow: +tk[3] || 0 };
   var g = String(p.g || '0000'), d = String(p.c || '00000'), i;
   for (i = 0; i < SP_KEYS.length; i++) s.bag[SP_KEYS[i]] = parseInt(g.charAt(i), 10) || 0;
   for (i = 0; i < DECOR_KEYS.length; i++) s.decor[DECOR_KEYS[i]] = parseInt(d.charAt(i), 10) || 0;
   s.tiles = tiles;
+  /* The fixed landmarks are re-placed from PLACES rather than trusted from the save, because their
+     coordinates can move between builds — the jetty moved when the pond became a stream. The STALE
+     copy has to be cleared first, or a save written before the move ends up with TWO jetties: the
+     saved column is not the column PLACES now names, and both are on the bank, so both draw.
+     Only the five landmark keys are cleared. Decor lives in the same `obj` field and it is the
+     player's, so clearing `obj` wholesale would quietly delete their garden. */
+  var LM = {};
+  for (i = 0; i < PLACES.length; i++) LM[PLACES[i][2]] = 1;
+  for (i = 0; i < s.tiles.length; i++) if (LM[s.tiles[i].obj]) s.tiles[i].obj = null;
   for (i = 0; i < PLACES.length; i++) s.tiles[idx(PLACES[i][0], PLACES[i][1])].obj = PLACES[i][2];
   /* The bin is module state, not tile state, so it has to be restored alongside the tiles —
      otherwise a player who cuts two aliens and comes back finds the bin empty and the cuttings
@@ -1977,24 +2234,32 @@ function drawForestCanopy(cx, base, s) {
    brown. Wattle and pine really do have greyish bark, so this is drawn from the plant, not
    invented for the palette.
 
-   THE PINE IS THE ONE EXCEPTION, and it is a measurement rather than a taste call. Its old foliage
-   was #345740 \u2014 three units of 255 from the grass, contrast ratio 1.078 \u2014 so the alien the player
-   is hunting was the one thing they could not see (measured in _tree_contrast.js). The obvious fix,
-   a DARKER pine, fails for the same reason the dark trees did: green carries 0.7152 of the WCAG
-   luminance weight, so #2a5262 keeps green at 82 and still scores only 1.110. It has to go PALE AND
-   COLD instead \u2014 a misty blue-grey conifer, which is unmistakably not one of the warm indigenous
-   greens, and is the right read for an invasive pine anyway. Numbers and the full proposal:
-   PALETTE-PROPOSAL-2026-09-18.md. */
+   THE PINE HAS MOVED TWICE, and both moves were measurements rather than taste.
+   (1) Its ORIGINAL foliage was #345740 \u2014 three units of 255 from the grass, contrast ratio 1.078 \u2014
+   so the alien the player is hunting was the one thing they could not see. A DARKER pine does not
+   fix that: green carries 0.7152 of the WCAG luminance weight, so #2a5262 keeps green at 82 and
+   still scores only 1.110. It went PALE AND COLD instead, a misty blue-grey, which is unmistakably
+   not one of the warm indigenous greens.
+   (2) Owner, 2026-09-21: "can we call the pines just pine? and make them green instead of blue?"
+   The blue was correct but it reads as the wrong tree, so it was measured again rather than argued
+   about (_pine_green_probe.js). The lesson from (1) is that the constraint is LIGHTNESS, not hue:
+   any green DARKER than the grass fails, but a PALE green clears it easily. A pale lime conifer
+   beats the blue-grey on both axes at once \u2014
+       grass contrast            1.430 -> 3.233   (higher = more visible on the ground)
+       nearest indigenous hue   23 -> 38 units   (higher = less like a tree you planted)
+   \u2014 so "make it green" and "keep it findable" were never in conflict; only the dark greens were.
+   The trunk moved with it, to a neutral pale grey-green, so it does not sit blue under a green
+   canopy. Numbers: PALETTE-PROPOSAL-2026-09-18.md and _pine_green_probe.js. */
 function drawAlien(kind, cx, base, s) {
   shadow(cx, base, s * 0.40, s * 0.13);
   var i;
   if (kind === 'pine') {
-    ctx.fillStyle = '#6d8894';
+    ctx.fillStyle = '#8c9a94';
     ctx.fillRect(cx - s * 0.05, base - s * 0.30, s * 0.10, s * 0.30);
     for (i = 0; i < 3; i++) {
       var yy = base - s * (0.30 + i * 0.22);
       var ww = s * (0.42 - i * 0.10);
-      ctx.fillStyle = i === 2 ? '#8aa3ad' : '#546f7b';
+      ctx.fillStyle = i === 2 ? '#a8cbaa' : '#86b489';
       ctx.beginPath();
       ctx.moveTo(cx, yy - s * 0.28);
       ctx.lineTo(cx + ww, yy);
@@ -2522,6 +2787,66 @@ function drawJetty(cx, base, s) {
   ctx.beginPath(); ctx.ellipse(cx, base - s * 0.11, s * 0.40, s * 0.065, 0, 0, Math.PI * 2); ctx.fill();
 }
 
+/* THE WATERFALL. Owner, 2026-09-21: "a waterfall at one end". It stands on the LAST tile of the
+   stream, where the water goes over the near rim of the plateau and down the cliff the player is
+   looking at, so it is drawn FALLING DOWNWARD from the tile's own base and it lands in the mist
+   below the wall. Everything here is measured downward from `base` for that reason; the version
+   that drew it upward was drawing it into the far edge of the map, where the ground had already
+   been painted over the top of it.
+   Drawn at 1.5 tiles because it is a landmark the owner named, and on a 40x40 map a tile-sized
+   feature is invisible from anywhere but standing on it — the same reasoning as the mushroom house.
+
+   It is STREAKS, not bands. The first attempt was three horizontal slabs and it photographed as a
+   stack of blue bricks; the second was a wide flat bar over the top of a column and it read as a
+   grey platform, or a roof on a tower. A fall is water in LINES, it leaves a lip it is seen to come
+   off, and its bottom edge is ragged because the streaks land at different heights. */
+function drawWaterfall(cx, base, s) {
+  var i;
+  /* The rock the water comes through: two blocks with a NOTCH between them, so the water is seen to
+     leave a gap in the ground rather than to start in mid-air. Drawn first, behind the water. */
+  ctx.fillStyle = '#5f6d66';
+  ctx.fillRect(cx - s * 0.46, base - s * 0.06, s * 0.17, s * 0.11);
+  ctx.fillRect(cx + s * 0.29, base - s * 0.06, s * 0.17, s * 0.11);
+  ctx.fillStyle = '#46534d';
+  ctx.fillRect(cx - s * 0.46, base + s * 0.05, s * 0.17, s * 0.04);
+  ctx.fillRect(cx + s * 0.29, base + s * 0.05, s * 0.17, s * 0.04);
+  /* The crest: the water tipping over the lip, the widest and palest part of the fall. */
+  ctx.fillStyle = '#c9e4ee';
+  ctx.fillRect(cx - s * 0.28, base - s * 0.04, s * 0.56, s * 0.09);
+  /* The fall. Each streak is [offset from the centre, width, colour, how far it drops], in units of
+     s. The drops differ so the bottom edge is ragged, and the palest streak runs down the middle
+     because that is where the water aerates. */
+  /* THE SHEET GOES DOWN FIRST, THEN THE STREAKS GO ON IT.
+     The version before this one drew three ribbons side by side and relied on their pitches
+     overlapping. They did not — the two seams came to 0.025s and 0.02s and rendered as a 5px sliver
+     of grey-green and a 3px sliver of wall-brown running the whole height of the fall on a phone.
+     Eight pixels of open background across a waterfall, and every check was green while it was
+     there: all six parts painted, on the right tile, in the right colours, crest inside its ceiling.
+     Nothing had asked whether the water was CONTINUOUS, because a count cannot see a gap and a
+     bounding box around three ribbons with sky between them is exactly the box around one sheet.
+     Painting the water as a solid and the streaks as marks on top of it makes the sheet's
+     continuity STRUCTURAL rather than a matter of arithmetic — there is no pitch left to get wrong,
+     and a later tweak to a streak's width cannot quietly open a hole again. The streaks still land
+     at different heights so the bottom edge stays ragged, and the palest runs down the middle
+     because that is where the water aerates. */
+  var ST = [[-0.155, 0.080, '#a4cfdd', 0.68],
+            [ 0.000, 0.070, '#c9e4ee', 0.80],
+            [ 0.150, 0.075, '#7fb0c4', 0.58]];
+  ctx.fillStyle = '#8dbccc';
+  ctx.fillRect(cx - s * 0.2475, base + s * 0.02, s * 0.495, s * 0.76);
+  for (i = 0; i < ST.length; i++) {
+    ctx.fillStyle = ST[i][2];
+    ctx.fillRect(cx + s * ST[i][0] - s * ST[i][1] / 2, base + s * 0.02,
+                 s * ST[i][1], s * ST[i][3]);
+  }
+  /* Spray where it lands in the mist below the wall, wider than the fall and spilling either side. */
+  ctx.fillStyle = 'rgba(240,250,252,0.85)';
+  ctx.beginPath(); ctx.ellipse(cx, base + s * 0.76, s * 0.30, s * 0.10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath(); ctx.ellipse(cx - s * 0.18, base + s * 0.70, s * 0.10, s * 0.055, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + s * 0.20, base + s * 0.72, s * 0.08, s * 0.05, 0, 0, Math.PI * 2); ctx.fill();
+}
+
 function drawDecor(kind, cx, base, s) {
   if (kind === 'bench') {
     shadow(cx, base, s * 0.24, s * 0.08);
@@ -2609,9 +2934,18 @@ function drawTileProp(c, r) {
      mechanic exists to reward was invisible, and nothing numeric could see it: the toad's tile was
      on the glass and the tile was in the visible set, so every cull and framing check passed. */
   var isToad = !!(toad && toad.c === c && toad.r === r);
+  /* THE WATERFALL STANDS ON A WATER TILE WITH NOTHING ON IT, so it met every one of the bail
+     conditions below and the landmark the owner asked for was never painted — not in one scene, in
+     ANY scene, at any zoom, from the day it was written. Nothing numeric could see it, and this is
+     the exact shape of the toad bug two comments down: the RULE was right and the DRAW CALL never
+     ran. isWaterfall() returned true on the right tile, terrainAt() put water on exactly one tile of
+     row 0, the gate's "there is exactly one waterfall, and it stands on the water" check passed, and
+     the picture showed a stream that stopped dead at the rim. A check on the predicate is not a
+     check on the paint. So it is asked about first, alongside the toad. */
+  var isFalls = isWaterfall(c, r);
   /* Most of a 40x40 map is bare grass with nothing standing on it. Bail before doing any geometry,
      or the cull above just moves the cost from the loop into the body. */
-  if (!isToad && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) && t.ter !== 'forest') return;
+  if (!isToad && !isFalls && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) && t.ter !== 'forest') return;
   var p = project(c, r, groundZ(c, r));
   var cx = p[0], base = p[1] + TH * 0.46;
   /* Trees and aliens get a little size and position scatter. Every one of them the same size on
@@ -2638,8 +2972,12 @@ function drawTileProp(c, r) {
   if (t.alien) drawAlien(t.alien, tx, tb, s);
   else if (t.sp) drawTree(t.sp, t.stage, tx, tb, s, t.hollow, c * 31 + r);
 
-  /* The mushroom house is the landmark the owner named, so it is drawn bigger than a tile — about
-     two tiles across, the way the reference's is — and everything else keeps to its own tile. */
+  /* THE LANDMARKS, and the waterfall is one of them. They are drawn on the tile CENTRE rather than
+     on the scattered tx/tb above, because a placed thing that jitters is a placed thing that looks
+     like it was rolled. The mushroom house is the landmark the owner named, so it is drawn bigger
+     than a tile — about two tiles across, the way the reference's is — and everything else keeps to
+     its own tile. */
+  if (isFalls) drawWaterfall(cx, base, TW * 1.5);
   if (t.obj === 'house') drawHouse(cx, base, TW * 1.90);
   else if (t.obj === 'nursery') drawNursery(cx, base, TW * 1.06);
   else if (t.obj === 'bin') drawBin(cx, base, TW * 0.98, binItems >= BIN_LOAD);
@@ -2947,6 +3285,43 @@ function toast(text, cls) {
 function showModal(el) { if (el) el.hidden = false; }
 function hideModal(el) { if (el) el.hidden = true; }
 
+/* WHAT THE DAY'S BUDGET IS, AND WHAT HAPPENS WHEN IT RUNS OUT.
+   Owner, 2026-09-22: "how do i continue to play once i use up action points in 2 minutes?" The
+   play screen had no answer. The count was never drawn, and the only sentence about it lived in the
+   explainer sheet, which opens once and never again. The two places a refusal already explained
+   itself were the tap on an unaffordable weed and the field guide's footnote; both require the
+   player to already be asking. This is that answer, where the player is standing.
+   Both sentences are built from AP_MAX, never typed, so the copy cannot drift from the constant. */
+function dayDoneLine() {
+  return 'That is the day\u2019s ' + AP_MAX + ' action points \u2014 they come back when the day ' +
+         'rolls over.';
+}
+
+function apSay() {
+  if (state && state.ap > 0) {
+    toast(state.ap + ' of ' + AP_MAX + ' action points left today. Cutting and planting both ' +
+          'spend them.', 'dim');
+  } else {
+    toast(dayDoneLine() + ' You can still plant \u2014 only cutting is rationed.', 'warn');
+  }
+}
+
+/* THE EXPLAINER — the owner's ask: "Game probably needs to start with a tutorial and explainer."
+   Every number in it is read from the game's own constants at render time rather than typed into
+   the copy, so the sheet cannot drift from the game: a hand-written "12 action points" becomes a
+   lie the day someone changes AP_MAX. The gate asserts that link.
+   `introLeft` is live because "you get twelve a day" and "you have two left" are different
+   sentences and the player needs the second one — action points are spent by both cutting and
+   planting and, before this sheet, were never shown anywhere in the UI at all. */
+function renderIntro() {
+  if (els.introAp) els.introAp.textContent = String(AP_MAX);
+  if (els.introBin) els.introBin.textContent = String(BIN_LOAD);
+  if (els.introLeft) {
+    els.introLeft.textContent = String(state && typeof state.ap === 'number' ? state.ap : AP_MAX);
+  }
+}
+function openIntro() { renderIntro(); showModal(els.mIntro); }
+
 function card(title, body, link) {
   if (!els.mCard) return;
   els.cardTitle.textContent = title;
@@ -2975,6 +3350,14 @@ function renderHud() {
       Math.round(w.wind) + ' km/h \u00b7 ' + weatherWord(w);
   }
   renderTokens();
+  /* The day's other budget, and the one thing on the HUD that changes what the player can DO. */
+  if (els.apNow) els.apNow.textContent = String(state.ap);
+  if (els.apPill) {
+    els.apPill.className = 'ov appill' + (state.ap <= 0 ? ' empty' : '');
+    els.apPill.title = state.ap > 0
+      ? state.ap + ' of ' + AP_MAX + ' action points left today'
+      : 'All ' + AP_MAX + ' action points spent \u2014 they come back when the day rolls over';
+  }
   if (els.binBadge) els.binBadge.textContent = String(binItems);
   if (els.btnBox) {
     if (binItems >= BIN_LOAD) els.btnBox.className = 'boxbtn ready';
@@ -3267,6 +3650,9 @@ function drawShopIcon(canvasEl, key, size0, cx0, base0, unit0) {
 function act(c, r) {
   var t = cell(c, r);
   if (!t) return;
+  /* Captured before anything can spend it, so apWatch() can tell "this tap emptied the budget" from
+     "the budget was already empty". */
+  var apBefore = state.ap;
   if (t.obj === 'bin') {
     if (recycle()) { saveLocal(); renderHud(); renderBoard(); }
     return;
@@ -3289,12 +3675,19 @@ function act(c, r) {
          says what it was — the identification the field guide gives, delivered where the player
          actually is. */
       var cd = ALIENS[t.lastAlien];
+      /* THE CUT THAT EMPTIES THE DAY IS ALSO THE CUT WHOSE WEED-NAME IS THE ONLY IDENTIFICATION THE
+         PLAYER EVER GETS for that plant — so the day-done sentence is APPENDED to it rather than
+         shown over it. A first version of this toasted its own message and wiped the name off the
+         last cut of every day; the canvas gate caught it, not the eye. */
+      var lastOfDay = apBefore > 0 && state.ap <= 0;
       if (cd && state.seen.seedbank) {
         /* "1 action points" was live for a few minutes on 2026-09-21 — bugweed and bramble both
            cost 1 AP, and the string was hardcoded plural. The probe caught it, not the eye. */
         toast('Cut ' + cd.name + ' \u2014 ' + cd.ap + ' action point' + (cd.ap === 1 ? '' : 's') +
               '. ' + cd.bank + ' lot' + (cd.bank === 1 ? '' : 's') +
-              ' of seed left in the soil.', 'good');
+              ' of seed left in the soil.' + (lastOfDay ? ' ' + dayDoneLine() : ''), 'good');
+      } else if (lastOfDay) {
+        toast(dayDoneLine(), 'warn');
       }
       saveLocal(); renderHud(); renderBoard();
     } else if (t.alien) {
@@ -3347,6 +3740,10 @@ function act(c, r) {
         'shade is what a yellowwood needs before it will go in.', null);
     }
     saveLocal(); renderHud(); renderBoard();
+    /* Planting has no toast of its own, so the day-done sentence stands alone here. It is worth
+       saying on this path in particular: planting is the one action the budget does NOT stop, and
+       that is the honest answer to "how do i continue to play". */
+    if (apBefore > 0 && state.ap <= 0) toast(dayDoneLine(), 'warn');
   }
 }
 
@@ -3398,7 +3795,9 @@ function resize() {
 function boot() {
   var ids = ['cv', 'stage', 'wxIcon', 'wxText', 'tokenBar', 'btnGear', 'btnBox', 'binBadge', 'dock',
              'notes', 'btnHome', 'btnNotes', 'mNotes', 'notesClose',
+             'apPill', 'apNow',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
+             'mIntro', 'btnIntro', 'introClose', 'introAp', 'introLeft', 'introBin',
              'codeIn', 'btnSave', 'btnLoad', 'mBoard', 'boardDate', 'boardList', 'boardReward',
              'boardClose', 'mShop', 'shopDate', 'shopSeeds', 'shopDecor', 'shopName', 'qty',
              'qMinus', 'qPlus', 'btnBuy', 'tradeRow', 'shopClose', 'mCard', 'cardTitle', 'cardBody',
@@ -3442,6 +3841,17 @@ function boot() {
       note('Day ' + state.day + '. ' + weatherWord(w) + ' over the ridge.', 'dim');
     }
     renderHud(); renderBoard(); renderShop();
+
+    /* THE EXPLAINER OPENS ONCE, and it opens HERE rather than earlier for two reasons. The state
+       has to exist before `seen.intro` can be set; and the save has to happen after the live
+       forecast has been adopted, because saveLocal() here would otherwise persist the season
+       average as the day's weather. `seen.intro` rides the existing bitmask, so an old save code
+       comes back with the bit clear and a returning player gets the sheet once. */
+    if (!state.seen.intro) {
+      state.seen.intro = true;
+      openIntro();
+      saveLocal();
+    }
   });
 
   if (els.boardClose) els.boardClose.addEventListener('click', function () { hideModal(els.mBoard); });
@@ -3449,6 +3859,10 @@ function boot() {
   if (els.cardOk) els.cardOk.addEventListener('click', function () { hideModal(els.mCard); });
   if (els.btnGear) els.btnGear.addEventListener('click', function () { renderBoard(); showModal(els.mBoard); });
   if (els.btnBox) els.btnBox.addEventListener('click', function () { renderShop(); showModal(els.mShop); });
+  /* Tapping the counter asks the question the owner asked. One place to find out what the number
+     means and what happens when it is gone — so a player who has run out does not have to work out
+     that tapping a weed they cannot cut is the way to be told. */
+  if (els.apPill) els.apPill.addEventListener('click', apSay);
 
   /* AN ESCAPE FROM EVERY SHEET. The nursery lists eight seeds, five decor items, a stepper, a buy
      button and a four-chip trade row, so on a phone the sheet is taller than the glass and its own
@@ -3617,6 +4031,10 @@ function boot() {
   if (els.btnNotes) els.btnNotes.addEventListener('click', function () { showModal(els.mNotes); });
   if (els.btnGuide) els.btnGuide.addEventListener('click', function () { renderGuide(); showModal(els.mGuide); });
   if (els.guideClose) els.guideClose.addEventListener('click', function () { hideModal(els.mGuide); });
+  if (els.introClose) els.introClose.addEventListener('click', function () { hideModal(els.mIntro); });
+  /* Re-openable from the field notes sheet. A first-run sheet you can never see again is the same
+     discoverability failure moved to a different screen. */
+  if (els.btnIntro) els.btnIntro.addEventListener('click', function () { openIntro(); });
 
   renderHud(); renderBoard(); renderShop();
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(frame);
@@ -3657,10 +4075,12 @@ var API = {
   TIER_NURSE: TIER_NURSE, TIER_MID: TIER_MID, TIER_OLDGROWTH: TIER_OLDGROWTH, TIER_NAME: TIER_NAME,
   tierPhrase: tierPhrase,
   SHADE_FOR_OLDGROWTH: SHADE_FOR_OLDGROWTH, needsShade: needsShade, shadeShort: shadeShort,
+  SHADE_CLOSES_SEED: SHADE_CLOSES_SEED,
   PARROT_MIX: PARROT_MIX, PARROT_CANOPY: PARROT_CANOPY, forestMix: forestMix,
   PARROT_STEP_CANOPY: PARROT_STEP_CANOPY, PARROT_STEP_MIX: PARROT_STEP_MIX, PARROT_MAX: PARROT_MAX,
   hollowTrees: hollowTrees, nestFor: nestFor, parrotCapacity: parrotCapacity, parrotCheck: parrotCheck,
   AP_MAX: AP_MAX, BIN_LOAD: BIN_LOAD, PLACES: PLACES, TILE_ART: TILE_ART, TOAD_AT: TOAD_AT,
+  TOAD_PATCH: TOAD_PATCH, aliensNear: aliensNear,
   newState: newState, getState: function () { return state; }, setState: function (s) { state = s; },
   setTool: function (t) { tool = t; }, terrainAt: terrainAt,
   tickDay: tickDay, clearAt: clearAt, plantAt: plantAt, placeDecor: placeDecor,
@@ -3676,7 +4096,8 @@ var API = {
   weatherWord: weatherWord, tokenOf: tokenOf, skyKey: skyKey,
   baboonPass: baboonPass, parrotCheck: parrotCheck, toadCheck: toadCheck,
   fruitingIndigenous: fruitingIndigenous, matureAround: matureAround, plantable: plantable,
-  stats: stats, hitTest: hitTest, drawWorld: drawWorld, POND: POND, pondDist: pondDist,
+  stats: stats, hitTest: hitTest, drawWorld: drawWorld,
+  STREAM: STREAM, streamC: streamC, streamDist: streamDist, isWaterfall: isWaterfall,
   /* THE DRAWERS, exported so a reference image can be rendered from the SAME code the game draws
      with. Owner, 2026-09-18: "they need a visual." A field guide that re-implements the tree art is
      a guide to something the game does not draw, and it drifts the first time the art changes. */
@@ -3684,6 +4105,9 @@ var API = {
   /* The guide is exported so a gate can open it and count what it actually built. A guide that is
      only reachable by a finger is a guide no check can see. */
   renderGuide: renderGuide,
+  /* The explainer is exported so the gate can prove the sheet quotes the game's own constants
+     rather than a typed number, and that the flag it sets survives a save round-trip. */
+  renderIntro: renderIntro, openIntro: openIntro,
   TOKEN_ICON: TOKEN_ICON,
   rollBoard: rollBoard, boardTasks: boardTasks, boardProgress: boardProgress,
   boardDone: boardDone, claimBoard: claimBoard, taskGot: taskGot, taskDone: taskDone,
