@@ -649,6 +649,41 @@ var SEASON = [
 
 var state = null, tool = 'cut', cv = null, ctx = null, els = {}, notesEl = null;
 var actors = [], parrot = null, troop = null, binItems = 0, binFlash = 0, toad = null;
+/* NUMBERS THAT RISE OFF A TILE AND FADE. The game's most important action — cutting an alien —
+   banks `def.bank` lots of seed into the ground and said nothing about it, so the single mechanic
+   the whole design turns on was invisible. Owner, 2026-09-29: "Maybe every chop should tell you how
+   many seeds you dropped so you know somethings gonna come up there."
+   Kept in world space (project() coordinates) so they stay on their tile through a pan or a zoom. */
+var floats = [];
+
+function addFloat(c, r, text, colour) {
+  var z = groundZ(c, r), p = project(c, r, z);
+  floats.push({ x: p[0], y: p[1] - TW * 0.42, t: 0, life: 1500, text: text, colour: colour });
+}
+
+function drawFloats(dt) {
+  var i, f, k;
+  for (i = floats.length - 1; i >= 0; i--) {
+    f = floats[i];
+    f.t += dt;
+    if (f.t > f.life) { floats.splice(i, 1); continue; }
+    k = f.t / f.life;
+    /* Rise and fade, with the fade weighted to the second half so the number is readable before it
+       goes. A number that fades from the first frame is a number nobody reads. */
+    var rise = 26 * k;
+    var alpha = k < 0.55 ? 1 : 1 - (k - 0.55) / 0.45;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+    ctx.font = '600 ' + Math.round(TW * 0.34) + 'px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = Math.max(2, TW * 0.055);
+    ctx.strokeStyle = 'rgba(18,28,20,0.85)';
+    ctx.strokeText(f.text, f.x, f.y - rise);
+    ctx.fillStyle = f.colour;
+    ctx.fillText(f.text, f.x, f.y - rise);
+    ctx.restore();
+  }
+}
 
 /* idx and cell keep the (c, r) signature even though the world is now isometric: c is gx (across
    to the lower right) and r is gy (across to the lower left). Keeping the signature is why the
@@ -1409,6 +1444,11 @@ function clearAt(c, r) {
   t.seeds += def.bank;
   state.cleared++;
 
+  /* SAY WHAT THE CHOP DID, ON THE TILE, WHERE THE PLAYER IS LOOKING. `def.bank` lots of seed go into
+     this tile every time it is cut and nothing said so — which is why the loop the whole game turns
+     on read as "chop five things and the day is over" rather than "this will come back". */
+  addFloat(c, r, '+' + def.bank + ' seed' + (def.bank === 1 ? '' : 's'), '#f2e6ae');
+
   /* THE BIN IS SMALL AND WHAT DOES NOT FIT IS LOST — and that is the whole consequence.
      The hillside starts FULL, which is the one thing this game has that a blank-map game does not:
      a sweep of the opening map is a windfall, not a session. A daily cap on the baboon alone just
@@ -1422,6 +1462,7 @@ function clearAt(c, r) {
     binItems += 1;
   } else {
     binWasted += 1;
+    addFloat(c, r, 'bin full — lost', '#eaa9a9');
     if (!state.seen.binwaste) {
       state.seen.binwaste = true;
       card('The bin is full',
@@ -3707,6 +3748,7 @@ function frame(ts) {
 
   drawWorld();
   drawActors(dt);
+  drawFloats(dt);
   ctx.restore();
 
   drawWeather(w);
@@ -4471,7 +4513,70 @@ function boot() {
        - the zoom is anchored on the midpoint between the fingers, so the map does not walk away
          from the player's hands. */
   if (cv && cv.addEventListener) {
-    var ptrs = [], moved = 0, downC = -1, downR = -1;
+    var ptrs = [], moved = 0, downC = -1, downR = -1, holdT = 0, downX = 0, downY = 0;
+
+    /* A BUILDING WINS A TAP OVER ANYTHING DRAWN IN FRONT OF IT.
+       The house, the nursery and the bin are objects whose SPRITE is far larger than their tile —
+       obj_house draws 112 x 106 world px against a 62 x 31 tile — so a tree on the tile in front
+       covers the building's lower half, and `hitTest` maps the tap to the TREE's tile. The building
+       was always wired (`act()` opens the board for the house and the shop for the nursery); it was
+       just unreachable. Owner, 2026-09-29: "the house and nursery get blocked by trees and cant be
+       clicked."
+       So a tap is tested against the buildings' sprite boxes FIRST, and only a miss falls through to
+       the tile grid. The box is 24% wider than the ink so the target is forgiving, and it is scaled
+       by the zoom because these are world sizes. */
+    var BUILD_BOX = { house: [112.5, 105.9], nursery: [81.6, 51.8], bin: [24.4, 43.2], sign: [29.6, 43.2] };
+
+    function buildingAtScreen(x, y) {
+      var i, p, box, z, q, sx, sy, hw, hh;
+      for (i = 0; i < PLACES.length; i++) {
+        p = PLACES[i];
+        box = BUILD_BOX[p[2]];
+        if (!box) continue;
+        z = groundZ(p[0], p[1]);
+        q = project(p[0], p[1], z);
+        sx = q[0] * zoom;
+        sy = q[1] * zoom;
+        hw = box[0] * zoom * 0.62;
+        hh = box[1] * zoom;
+        if (x >= sx - hw && x <= sx + hw && y >= sy - hh * 1.02 && y <= sy + hh * 0.18) {
+          return { c: p[0], r: p[1] };
+        }
+      }
+      return null;
+    }
+
+    /* PRESS AND HOLD TO LOOK AT A TILE WITHOUT ACTING ON IT.
+       Owner, 2026-09-29: "we also need ids when hovering over a tree so you can see whats an alien
+       etc." There was no read-only look at all — every touch acted on whatever it landed on, so a
+       player could not ask "what is that?" about their own hillside. Hold for half a second and it
+       answers; move more than a few pixels and it is a pan, which is the same threshold a tap uses. */
+    function identifyAt(c, r) {
+      var t = cell(c, r), L = [], i;
+      if (!t) return;
+      if (t.ter === 'water') L.push('The stream.');
+      else if (t.ter === 'bank') L.push('Wet bank, one tile out from the water.');
+      else if (t.ter === 'forest') L.push('The old forest remnant.');
+      if (t.alien) {
+        var a = ALIENS[t.alien];
+        L.push(a.name + ' (' + a.sci + ') \u2014 ALIEN. ' + a.tell);
+        L.push('Cutting it leaves ' + a.bank + ' lots of seed behind.');
+      }
+      if (t.sp) {
+        var sp = SPECIES[t.sp];
+        var stage = ['a sapling', 'young', 'mature'][t.stage - 1] || 'growing';
+        L.push(sp.name + ', planted \u2014 ' + stage + '.');
+      }
+      if (t.seeds > 0) {
+        L.push(t.seeds + ' lot' + (t.seeds === 1 ? '' : 's') + ' of alien seed waiting in the ground.');
+      }
+      var sh = matureAround(c, r);
+      if (sh >= SHADE_CLOSES_SEED) L.push('Shade ' + sh + ' \u2014 the seed bank here is closed for good.');
+      else if (sh > 0) L.push(sh + ' mature tree' + (sh === 1 ? '' : 's') + ' shading it.');
+      if (t.obj) L.push('A ' + t.obj + ' stands here.');
+      if (!L.length) L.push('Open ground.');
+      toast(L.join(' '));
+    }
     var pinchD = 0, pinchZ = 1;
 
     var vp = function (ev) {
@@ -4502,6 +4607,16 @@ function boot() {
         var hit = hitTest(p.x, p.y);
         downC = hit ? hit.c : -1;
         downR = hit ? hit.r : -1;
+        downX = p.x; downY = p.y;
+        if (holdT) clearTimeout(holdT);
+        if (downC >= 0) {
+          holdT = setTimeout(function () {
+            holdT = 0;
+            /* Only if the finger is still down and still still. `moved` is reset on pointerdown, so
+               a pan clears this by the movement test below rather than by a second check here. */
+            if (downC >= 0 && moved <= 8) identifyAt(downC, downR);
+          }, 480);
+        }
       } else {
         /* Two fingers down is a pinch and never a tap — including the tap that the FIRST finger
            was about to become. */
@@ -4519,6 +4634,9 @@ function boot() {
       var dx = p.x - ptrs[k].x, dy = p.y - ptrs[k].y;
       ptrs[k].x = p.x; ptrs[k].y = p.y;
       moved += Math.abs(dx) + Math.abs(dy);
+      /* A pan is not a hold. Cancel the identify timer as soon as the finger is clearly moving, or a
+         slow drag would pop a card over the map half a second in. */
+      if (moved > 8 && holdT) { clearTimeout(holdT); holdT = 0; }
       if (ptrs.length >= 2) {
         var d = spread();
         /* A zero or near-zero spread is two fingers on the same pixel, which happens for a frame
@@ -4543,7 +4661,14 @@ function boot() {
         downC = -1; downR = -1;
         return;
       }
-      if (moved <= 8 && downC >= 0) act(downC, downR);
+      if (moved <= 8) {
+        /* The building box is tested at the point the finger came DOWN, not the tile the grid
+           resolved, so a tree standing in front cannot steal the tap. */
+        var bhit = buildingAtScreen(downX, downY);
+        if (bhit) act(bhit.c, bhit.r);
+        else if (downC >= 0) act(downC, downR);
+      }
+      if (holdT) { clearTimeout(holdT); holdT = 0; }
       downC = -1; downR = -1;
     };
     cv.addEventListener('pointerup', lift);
