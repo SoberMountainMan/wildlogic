@@ -194,6 +194,9 @@
   .notes p.warn{color:#e0b070}
   .notes p.dim{color:#7d9686}
   .coderow{display:flex;gap:6px;margin-top:10px}
+  .savenote{font-size:11.5px;line-height:1.4;color:#8aa596;margin:12px 0 2px;
+    border-top:1px solid #2c4436;padding-top:10px}
+  .savenote b{color:#cfe0d4}
   /* THE SAVE BOX COLLAPSED TO A SLIVER. Owner, 2026-09-30: "field notes text overflows its box."
      `flex:1` is `1 1 0%` and `min-width:0` lets the box shrink past its content, so on a row with
      two content-sized buttons the input was the only thing that could give -- and it gave all the
@@ -274,7 +277,7 @@
          from the constant the explainer sheet also quotes. -->
     <button class="ov appill" id="apPill" title="Action points left today">
       <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M5.4 3h9.2v2.3L10 10l4.6 4.7V17H5.4v-2.3L10 10 5.4 5.3Z" fill="none" stroke="#c08a34" stroke-width="1.7" stroke-linejoin="round"/></svg>
-      <span class="apnum"><b id="apNow">12</b><span class="aplab aphas" id="apHas">left today</span><span class="aplab apdone" id="apDone">back tomorrow</span></span>
+      <span class="apnum"><b id="apNow">24</b><span class="aplab aphas" id="apHas">left</span><span class="aplab apdone" id="apDone">+1 in 60 min</span></span>
     </button>
     <div class="ov tokens" id="tokenBar"></div>
     <!-- THE DAY-1 GOAL, and the only tutorial element that is not a card. A first day with no goal is
@@ -308,6 +311,19 @@
     <p class="sub" style="color:#7d9686">What happened, and what to do next</p>
     <div class="notes">
       <div id="notes"></div>
+      <!-- SAY HOW SAVING WORKS, WHERE THE CODE IS.
+           Owner, 2026-09-30: "i dont think people want to lose their progress and im not sure its
+           obvious how to keep it. Is it device specific or could people play same game on different
+           devices?" It IS device-specific -- the game writes to localStorage on this browser -- and
+           the code is the ONLY thing that crosses. Neither of those facts was on screen anywhere, so
+           a player could spend a week on the hillside and not know that clearing their browser data
+           would end it. -->
+      <div class="savenote">
+        <b>Your game is kept on this device</b> — it saves itself, there is nothing to press.
+        Clearing this browser's data will take it, though, and a different device will not have it.
+        <b>To move it, or to keep a backup, use the code below</b>: copy it somewhere safe, and paste
+        it into the box on the other device.
+      </div>
       <div class="coderow">
         <input id="codeIn" placeholder="paste a save code" spellcheck="false" autocomplete="off">
         <button id="btnSave">Save code</button>
@@ -357,6 +373,12 @@
       the whole game, and it takes seasons.</p>
       <p class="dim">The bin takes <b id="introBin">3</b> cuttings and the baboon trades them for
       the day’s token; the nursery is where you spend it. <b>Hold a tile</b> to ask what it is.</p>
+      <!-- THE ONE THING A PLAYER MUST KNOW BEFORE THEY INVEST A WEEK IN IT. Owner, 2026-09-30:
+           "i dont think people want to lose their progress and im not sure its obvious how to keep
+           it." A line here rather than only in the field notes, because the notes are somewhere you
+           go looking for something and this is something you need without knowing to look. -->
+      <p class="dim"><b>Your game saves itself on this device.</b> Field notes &rarr; <b>Save code</b>
+      carries it to another device, or keeps a copy in case this one is lost.</p>
     </div>
     <button class="close" id="introClose">Right</button>
   </div>
@@ -503,7 +525,20 @@ var WY0 = BH + TH / 2 + 4;                     /* cache pixel of world y = 0 */
    that gets "fixed" by somebody who has not read this comment. */
 var GCX = -WX0, GCY = -WY0;
 
-var AP_MAX = 12;
+var AP_MAX = 24;
+/* ONE ACTION POINT AN HOUR, ACCRUED WHILE YOU ARE AWAY.
+   Owner, 2026-09-30: "what would the math be if we made it 24 AP and let it tick up +1 every hours?
+   instead of waiting til midnight, you start on 24 first day, but they replenish one every hours, so
+   two hours wait you could come cut another tree?"
+
+   It replaces the midnight refill rather than adding to it -- a lump at midnight on top of an hourly
+   trickle would be two grants and would double the budget instead of moving it. So the day roll no
+   longer touches AP at all; apAccrue() is the only thing that puts points back.
+
+   THE CEILING IS THE SAFETY. 24 is both the daily grant and the cap, so a week away is still 24 and
+   not 168, and a player who plays once a day gets exactly what an hourly player gets. The trickle
+   does not hand out more than the lump did -- it only removes the wall. */
+var AP_MS = 60 * 60 * 1000;
 var BIN_LOAD = 3;
 /* HOW MUCH THE BIN HOLDS. Small on purpose: the hillside starts FULL, so a free sweep of the
    opening map is a windfall rather than a session, and a small bin is what turns that windfall into
@@ -879,6 +914,10 @@ function newState() {
   for (i = 0; i < PLACES.length; i++) t[idx(PLACES[i][0], PLACES[i][1])].obj = PLACES[i][2];
   return {
     v: VERSION, day: 1, ap: AP_MAX,
+    /* WHEN THE CLOCK STARTED. A fresh save starts FULL, so `apAt` only matters once the first point
+       is spent — but it has to exist from the beginning, or apAccrue() would measure from the epoch
+       and hand a brand new player a full tank it already gave them. */
+    apAt: Date.now(),
     tokens: { sun: 0, mist: 2, rain: 4, snow: 0 },
     /* Two pioneers, not two old-growth trees. A new player handed a yellowwood learns nothing. One
        handed a wild peach and a Cape chestnut plants them, watches the shade close, and finds out
@@ -1045,6 +1084,40 @@ function stats() {
            forestPct: Math.round(mature / Math.max(1, grass) * 100) };
 }
 
+/* HOW MANY POINTS THE CLOCK OWES, AND HOW LONG UNTIL THE NEXT ONE.
+   Both are pure functions of (now - apAt), so the same two lines serve the catch-up on load, the
+   timer while the tab is open, and the countdown on the AP pill. There is no tick to miss: nothing
+   accumulates in a variable that only advances while someone is watching, because that is the bug
+   that would make a closed tab cost the player a day. */
+function apAccrue() {
+  var now = Date.now();
+  if (!state.apAt) state.apAt = now;
+  if (state.ap >= AP_MAX) { state.apAt = now; return 0; }
+  var n = Math.floor((now - state.apAt) / AP_MS);
+  if (n <= 0) return 0;
+  var add = Math.min(n, AP_MAX - state.ap);
+  state.ap += add;
+  /* Advance by WHOLE HOURS ONLY, so the part-hour is kept rather than rounded away -- otherwise a
+     player who checks in every 50 minutes would accrue nothing, for ever. */
+  state.apAt += n * AP_MS;
+  if (state.ap >= AP_MAX) state.apAt = now;
+  return add;
+}
+
+function msToNextAp() {
+  if (!state || state.ap >= AP_MAX) return 0;
+  var since = Date.now() - (state.apAt || Date.now());
+  return Math.max(0, AP_MS - (since % AP_MS));
+}
+
+function apWaitText() {
+  var ms = msToNextAp();
+  if (ms <= 0) return '';
+  var m = Math.ceil(ms / 60000);
+  if (m < 60) return '+1 in ' + m + ' min';
+  return '+1 in ' + Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
+}
+
 function tickDay(w) {
   var k = classify(w);
   var line = [], r, c, t, i;
@@ -1133,7 +1206,10 @@ function tickDay(w) {
   var baboonLine = baboonPass();
 
   state.day += 1;
-  state.ap = AP_MAX;
+  /* AP IS NOT REFILLED HERE ANY MORE. The day roll used to set `state.ap = AP_MAX`; with an hourly
+     accrual that would be a second full grant on top of the trickle, so the budget would double
+     rather than move. apAccrue() is now the only thing that puts points back. */
+  apAccrue();
   note('Day ' + state.day + ' — ' + weatherWord(w).toLowerCase() + '. ' +
     (line.length ? line.join(' ') : 'The hillside held its own.'));
 
@@ -1842,6 +1918,14 @@ function encodeSave(s) {
                      failing to load — which is why adding it did not need a VERSION bump, and why
                      VERSION must still not move (decodeSave refuses any other value). */
                   pr: clamp(s.parrots || 0, 0, 99),
+                  /* WHEN THE AP CLOCK STARTED, in whole MINUTES. Minutes rather than milliseconds
+                     because this rides inside a save code a player copies by hand — ms is 13 digits
+                     and minutes is 8, and an hourly rate cannot tell the difference. A save written
+                     before this field existed comes back with `at` absent, which decodeSave turns
+                     into "now" — so a returning player keeps the points they had and starts
+                     accruing from the moment they load, rather than being handed a full tank for
+                     having been away. */
+                  at: Math.floor((s.apAt || Date.now()) / 60000),
                   tk: s.tokens.sun + '.' + s.tokens.mist + '.' + s.tokens.rain + '.' + s.tokens.snow };
   var body = b64encode(JSON.stringify(payload));
   return 'MB2-' + body + '-' + checksum(body);
@@ -1896,6 +1980,11 @@ function decodeSave(code) {
      gone. decodeSave is the only thing that knows what was in it. */
   binItems = clamp(p.n || 0, 0, 99);
   s.parrots = clamp(p.pr || 0, 0, 99);
+  /* ABSENT MEANS NOW, NOT ZERO. An old save code has no `at`, and zero would measure the accrual
+     from 1970 — which caps at AP_MAX and hands a returning player a full tank for having been away,
+     the opposite of what the field is for. "Now" keeps the points they had and starts the clock
+     when they load. */
+  s.apAt = p.at ? p.at * 60000 : Date.now();
   return s;
 }
 
@@ -3968,9 +4057,16 @@ function renderHud() {
   if (els.apNow) els.apNow.textContent = String(state.ap);
   if (els.apPill) {
     els.apPill.className = 'ov appill' + (state.ap <= 0 ? ' empty' : '');
-    els.apPill.title = state.ap > 0
-      ? state.ap + ' of ' + AP_MAX + ' action points left today'
-      : 'All ' + AP_MAX + ' action points spent \u2014 they come back when the day rolls over';
+    /* THE WAIT IS THE NEW INFORMATION. With a lump at midnight the only honest thing to say was
+       "back tomorrow"; with a point an hour the player needs to know WHEN, because the whole change
+       is that a short wait is now worth having. */
+    var wait = apWaitText();
+    if (els.apHas) els.apHas.textContent = 'left';
+    if (els.apDone) els.apDone.textContent = wait || 'full';
+    els.apPill.title = state.ap >= AP_MAX
+      ? AP_MAX + ' of ' + AP_MAX + ' action points \u2014 full'
+      : (state.ap + ' of ' + AP_MAX + ' action points, one back every hour' +
+         (wait ? ' \u2014 ' + wait.toLowerCase() : ''));
   }
   /* SHOW THE CAP, not just the count. The bin holds BIN_MAX and what does not fit is lost, so
        '4' is not the same information as '4/6' — the player has to be able to see it filling up. */
@@ -4532,6 +4628,19 @@ function boot() {
       el.hidden = false;
     };
     setTimeout(packWatch, 1200);
+
+    /* THE AP CLOCK, WHILE THE TAB IS OPEN. Thirty seconds because the rate is one an hour and the
+       countdown is in minutes — anything faster is wasted work, anything slower makes the countdown
+       visibly wrong. It calls the SAME apAccrue() the load path calls: there is no separate
+       catch-up routine, because two paths that both add points is two paths that can disagree, and
+       the one that disagrees is always the one nobody tested.
+       It saves on accrual so the timestamp persists; without that, closing the tab would rewind the
+       clock to the last save and the player would lose the hour they had just earned. */
+    setInterval(function () {
+      if (!state) return;
+      if (apAccrue() > 0) { saveLocal(); }
+      if (state.ap < AP_MAX) renderHud();
+    }, 30000);
   }
   resize();
   if (typeof addEventListener === 'function') {
@@ -4554,6 +4663,11 @@ function boot() {
   centreOn(VILLAGE.c, VILLAGE.r);
 
   state = loadLocal() || newState();
+  /* THE CATCH-UP, and it is the whole reason the hourly rate needed a stored timestamp: the game
+     only runs while the tab is open, so the points earned overnight exist nowhere until something
+     measures the gap. This is that measurement, and it is the same apAccrue() the live timer calls —
+     a load is just a very long tick. */
+  apAccrue();
 
   var month = new Date().getMonth();
   state.weather = fallbackFor(month);
@@ -4910,7 +5024,10 @@ var API = {
   PARROT_MIX: PARROT_MIX, PARROT_CANOPY: PARROT_CANOPY, forestMix: forestMix,
   PARROT_STEP_CANOPY: PARROT_STEP_CANOPY, PARROT_STEP_MIX: PARROT_STEP_MIX, PARROT_MAX: PARROT_MAX,
   hollowTrees: hollowTrees, nestFor: nestFor, parrotCapacity: parrotCapacity, parrotCheck: parrotCheck,
-  AP_MAX: AP_MAX, BIN_LOAD: BIN_LOAD, PLACES: PLACES, TILE_ART: TILE_ART, TOAD_AT: TOAD_AT,
+  AP_MAX: AP_MAX, AP_MS: AP_MS, BIN_LOAD: BIN_LOAD,
+  /* The AP clock. Exported because the catch-up is a difference between two timestamps and a
+     screenshot cannot see it — the check has to drive the clock rather than look at the HUD. */
+  apAccrue: apAccrue, msToNextAp: msToNextAp, apWaitText: apWaitText, PLACES: PLACES, TILE_ART: TILE_ART, TOAD_AT: TOAD_AT,
   TOAD_PATCH: TOAD_PATCH, aliensNear: aliensNear,
   newState: newState, getState: function () { return state; }, setState: function (s) { state = s; },
   setTool: function (t) { tool = t; }, terrainAt: terrainAt,
