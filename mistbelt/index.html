@@ -45,6 +45,12 @@
   .packwarn{left:10px;right:10px;bottom:10px;z-index:9;background:#5b2020;color:#ffe9e9;
     border:1px solid #a04a4a;border-radius:10px;padding:7px 10px;font-size:11.5px;line-height:1.35;
     font-weight:600;text-align:left}
+  /* STILL ARRIVING IS NOT THE SAME AS BROKEN. The pack is about 16 MB and on a real connection it
+     takes far longer than the three seconds the first version allowed, so the failure banner used to
+     appear over a download that was going perfectly well. A warning that fires on a slow success
+     teaches the player to ignore the one that matters. Calm colours while it loads; red only when it
+     has finished and is still not there. */
+  .packwarn.loading{background:#22303a;color:#d8e6ee;border-color:#4a6b80}
   .wxpill{left:12px;top:12px;display:flex;align-items:center;gap:6px;line-height:1.2;
     background:rgba(255,255,255,.93);border-radius:999px;padding:5px 11px 5px 8px;
     box-shadow:0 2px 6px var(--shadow);font-size:12.5px;font-weight:700;color:#2f4a58}
@@ -4403,17 +4409,41 @@ function boot() {
         el2.hidden = false;
       });
     }
-    setTimeout(function () {
+
+    /* WAIT FOR THE PACK, DO NOT GUESS AT IT.
+       This fired once, three seconds after boot, and reported whatever `status` said. But `adopt()`
+       does NOT set the status — `finish()` does, when every image has loaded — so during the whole
+       download the status is still the initial 'idle'. The pack is about **16 MB** (obj_house.png
+       alone is 1.1 MB), and on a real connection that is far longer than three seconds. So the banner
+       announced "Painted art did not load — this is the drawn fallback. idle" on the live site while
+       the art was arriving perfectly well. **A warning that fires on a slow success is worse than no
+       warning: it teaches the player to ignore the one that means something.**
+       Now it distinguishes the three states it was conflating: still loading, finished and working,
+       finished and broken. Only the last one is a failure. */
+    var packWatch = function () {
       var el = els.packWarn;
       if (!el) return;
-      var ready = (typeof API !== 'undefined' && API && API.sprites && API.sprites.ready)
-        ? API.sprites.ready() : false;
+      var sp = (typeof API !== 'undefined' && API && API.sprites) ? API.sprites : null;
+      if (!sp) { el.hidden = true; return; }
+      var ready = sp.ready ? sp.ready() : false;
       if (ready) { el.hidden = true; return; }
-      var st = (typeof API !== 'undefined' && API && API.sprites && API.sprites.status)
-        ? API.sprites.status() : 'no sprite layer at all';
-      el.textContent = 'Painted art did not load — this is the drawn fallback. ' + st;
+      var pr = sp.progress ? sp.progress() : null;
+      if (pr && pr.want > 0 && pr.got < pr.want) {
+        /* IN PROGRESS — say so quietly, and do not call it a failure. */
+        el.className = 'ov packwarn loading';
+        el.textContent = 'Loading the painted art \u2014 ' + pr.got + ' of ' + pr.want +
+          (pr.failed ? ' (' + pr.failed + ' failed)' : '') + '.';
+        el.hidden = false;
+        setTimeout(packWatch, 400);
+        return;
+      }
+      /* FINISHED, OR NEVER STARTED. Only now is it a failure. */
+      var st = sp.status ? sp.status() : 'no sprite layer at all';
+      el.className = 'ov packwarn';
+      el.textContent = 'Painted art did not load \u2014 this is the drawn fallback. ' + st;
       el.hidden = false;
-    }, 3000);
+    };
+    setTimeout(packWatch, 1200);
   }
   resize();
   if (typeof addEventListener === 'function') {
@@ -5375,6 +5405,9 @@ var SPR = (function () {
 
   var api = {
     start: start,
+    /* HOW FAR THE PACK HAS GOT. Without this the only two states anyone could see were 'idle' and
+       'ready', so a download in progress was indistinguishable from a failure — see the banner. */
+    progress: function () { return { got: nGot, want: nWant, failed: failed.length }; },
     /* So a throw inside start() is readable instead of leaving the status at "idle". */
     fail: function (e) { status = 'the sprite layer threw: ' + ((e && e.message) ? e.message : String(e)); },
     status: function () { return status; },
