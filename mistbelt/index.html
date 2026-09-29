@@ -1862,6 +1862,16 @@ function decodeSave(code) {
      Only the five landmark keys are cleared. Decor lives in the same `obj` field and it is the
      player's, so clearing `obj` wholesale would quietly delete their garden. */
   var LM = {};
+  /* EVERY LANDMARK SLOT THAT HAS EVER EXISTED, not just the ones PLACES still places.
+     This was built from PLACES alone, so when the jetty was taken out of PLACES its key vanished
+     from LM — and the stale jetty sitting in an old save was never cleared. The re-place below then
+     added the four remaining landmarks and left the jetty exactly where it was.
+     Owner, 2026-09-29: "jetty is still there." He was right, and removing a place from the world
+     has to remove it from SAVES too: **the place table governs what a NEW game puts down, and this
+     is the only thing that governs what an OLD one keeps.**
+     Slots 1-5 in OBJ_FROM are the landmarks and 6-9 are the player's decor, so the cut is by CODE
+     rather than by name — a retired landmark can be added to that range and this keeps working. */
+  for (i = 1; i <= 5; i++) if (OBJ_FROM[i]) LM[OBJ_FROM[i]] = 1;
   for (i = 0; i < PLACES.length; i++) LM[PLACES[i][2]] = 1;
   for (i = 0; i < s.tiles.length; i++) if (LM[s.tiles[i].obj]) s.tiles[i].obj = null;
   for (i = 0; i < PLACES.length; i++) s.tiles[idx(PLACES[i][0], PLACES[i][1])].obj = PLACES[i][2];
