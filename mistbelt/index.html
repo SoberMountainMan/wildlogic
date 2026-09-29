@@ -4082,6 +4082,14 @@ function renderShop() {
       var total = def.cost * state.qty;
       els.btnBuy.innerHTML = 'purchase for ' + TOKEN_ICON[def.token] + ' ' + total;
       els.btnBuy.disabled = state.tokens[def.token] < total;
+      /* AND IF IT NEEDS SHADE, SAY SO ON THE BUTTON TOO.
+         I first wrote this to count the mature trees on the tile under the camera, and that is
+         meaningless: the nursery is a MODAL, so the map is covered and there is no spot the player
+         is looking at. A rule is the honest thing to state here; the count belongs at the planting
+         step, where the tile is on screen and `explainShade` already gives it. */
+      if (SPECIES[pick] && needsShade(pick)) {
+        els.btnBuy.innerHTML += ' \u00b7 needs ' + SHADE_FOR_OLDGROWTH + ' mature trees around the spot';
+      }
     } else {
       els.btnBuy.textContent = 'pick something first';
       els.btnBuy.disabled = true;
@@ -4124,7 +4132,13 @@ function fillShopRow(host, keys) {
       /* The layer is on the label because it is the rule: an old-growth tree will not go into open
          ground, so the shelf has to say which trees are the pioneers. */
       pr.innerHTML = TOKEN_ICON[def.token] + ' ' + def.cost +
-        (SPECIES[k] && TIER_NAME[SPECIES[k].tier] ? ' \u00b7 ' + TIER_NAME[SPECIES[k].tier] : '');
+        (SPECIES[k] && TIER_NAME[SPECIES[k].tier] ? ' \u00b7 ' + TIER_NAME[SPECIES[k].tier] : '') +
+        /* AND WHAT IT WILL ASK FOR. The layer name tells you it is old-growth; it does not tell you
+           that means it will not go into open ground. Owner, 2026-09-30: "i bought one yellowwood and
+           then it wouldnt let me plant it." The succession rule is the whole point of the game, and
+           being surprised by it AT THE PLANTING STEP is the wrong place to learn it -- the shelf is
+           where he is deciding, so the shelf is where it belongs. */
+        (SPECIES[k] && needsShade(k) ? ' \u00b7 needs shade (' + SHADE_FOR_OLDGROWTH + ' trees)' : '');
       el.appendChild(nm); el.appendChild(pr);
       el.addEventListener('click', function () { state.pick = k; renderShop(); });
       host.appendChild(el);
