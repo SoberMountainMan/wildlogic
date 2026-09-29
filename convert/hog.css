@@ -1,6 +1,10 @@
 /* Hog Convert — shared styles */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* A `display` set by an author rule BEATS the [hidden] attribute's UA `display:none`, so a control
+   hidden inside a flex parent (e.g. .opts label) stays on screen. Keep [hidden] authoritative. */
+[hidden] { display: none !important; }
+
 :root {
   --bg: #17140f;
   --bg2: #201c15;

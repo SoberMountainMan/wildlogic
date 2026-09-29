@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>PDF to JPG / PNG Image Online Free | Hog Convert</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Turn PDF pages into JPG or PNG images free — right in your browser. No upload, no signup, no page limits. Your document never leaves your device." />
+  <link rel="canonical" href="https://wildlogic.co.za/convert/pdf-to-image.html" />
+  <meta property="og:title" content="PDF → Images — No Upload" />
+  <meta property="og:description" content="Turn PDF pages into JPG or PNG images right in your browser." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wildlogic.co.za/convert/pdf-to-image.html" />
+  <meta property="og:image" content="https://wildlogic.co.za/images/wildlogic_logo_white.png" />
+  <link rel="stylesheet" href="hog.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"Hog Convert PDF to Image","url":"https://wildlogic.co.za/convert/pdf-to-image.html","applicationCategory":"UtilitiesApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"ZAR"}}
+  </script>
+</head>
+<body>
+<div class="wrap">
+  <header class="site">
+    <a class="brand" href="./"><span class="snout">🐗</span> Hog Convert</a>
+    <a class="backlink" href="./">← all tools</a>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="badge">RUNS ON YOUR DEVICE — NO UPLOAD</span>
+      <h1>PDF → Images</h1>
+      <p class="sub">Every page of a PDF, turned into a picture you can drop into a form, a slide or a chat. Pick the pages you want, choose JPG or PNG, and the whole job happens on your own machine — the document is never sent anywhere.</p>
+    </div>
+
+    <section class="tool">
+      <div id="dropzone" class="dropzone">
+        <div class="big">📄</div>
+        <p><b>Drop a PDF here</b> or click to browse<br>One PDF at a time — you choose which pages come out</p>
+      </div>
+      <input type="file" id="fileInput" hidden accept="application/pdf,.pdf" />
+      <ul id="filelist" class="filelist"></ul>
+
+      <div class="opts">
+        <label>Pages
+          <input type="text" id="pagesInp" value="all" placeholder="all, or 1-3,5" />
+        </label>
+        <label>Image type
+          <select id="fmtSel">
+            <option value="image/png" selected>PNG — sharpest, bigger file</option>
+            <option value="image/jpeg">JPG — smaller file</option>
+          </select>
+        </label>
+        <label>Sharpness
+          <select id="scaleSel">
+            <option value="1">1× — screen, smallest</option>
+            <option value="2" selected>2× — recommended</option>
+            <option value="3">3× — print-ish</option>
+            <option value="4">4× — largest</option>
+          </select>
+        </label>
+        <label id="qWrap" hidden>JPG quality
+          <select id="qSel">
+            <option value="0.92" selected>High</option>
+            <option value="0.8">Medium</option>
+            <option value="0.6">Small</option>
+          </select>
+        </label>
+        <button class="run" id="runBtn" disabled>Convert to images</button>
+      </div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="bar" id="progressBar"><div></div></div>
+        <div class="status-line" id="status"></div>
+      </div>
+
+      <div id="result" class="result">
+        <button class="ghost" id="dlAllBtn" disabled>Save all pages</button>
+        <span class="meta" id="resMeta"></span>
+        <ul id="outList" class="filelist"></ul>
+      </div>
+    </section>
+
+    <section class="prose">
+      <h2>Which sharpness do I want?</h2>
+      <p>A PDF page is drawn with lines and letters, not pixels, so it can be rasterised at any size. <b>2×</b> is the honest default — it reads well on screen and prints acceptably. Reach for <b>3×</b> or <b>4×</b> only if the picture is going to be printed or zoomed into; each step up roughly doubles the file size, and a page that hits the browser's canvas ceiling is quietly capped rather than failing.</p>
+      <h2>JPG or PNG?</h2>
+      <p><b>PNG</b> keeps text and line art perfectly crisp and is the right choice for a document page. <b>JPG</b> is much smaller, which matters if you are sending several pages to someone, but it puts faint fuzz around letters — so use it for photographs, not for fine print.</p>
+      <h2>Nothing is uploaded</h2>
+      <p>There is no upload step to intercept and no server copy to leak. The reader, the fonts and the whole renderer are downloaded to your browser once and then run from your own device — you can disconnect from the internet after the page loads and it still works.</p>
+    </section>
+  </main>
+
+  <footer class="site">
+    <span>🐗 Hog Convert · part of <a href="https://wildlogic.co.za">WildLogic</a></span>
+    <nav><a href="merge-pdf.html">Merge PDF</a> <a href="split-pdf.html">Split PDF</a> <a href="images-to-pdf.html">Images → PDF</a></nav>
+    <span>© <span class="year"></span> WildLogic</span>
+  </footer>
+</div>
+<script src="hog.js" defer></script>
+<script defer>
+window.addEventListener('DOMContentLoaded', function () {
+  Hog.stampYear();
+  var file = null;
+  var outUrls = [];
+
+  /* Canvas ceilings. Chrome allows 16384 px on a side but a much smaller TOTAL area
+     before it starts silently handing back a blank canvas, so both are bounded here and
+     a job that would cross them is rendered at a reduced scale and SAYS SO, rather than
+     producing a picture that looks fine and is empty. */
+  var MAX_SIDE = 8192;
+  var MAX_PIXELS = 32e6;
+
+  function pad(n, width) {
+    var s = String(n);
+    while (s.length < width) s = '0' + s;
+    return s;
+  }
+
+  /* "all" or "1-3,5,8-9" -> the 1-based page numbers, in the order written.
+     Anything the reader cannot honour is REFUSED with the reason, never silently
+     dropped: a page range that quietly loses a page is worse than an error. */
+  function parseRange(spec, total) {
+    spec = String(spec == null ? '' : spec).trim().toLowerCase();
+    if (!spec || spec === 'all' || spec === '*') {
+      var every = [];
+      for (var k = 1; k <= total; k++) every.push(k);
+      return { pages: every };
+    }
+    var seen = {}, out = [];
+    var parts = spec.split(',');
+    for (var p = 0; p < parts.length; p++) {
+      var tok = parts[p].trim();
+      if (!tok) continue;
+      var m = /^(\d+)\s*-\s*(\d+)$/.exec(tok);
+      var a, b;
+      if (m) { a = parseInt(m[1], 10); b = parseInt(m[2], 10); }
+      else if (/^\d+$/.test(tok)) { a = b = parseInt(tok, 10); }
+      else return { error: 'I could not read "' + tok + '" as pages. Use all, or numbers like 1-3,5.' };
+      if (a < 1 || b < 1 || a > total || b > total) {
+        return { error: 'This PDF has ' + total + ' page' + (total === 1 ? '' : 's') +
+                        ', so "' + tok + '" is outside it.' };
+      }
+      if (a > b) { var t = a; a = b; b = t; }
+      for (var n = a; n <= b; n++) if (!seen[n]) { seen[n] = 1; out.push(n); }
+    }
+    if (!out.length) return { error: 'No pages were selected.' };
+    return { pages: out };
+  }
+
+  function renderPage(page, reqScale, mime, quality) {
+    var base = page.getViewport({ scale: 1 });
+    var lim = Math.min(MAX_SIDE / base.width, MAX_SIDE / base.height,
+                       Math.sqrt(MAX_PIXELS / (base.width * base.height)));
+    var scale = reqScale, capped = false;
+    if (scale > lim) { scale = lim; capped = true; }
+    var vp = page.getViewport({ scale: scale });
+    var c = document.createElement('canvas');
+    c.width = Math.max(1, Math.floor(vp.width));
+    c.height = Math.max(1, Math.floor(vp.height));
+    var ctx = c.getContext('2d');
+    /* JPG has no alpha channel, and a transparent page exports as black. Lay down paper first. */
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    return page.render({ canvasContext: ctx, viewport: vp }).promise.then(function () {
+      return new Promise(function (res, rej) {
+        c.toBlob(function (b) {
+          if (!b) return rej(new Error('The browser refused to export page ' + page.pageNumber + '.'));
+          res({ blob: b, w: c.width, h: c.height, scale: scale, capped: capped });
+        }, mime, quality);
+      });
+    });
+  }
+
+  function clearOutputs() {
+    outUrls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) {} });
+    outUrls = [];
+    document.getElementById('outList').innerHTML = '';
+    document.getElementById('resMeta').textContent = '';
+    document.getElementById('dlAllBtn').disabled = true;
+    document.getElementById('result').classList.remove('on');
+  }
+
+  document.getElementById('fmtSel').addEventListener('change', function () {
+    document.getElementById('qWrap').hidden = this.value !== 'image/jpeg';
+  });
+
+  document.getElementById('dlAllBtn').addEventListener('click', function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('#outList a'));
+    links.forEach(function (a, i) {
+      setTimeout(function () { a.click(); }, i * 350);
+    });
+  });
+
+  document.getElementById('runBtn').addEventListener('click', function () {
+    var btn = this;
+    if (!file) return;
+
+    var mime = document.getElementById('fmtSel').value;
+    var ext = mime === 'image/png' ? 'png' : 'jpg';
+    var reqScale = parseFloat(document.getElementById('scaleSel').value) || 2;
+    var quality = parseFloat(document.getElementById('qSel').value) || 0.92;
+    var spec = document.getElementById('pagesInp').value;
+    var stem = (file.name.replace(/\.pdf$/i, '') || 'page').replace(/[\\/:*?"<>|]+/g, '_');
+
+    clearOutputs();
+    btn.disabled = true;
+    Hog.showProgress(true);
+    Hog.setProgress(0.03);
+    Hog.status('Reading the PDF…');
+
+    var pdf = null, results = null, outPages = null;
+
+    Hog.readAsUint8(file).then(function (bytes) {
+      Hog.status('Starting the PDF reader…');
+      return Hog.needPdfJs().then(function (lib) {
+        return lib.getDocument({
+          data: bytes,
+          cMapUrl: 'vendor/pdfjs/cmaps/',
+          cMapPacked: true,
+          standardFontDataUrl: 'vendor/pdfjs/standard_fonts/'
+        }).promise;
+      });
+    }).then(function (doc) {
+      pdf = doc;
+      var sel = parseRange(spec, doc.numPages);
+      if (sel.error) throw new Error(sel.error);
+      outPages = sel.pages;
+      Hog.status('Rendering ' + outPages.length + ' of ' + doc.numPages + ' pages…');
+      var chain = Promise.resolve();
+      results = [];
+      outPages.forEach(function (num, i) {
+        chain = chain.then(function () {
+          return pdf.getPage(num).then(function (page) {
+            return renderPage(page, reqScale, mime, quality).then(function (r) {
+              page.cleanup();
+              results.push({ num: num, r: r });
+              Hog.setProgress(0.05 + 0.9 * ((i + 1) / outPages.length));
+              Hog.status('Rendered ' + (i + 1) + ' of ' + outPages.length +
+                         ' (PDF page ' + num + ')…');
+            });
+          });
+        });
+      });
+      return chain;
+    }).then(function () {
+      var width = String(pdf.numPages).length;
+      var list = document.getElementById('outList');
+      var total = 0, capped = false, dims = null;
+
+      results.forEach(function (item, i) {
+        var r = item.r;
+        total += r.blob.size;
+        if (r.capped) capped = true;
+        dims = r.w + ' × ' + r.h;
+        var name = stem + '-page-' + pad(item.num, width) + '.' + ext;
+        var url = URL.createObjectURL(r.blob);
+        outUrls.push(url);
+        var li = document.createElement('li');
+        li.innerHTML = '<b><a download></a></b><span></span>';
+        var a = li.querySelector('a');
+        a.href = url;
+        a.download = name;
+        a.textContent = name;
+        li.querySelector('span').textContent = r.w + ' × ' + r.h + ' · ' + Hog.fmtBytes(r.blob.size);
+        list.appendChild(li);
+      });
+
+      document.getElementById('resMeta').textContent =
+        outPages.length + ' page' + (outPages.length === 1 ? '' : 's') +
+        ' · ' + dims + ' · ' + Hog.fmtBytes(total) +
+        (capped ? ' · some pages were capped to stay inside the browser’s canvas limit' : '') +
+        (outPages.length > 1 ? ' · “Save all pages” may ask your browser to allow multiple downloads' : '');
+      document.getElementById('dlAllBtn').disabled = false;
+      document.getElementById('result').classList.add('on');
+      Hog.setProgress(1);
+      Hog.status('Done — ' + outPages.length + ' image' + (outPages.length === 1 ? '' : 's') + '.', 'ok');
+      btn.disabled = false;
+    }).catch(function (e) {
+      Hog.status('Failed: ' + (e && e.message ? e.message : e), 'err');
+      btn.disabled = false;
+    }).then(function () {
+      if (pdf) { try { pdf.destroy(); } catch (e) {} }
+    });
+  });
+
+  Hog.dropzone(function (picked) {
+    file = null;
+    for (var i = 0; i < picked.length; i++) {
+      if (/\.pdf$/i.test(picked[i].name) || picked[i].type === 'application/pdf') { file = picked[i]; break; }
+    }
+    clearOutputs();
+    var list = document.getElementById('filelist');
+    list.innerHTML = '';
+    if (file) {
+      var li = document.createElement('li');
+      li.innerHTML = '<b></b><span></span>';
+      li.querySelector('b').textContent = file.name;
+      li.querySelector('span').textContent = Hog.fmtBytes(file.size);
+      list.appendChild(li);
+      Hog.status('Ready — pick your pages and press Convert.', 'ok');
+    } else if (picked.length) {
+      Hog.status('That is not a PDF. This tool reads PDF files only.', 'err');
+    }
+    document.getElementById('runBtn').disabled = !file;
+    return !!file;
+  }, { multiple: false, accept: 'application/pdf,.pdf' });
+});
+</script>
+</body>
+</html>

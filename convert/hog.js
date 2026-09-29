@@ -155,6 +155,21 @@
     });
   };
 
+  /* PDF.js from the local vendor copy. pdf-lib can build and edit a PDF but cannot
+     RASTERISE one, so turning pages into images needs a second engine. The worker,
+     the CMaps and the standard fonts all ship from vendor/pdfjs/ too, so the reader
+     keeps working with no network at all — which is what the page promises. */
+  Hog.needPdfJs = function () {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    return Hog.loadScript('vendor/pdfjs/pdf.min.js').then(function () {
+      var lib = window.pdfjsLib;
+      if (!lib || typeof lib.getDocument !== 'function' || !lib.GlobalWorkerOptions)
+        throw new Error('PDF reader failed to initialise — reload the page and try again.');
+      lib.GlobalWorkerOptions.workerSrc = 'vendor/pdfjs/pdf.worker.min.js';
+      return lib;
+    });
+  };
+
   Hog.readAsUint8 = function (file) {
     return file.arrayBuffer().then(function (buf) { return new Uint8Array(buf); });
   };
