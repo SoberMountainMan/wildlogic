@@ -205,7 +205,9 @@
     });
   };
 
-  /* offline shell: pages network-first, assets cache-first (convert/sw.js) */
+  /* offline shell: pages AND our own assets are network-first, CDN cores cache-first (convert/sw.js).
+     Our files must never be cache-first: that is how a returning visitor got a new page against a
+     stale hog.js and lost Hog.needPdfJs. */
   var secure = location.protocol === 'https:' ||
     location.hostname === 'localhost' || location.hostname === '127.0.0.1';
   if ('serviceWorker' in navigator && secure) {

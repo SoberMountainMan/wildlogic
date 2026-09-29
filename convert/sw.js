@@ -1,6 +1,6 @@
 /* Hog Convert offline shell — pages fresh-when-online, cached-when-offline;
    heavy assets cache-first after first use (incl. CDN cores as opaque entries). */
-var CACHE = 'hog-convert-v2';
+var CACHE = 'hog-convert-v3';
 var PRECACHE = ['./', 'hog.css', 'hog.js'];
 
 self.addEventListener('install', function (e) {
@@ -41,6 +41,27 @@ self.addEventListener('fetch', function (e) {
       }).catch(function () {
         return caches.match(req).then(function (hit) { return hit || caches.match('./'); });
       })
+    );
+    return;
+  }
+
+  /* Our OWN files (hog.js, hog.css, anything else on this origin) are small and change
+     every time we ship, so they are NETWORK-FIRST with a cache fallback: online always
+     yields the current bytes, offline still works from the cache. Serving them
+     cache-first is how a returning visitor got a NEW page against a STALE hog.js and hit
+     "Hog.needPdfJs is not a function" — a shared library must not be able to pin itself,
+     because forgetting to bump CACHE is silent and this trap has now fired twice.
+     Third-party CDN cores stay cache-first below: re-downloading the 31 MB ffmpeg core
+     on every visit is exactly what the cache is for, and those bytes never change. */
+  if (sameOrigin) {
+    e.respondWith(
+      fetch(req).then(function (res) {
+        if (res && res.ok) {
+          var copy = res.clone();
+          caches.open(CACHE).then(function (c) { c.put(req, copy); });
+        }
+        return res;
+      }).catch(function () { return caches.match(req); })
     );
     return;
   }

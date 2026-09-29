@@ -94,7 +94,13 @@
     <span>© <span class="year"></span> WildLogic</span>
   </footer>
 </div>
-<script src="hog.js" defer></script>
+<!-- `?v=` is a deliberate cache-buster: hog.js is the file this page needs a NEW symbol
+     from (Hog.needPdfJs), and a visitor whose service worker still holds the previous
+     copy would otherwise get this page against the old library and fail with
+     "Hog.needPdfJs is not a function". A distinct URL cannot be served from the old
+     cache entry, so the first load after a deploy is correct too. sw.js is now
+     network-first for our own files, so this is belt-and-braces. -->
+<script src="hog.js?v=3" defer></script>
 <script defer>
 window.addEventListener('DOMContentLoaded', function () {
   Hog.stampYear();
