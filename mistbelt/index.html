@@ -34,6 +34,12 @@
   canvas#cv{position:absolute;left:0;top:0;display:block;touch-action:none;cursor:pointer;
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
   .ov{position:absolute;z-index:5}
+  /* The day-1 goal. Sits just above the dock so it is read with the bin counter it is about, and is
+     deliberately quiet — it is a nudge, not a quest log. */
+  .goalchip{left:12px;right:12px;bottom:96px;background:rgba(24,34,28,0.82);color:#dfe9e0;
+    border:1px solid rgba(150,180,155,0.35);border-radius:9px;padding:5px 9px;font-size:11.5px;
+    line-height:1.3;text-align:center}
+  .goalchip b{color:#f0e2a8}
   /* Only ever shown when the pack failed to load — see the note on the element. Bottom of the stage
      so it cannot cover the HUD, and dark red so it is not mistaken for part of the game. */
   .packwarn{left:10px;right:10px;bottom:10px;z-index:9;background:#5b2020;color:#ffe9e9;
@@ -249,6 +255,11 @@
       <span class="apnum"><b id="apNow">12</b><span class="aplab aphas" id="apHas">left today</span><span class="aplab apdone" id="apDone">back tomorrow</span></span>
     </button>
     <div class="ov tokens" id="tokenBar"></div>
+    <!-- THE DAY-1 GOAL, and the only tutorial element that is not a card. A first day with no goal is
+         a sandbox, and the goal is what teaches the loop by REQUIRING it: "fill the bin and empty it
+         once" cannot be done without learning the bin's capacity, the baboon, the weather token and
+         the rhythm. Shown on day one, hidden the moment it is done or the day rolls. -->
+    <div class="ov goalchip" id="goalChip" hidden></div>
     <div class="ov hudrow">
       <button id="btnGear" title="The day's board">&#9881;</button>
       <button id="btnHome" title="Back to the village">
@@ -307,46 +318,27 @@
      sheet — a one-way door would be the same discoverability failure in a new place. -->
 <div class="modal" id="mIntro" hidden>
   <div class="sheet dark">
-    <h2 style="color:#dbe8de">How this works</h2>
-    <p class="sub" style="color:#7d9686">Hogsback, the mistbelt forest, and what you spend to bring it back</p>
+    <h2 style="color:#dbe8de">Mistbelt</h2>
+    <p class="sub" style="color:#7d9686">a Hogsback hillside</p>
+    <!-- THREE LINES, NOT A WALL. This was five sections of explainer with a wall of text about the
+         weather, the bin, the nursery and the weeds. A player dismisses that in two seconds and then
+         plays the wrong way, which for this game means sweeping the hillside — the one opening the
+         bin and the seed bank both punish. The three rules go here; everything else is taught by
+         the day-1 beats, at the moment each one becomes true. See DESIGN-BRIEF-DAY-ONE-2026-09-29.md -->
     <div class="notes">
-      <h3>What you are doing</h3>
-      <p>Clear the alien trees off the hillside, then plant the indigenous forest back. The
-      yellowwoods at the top of the shelf are the point; everything else is how you get to them.</p>
-
-      <h3>Action points</h3>
-      <p>You get <b id="introAp">12</b> a day, and you have <b id="introLeft">12</b> left today.
-      Cutting a weed and planting a tree both spend them. They come back when the day rolls over —
-      nothing else in the game is rationed, only what you do with your hands.</p>
-
-      <h3>The weather is the currency</h3>
-      <p>The pill at the top is today's real weather at Hogsback. Whatever the day is — sun, mist,
-      rain or snow — is the token you earn, and the seeds cost different tokens. A mist day is worth
-      more here than a sunny one, which is the whole joke of this mountain.</p>
-
-      <h3>The bin is not the shop</h3>
-      <p>The bin in the dock recycles: drop <b id="introBin">3</b> cuttings in and the baboon trades
-      them for a token. To spend tokens on trees, go to the <b>nursery in the village</b>. The bin
-      takes what you cut; the nursery is where you buy what you plant.</p>
-
-      <h3>A cut tree leaves its seed</h3>
-      <p>Cutting an alien drops its seed in the soil, so the same tree can come up again. The small
-      specks left on a cleared tile are that seed — they are why a cleared patch does not stay
-      clear, and why the job is a season rather than an afternoon.</p>
-
-      <h3>The yellowwoods need shade</h3>
-      <p>Old-growth trees will not take in open ground. Plant the pioneers first, let them close
-      over, then put the yellowwoods in underneath. Tapping a tree tells you what it is and what
-      stage it is at.</p>
+      <p><b>Clear the alien trees off the hillside and plant the indigenous forest back.</b> You get
+      <b id="introAp">12</b> action points a day and have <b id="introLeft">12</b> left today; they
+      come back when the day rolls over.</p>
+      <p><b>Cutting one leaves its seed in the ground</b>, so it comes back. That is why a cleared
+      patch does not stay cleared.</p>
+      <p><b>Three mature trees around a patch and the shade shuts its seed bank for good.</b> That is
+      the whole game, and it takes seasons.</p>
+      <p class="dim">The bin takes <b id="introBin">3</b> cuttings and the baboon trades them for
+      the day’s token; the nursery is where you spend it. <b>Hold a tile</b> to ask what it is.</p>
     </div>
-    <!-- `sticky`, not a plain Close. Measured by `_probe_intro_sheet.js` on the 390x780 reference
-         phone: the sheet's content is 806px in a 686px sheet, so the button landed **59px below the
-         fold** — the same defect the field guide shipped with. The sheet is the first thing a new
-         player sees, so a Close they cannot reach is the worst possible place for it. -->
-    <button class="close sticky" id="introClose">Start</button>
+    <button class="close" id="introClose">Right</button>
   </div>
 </div>
-
 <div class="modal" id="mGuide" hidden>
   <div class="sheet dark">
     <h2 style="color:#dbe8de">Field guide</h2>
@@ -875,7 +867,8 @@ function newState() {
     tiles: t, weather: null, lastDayKey: dayKey(new Date()),
     seen: { seedbank: false, baboon: false, parrot: false, shade: false,
             toad: false, binbaboon: false, needshade: false, parrotwait: false, intro: false,
-            binwaste: false, shadeclosed: false },
+            binwaste: false, shadeclosed: false, planted1: false,
+            rolled1: false },
     log: [], cleared: 0, planted: 0, bought: 0, recycled: 0,
     /* Parrots resident in the forest. A count, not a flag — see parrotCapacity(). */
     parrots: 0,
@@ -1121,6 +1114,21 @@ function tickDay(w) {
   state.ap = AP_MAX;
   note('Day ' + state.day + ' — ' + weatherWord(w).toLowerCase() + '. ' +
     (line.length ? line.join(' ') : 'The hillside held its own.'));
+
+  /* BEAT 7 — THE FIRST ROLL NAMES THE WEATHER. The token colour changes with the day and nothing
+     said why, and the one day of the week the hillside is worth working is a wet one. Say it once,
+     on the first roll, when the player has a day's worth of tokens in hand to compare. */
+  if (!state.seen.rolled1) {
+    state.seen.rolled1 = true;
+    var k0 = classify(w);
+    card('Day ' + state.day + ' \u2014 ' + weatherWord(w).toLowerCase(),
+      (k0.wet
+        ? 'Wet. The seed bank comes up on a day like this, so the hillside will be busy \u2014 and '
+        : 'Dry. Nothing comes up out of the seed bank today; it waits for rain. ')
+      + 'The weather is also the currency: today you earn ' + tokenOf(w) + ' tokens, and the seeds '
+      + 'in the nursery cost whatever the day is not. A mist day is worth more here than a sunny '
+      + 'one, which is the whole joke of this mountain.', null);
+  }
   if (baboonLine) note(baboonLine, 'warn');
   rollBoard(w);
   note(voiceFor(w), 'dim');
@@ -1460,18 +1468,30 @@ function clearAt(c, r) {
      why'. */
   if (binItems < BIN_MAX) {
     binItems += 1;
+    /* WARN WHEN IT FILLS, NOT WHEN IT SPILLS. The card below fires on the cutting that is WASTED,
+       which teaches the rule at the cost of a cutting. Filling the bin is the last moment the
+       player can still act on the advice, so the warning belongs here — one card, at the moment it
+       becomes true, and only once. Beat 4 of DESIGN-BRIEF-DAY-ONE-2026-09-29.md. */
+    if (binItems === BIN_MAX && !state.seen.binwaste) {
+      state.seen.binwaste = true;
+      card('The bin is full',
+        'That is ' + BIN_MAX + ' cuttings, which is all the bin holds. The baboon trades them for ' +
+        'the day\u2019s token \u2014 tap the bin in the dock. ' +
+        'Anything you cut before you empty it is wasted, so this is the moment to stop cutting and ' +
+        'start emptying. Cutting faster than you empty does not earn more, it earns less.', null);
+    }
   } else {
     binWasted += 1;
     addFloat(c, r, 'bin full — lost', '#eaa9a9');
-    if (!state.seen.binwaste) {
+    if (state.seen.binwaste) {
+      note('The bin is full — that cutting is wasted. Empty it and the next one counts.', 'warn');
+    } else {
       state.seen.binwaste = true;
       card('The bin is full',
         'The bin holds ' + BIN_MAX + ' cuttings and it is full, so this one is on the ground. ' +
         'The baboon only trades what fits in the bin, and it trades a few loads a day — so cutting ' +
         'faster than you empty does not earn more, it earns less. Empty the bin and the next ' +
         'cutting counts again.', null);
-    } else {
-      note('The bin is full — that cutting is wasted. Empty it and the next one counts.', 'warn');
     }
   }
 
@@ -1514,6 +1534,17 @@ function plantAt(c, r, spKey) {
   state.ap = Math.max(0, state.ap - 1);
   t.sp = spKey; t.stage = 1; t.age = 0;
   state.planted++;
+
+  /* BEAT 5 — THE FIRST PLANTING, AND THE PROMISE. A sapling is the most disappointing object in the
+     game and the most important, because it is the only thing that leads to shade. Say what it will
+     become, at the moment the player has just spent a token on it. */
+  if (!state.seen.planted1) {
+    state.seen.planted1 = true;
+    card('A sapling gives no shade',
+      'It has to be MATURE before it counts \u2014 that is a few seasons of weather, not a few taps. ' +
+      'Three mature trees around a patch and its seed bank shuts for good. ' +
+      'You will know when it happens.', null);
+  }
 
   /* AND THE CONFIRMATION WHEN A PATCH CLOSES. A tile whose eight neighbours hold three mature trees
      has had its seed bank shut for good — the only permanent progress in the game, and until now it
@@ -3855,6 +3886,18 @@ function renderTokens() {
   bar.innerHTML = html;
 }
 
+function renderGoal() {
+  var el = els.goalChip;
+  if (!el) return;
+  /* THE FIRST DAY HAS ONE GOAL, and it is chosen because it cannot be done without learning the
+     loop: filling the bin teaches its capacity, emptying it teaches the baboon and the weather
+     token, and doing both teaches the rhythm. After day one the game stops setting goals. */
+  if (state.day !== 1 || state.recycled >= BIN_LOAD) { el.hidden = true; return; }
+  el.innerHTML = '<b>Day 1:</b> fill the bin and empty it once — ' + binItems + '/' +
+    BIN_MAX + ' cuttings, then tap the bin in the dock.';
+  el.hidden = false;
+}
+
 function renderHud() {
   var w = state.weather;
   if (!w) return;
@@ -3874,6 +3917,7 @@ function renderHud() {
   }
   /* SHOW THE CAP, not just the count. The bin holds BIN_MAX and what does not fit is lost, so
        '4' is not the same information as '4/6' — the player has to be able to see it filling up. */
+  renderGoal();
   if (els.binBadge) els.binBadge.textContent = binItems + '/' + BIN_MAX;
   if (els.btnBox) {
     if (binItems >= BIN_LOAD) els.btnBox.className = 'boxbtn ready';
@@ -4317,7 +4361,7 @@ function resize() {
 function boot() {
   var ids = ['cv', 'stage', 'packWarn', 'wxIcon', 'wxText', 'tokenBar', 'btnGear', 'btnBox', 'binBadge', 'dock',
              'notes', 'btnHome', 'btnNotes', 'mNotes', 'notesClose',
-             'apPill', 'apNow',
+             'apPill', 'apNow', 'goalChip',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
              'mIntro', 'btnIntro', 'introClose', 'introAp', 'introLeft', 'introBin',
              'codeIn', 'btnSave', 'btnLoad', 'mBoard', 'boardDate', 'boardList', 'boardReward',
