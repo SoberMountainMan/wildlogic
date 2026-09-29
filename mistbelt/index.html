@@ -5703,6 +5703,9 @@ var SPR = (function () {
     /* HOW FAR THE PACK HAS GOT. Without this the only two states anyone could see were 'idle' and
        'ready', so a download in progress was indistinguishable from a failure — see the banner. */
     progress: function () { return { got: nGot, want: nWant, failed: failed.length }; },
+    /* WHICH TILE THE GAME ACTUALLY PICKS for a water or bank cell. The pack containing a tile and
+       the game choosing it are different facts, and only the second one is on screen. */
+    edgeId: function (c, r, ter) { return ter === "bank" ? bankEdgeId(c, r) : riverEdgeId(c, r); },
     /* So a throw inside start() is readable instead of leaving the status at "idle". */
     fail: function (e) { status = 'the sprite layer threw: ' + ((e && e.message) ? e.message : String(e)); },
     status: function () { return status; },
