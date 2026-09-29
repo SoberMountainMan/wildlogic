@@ -28,3 +28,7 @@ output/
 
 # Internal tools (not public pages)
 admin/
+
+# Local scratch
+mistbelt/_harness.html
+*.bak-*

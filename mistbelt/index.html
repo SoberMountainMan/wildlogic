@@ -15,13 +15,30 @@
     background:#16241d;
     font:15px/1.45 ui-rounded,"Segoe UI",system-ui,-apple-system,sans-serif;color:var(--ink)}
   /* A phone game. The column is capped so a desktop browser shows a phone-shaped game rather than
-     a 2000px-wide hillside, but on the phone it is the full width of the glass. */
+     a 2000px-wide hillside, but on the phone it is the full width of the glass.
+     THAT CAP COMES OFF PAST A TABLET, because a desktop window is not a phone and the owner asked
+     for the opposite of a phone-shaped game on it: "could we make it responsive so browser fills?
+     would be better on desktop if you could see whole map." So past 720px the world gets the whole
+     window, and the HUD rows keep a readable width and stay centred — a dock stretched across
+     1600px is worse than a dock in the middle. Portrait is untouched, so the phone layout, the
+     shot harness and every check that assumes a phone viewport still hold. */
   #app{height:100vh;height:100dvh;max-width:560px;margin:0 auto;background:#16241d;
     display:flex;flex-direction:column}
+  @media (min-width:720px){
+    #app{max-width:none}
+    .dockwrap{justify-content:center}
+    .dock{flex:0 1 auto;max-width:900px}
+    .notes{max-width:640px;left:50%;transform:translateX(-50%)}
+  }
   #stage{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;line-height:0}
   canvas#cv{position:absolute;left:0;top:0;display:block;touch-action:none;cursor:pointer;
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
   .ov{position:absolute;z-index:5}
+  /* Only ever shown when the pack failed to load — see the note on the element. Bottom of the stage
+     so it cannot cover the HUD, and dark red so it is not mistaken for part of the game. */
+  .packwarn{left:10px;right:10px;bottom:10px;z-index:9;background:#5b2020;color:#ffe9e9;
+    border:1px solid #a04a4a;border-radius:10px;padding:7px 10px;font-size:11.5px;line-height:1.35;
+    font-weight:600;text-align:left}
   .wxpill{left:12px;top:12px;display:flex;align-items:center;gap:6px;line-height:1.2;
     background:rgba(255,255,255,.93);border-radius:999px;padding:5px 11px 5px 8px;
     box-shadow:0 2px 6px var(--shadow);font-size:12.5px;font-weight:700;color:#2f4a58}
@@ -216,6 +233,13 @@
 <div id="app">
   <div id="stage">
     <canvas id="cv" width="390" height="700"></canvas>
+    <!-- SAYS SO ON SCREEN WHEN THE PAINTED ART DID NOT LOAD.
+         The pack is fetched at runtime, so a failure used to be invisible: the game simply drew its
+         code art and looked like an older build. That cost a full round of "no new sprites" and
+         "its blue grass" that were really one failed fetch, and a second round of me proving the
+         fetch worked in a browser that was not the owner's. A failure the player can see is worth
+         more than a console line nobody reads. Hidden unless the pack actually fails. -->
+    <div class="ov packwarn" id="packWarn" hidden></div>
     <div class="ov wxpill"><span id="wxIcon"></span><span id="wxText">reading the sky</span></div>
     <!-- The day's other budget. The number is a placeholder for the first painted frame; renderHud()
          overwrites it from AP_MAX, and the gate asserts the two agree so the markup cannot drift
@@ -382,6 +406,10 @@
   </div>
 </div>
 
+<!-- MB-MANIFEST-START — 91 assets, generated 2026-09-28 -->
+<script>typeof window!=='undefined'&&(window.__MB_MANIFEST={"pack":"Mistbelt AI art pack","generated":"2026-09-23","round_3":"ART-BRIEF-2026-09-27, assembled 2026-09-28","brief":"ASSET-PACK-BRIEF-2026-09-22.md","briefs":["ASSET-PACK-BRIEF-2026-09-22.md","EDIT-REQUEST-2026-09-23.md","ART-BRIEF-2026-09-27.md"],"tool":"Qoder ImageGen, 1024-class native output, magenta #FF00FF key","counts":{"assets":91,"ships_in_pack":87,"optional_parked":4,"trees":30,"weeds":4,"ground_tiles":35,"crown_tiles":5,"landmarks":2,"decor":6,"waterfall":4,"animals":5,"river_autotiles":20},"integration_notes":["REF has no 'animal' key in _sprite_layer.js, so sRef() falls back to TW * 0.78. ART-BRIEF-2026-09-27 5 sized the five animals at s = s_ref = TW * 0.98, the decor scale, so without adding `animal: TW * 0.98` to REF every animal draws at 79.6% of the intended height. That is the one game-side line this pack needs.","tile() picks 'ter_' + t.ter + '_v' + hash, so the sixteen edge-mask tiles are not reachable yet: nothing selects them. qa/QA-RESULTS.json carries each tile's measured edge_material per edge and the list of tiles it mates with, which is the table to build the lookup from. ter_water_v1..3 are the fully-surrounded channel centre.","Edges are named clockwise from the upper-left: north = upper-left edge, east = upper-right, south = lower-right, west = lower-left. north/south are one parallel pair and east/west the other, so a channel along one grid axis banks on N+S and along the other on E+W.","obj_crag and ter_streammouth are in the waterfall family to inherit its draw scale but are FOOT-anchored at base_point like every other sprite, not rim-anchored at y=40 the way ter_waterfall_v1 is."],"ids_use_game_keys":"species: yellowwood stinkwood chestnut knobwood outeniqua ironwood wildpeach whitepair | aliens: wattle pine bugweed bramble | objects: house bin bench birdbath sign hide lantern | terrain: grass forest water bank","assets":[{"id":"yellowwood_sapling","file":"pack/yellowwood_sapling.png","family":"sapling","cell_px":[115,142],"base_point":[57,131],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1328,516],"raw_ink_ratio":0.4019,"resample_pct":101.5,"widest_row_offset":null,"leaf_hue":132.4,"leaf_rgb":[86,117,93],"canopy_in_band_pct":27.2,"edge_clear_pct":null,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.136,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"yellowwood_young","file":"pack/yellowwood_young.png","family":"young","cell_px":[215,375],"base_point":[107,345],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1875,911],"raw_ink_ratio":0.5021,"resample_pct":14.2,"widest_row_offset":null,"leaf_hue":136.8,"leaf_rgb":[35,70,44],"canopy_in_band_pct":48.9,"edge_clear_pct":76.7,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0387,"ground_spread":null,"carried_contrast":1.659,"mouth":null,"flags":[]},{"id":"yellowwood_mature","file":"pack/yellowwood_mature.png","family":"mature","cell_px":[379,670],"base_point":[189,617],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1838,1014],"raw_ink_ratio":0.5703,"resample_pct":-0.8,"widest_row_offset":null,"leaf_hue":136.5,"leaf_rgb":[33,60,40],"canopy_in_band_pct":63.9,"edge_clear_pct":73,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0283,"ground_spread":null,"carried_contrast":1.793,"mouth":null,"flags":[]},{"id":"outeniqua_sapling","file":"pack/outeniqua_sapling.png","family":"sapling","cell_px":[115,142],"base_point":[57,131],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1313,800],"raw_ink_ratio":0.6296,"resample_pct":28.6,"widest_row_offset":null,"leaf_hue":147.2,"leaf_rgb":[96,121,107],"canopy_in_band_pct":39.9,"edge_clear_pct":null,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1421,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"outeniqua_young","file":"pack/outeniqua_young.png","family":"young","cell_px":[215,375],"base_point":[107,345],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1816,908],"raw_ink_ratio":0.5167,"resample_pct":11,"widest_row_offset":null,"leaf_hue":152.7,"leaf_rgb":[48,90,71],"canopy_in_band_pct":53.8,"edge_clear_pct":62.2,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0693,"ground_spread":null,"carried_contrast":1.442,"mouth":null,"flags":["WEAK 1.44"]},{"id":"outeniqua_mature","file":"pack/outeniqua_mature.png","family":"mature","cell_px":[379,670],"base_point":[189,616],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1942,885],"raw_ink_ratio":0.4711,"resample_pct":20.1,"widest_row_offset":null,"leaf_hue":154.2,"leaf_rgb":[39,80,62],"canopy_in_band_pct":59,"edge_clear_pct":61.6,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0593,"ground_spread":null,"carried_contrast":1.454,"mouth":null,"flags":[]},{"id":"ironwood_sapling","file":"pack/ironwood_sapling.png","family":"sapling","cell_px":[115,142],"base_point":[57,131],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1220,837],"raw_ink_ratio":0.709,"resample_pct":14.2,"widest_row_offset":null,"leaf_hue":139.8,"leaf_rgb":[90,109,96],"canopy_in_band_pct":35.7,"edge_clear_pct":null,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1277,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ironwood_young","file":"pack/ironwood_young.png","family":"young","cell_px":[215,375],"base_point":[107,346],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1430,1035],"raw_ink_ratio":0.7478,"resample_pct":-23.3,"widest_row_offset":null,"leaf_hue":148.6,"leaf_rgb":[115,139,127],"canopy_in_band_pct":64.2,"edge_clear_pct":78.7,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1644,"ground_spread":null,"carried_contrast":2.504,"mouth":null,"flags":[]},{"id":"ironwood_mature","file":"pack/ironwood_mature.png","family":"mature","cell_px":[379,670],"base_point":[189,617],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1553,1063],"raw_ink_ratio":0.7077,"resample_pct":-20.1,"widest_row_offset":null,"leaf_hue":145.5,"leaf_rgb":[110,127,117],"canopy_in_band_pct":60.7,"edge_clear_pct":73.2,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1183,"ground_spread":null,"carried_contrast":1.916,"mouth":null,"flags":[]},{"id":"stinkwood_sapling","file":"pack/stinkwood_sapling.png","family":"sapling","cell_px":[115,142],"base_point":[57,131],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1193,663],"raw_ink_ratio":0.5744,"resample_pct":41,"widest_row_offset":null,"leaf_hue":140.5,"leaf_rgb":[119,167,135],"canopy_in_band_pct":68.2,"edge_clear_pct":null,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.332,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"stinkwood_young","file":"pack/stinkwood_young.png","family":"young","cell_px":[215,375],"base_point":[107,345],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1783,990],"raw_ink_ratio":0.574,"resample_pct":-0.1,"widest_row_offset":null,"leaf_hue":136.7,"leaf_rgb":[89,146,105],"canopy_in_band_pct":55.9,"edge_clear_pct":83.7,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.2198,"ground_spread":null,"carried_contrast":2.468,"mouth":null,"flags":[]},{"id":"stinkwood_mature","file":"pack/stinkwood_mature.png","family":"mature","cell_px":[379,670],"base_point":[189,617],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1821,1018],"raw_ink_ratio":0.578,"resample_pct":-2.1,"widest_row_offset":null,"leaf_hue":134.5,"leaf_rgb":[85,138,98],"canopy_in_band_pct":40.3,"edge_clear_pct":64.1,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.181,"ground_spread":null,"carried_contrast":2.145,"mouth":null,"flags":[]},{"id":"knobwood_sapling","file":"pack/knobwood_sapling.png","family":"sapling","cell_px":[115,142],"base_point":[57,131],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1335,885],"raw_ink_ratio":0.6852,"resample_pct":18.2,"widest_row_offset":null,"leaf_hue":139.6,"leaf_rgb":[108,150,121],"canopy_in_band_pct":40,"edge_clear_pct":null,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.2394,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"knobwood_young","file":"pack/knobwood_young.png","family":"young","cell_px":[215,375],"base_point":[107,345],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1788,922],"raw_ink_ratio":0.533,"resample_pct":7.6,"widest_row_offset":null,"leaf_hue":142.1,"leaf_rgb":[75,122,92],"canopy_in_band_pct":59.5,"edge_clear_pct":64.9,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1492,"ground_spread":null,"carried_contrast":1.827,"mouth":null,"flags":[]},{"id":"knobwood_mature","file":"pack/knobwood_mature.png","family":"mature","cell_px":[379,670],"base_point":[189,617],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1804,1061],"raw_ink_ratio":0.6077,"resample_pct":-6.9,"widest_row_offset":null,"leaf_hue":135.1,"leaf_rgb":[57,113,71],"canopy_in_band_pct":59.5,"edge_clear_pct":62.8,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.105,"ground_spread":null,"carried_contrast":1.533,"mouth":null,"flags":[]},{"id":"whitepair_sapling","file":"pack/whitepair_sapling.png","family":"sapling","cell_px":[115,142],"base_point":[57,131],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1282,770],"raw_ink_ratio":0.6205,"resample_pct":30.5,"widest_row_offset":null,"leaf_hue":135.4,"leaf_rgb":[93,146,107],"canopy_in_band_pct":62.9,"edge_clear_pct":null,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.2084,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"whitepair_young","file":"pack/whitepair_young.png","family":"young","cell_px":[215,375],"base_point":[107,345],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1810,1013],"raw_ink_ratio":0.5785,"resample_pct":-0.9,"widest_row_offset":null,"leaf_hue":130.1,"leaf_rgb":[70,109,77],"canopy_in_band_pct":47.7,"edge_clear_pct":67.4,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1095,"ground_spread":null,"carried_contrast":1.69,"mouth":null,"flags":[]},{"id":"whitepair_mature","file":"pack/whitepair_mature.png","family":"mature","cell_px":[379,670],"base_point":[189,616],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1862,1068],"raw_ink_ratio":0.5932,"resample_pct":-4.6,"widest_row_offset":null,"leaf_hue":134.2,"leaf_rgb":[61,98,70],"canopy_in_band_pct":42.8,"edge_clear_pct":64.3,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0835,"ground_spread":null,"carried_contrast":1.711,"mouth":null,"flags":[]},{"id":"chestnut_sapling","file":"pack/chestnut_sapling.png","family":"sapling","cell_px":[115,142],"base_point":[57,131],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1216,620],"raw_ink_ratio":0.5268,"resample_pct":53.7,"widest_row_offset":null,"leaf_hue":139.7,"leaf_rgb":[102,167,123],"canopy_in_band_pct":63.4,"edge_clear_pct":null,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.3056,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"chestnut_young","file":"pack/chestnut_young.png","family":"young","cell_px":[215,375],"base_point":[107,346],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1719,1025],"raw_ink_ratio":0.6163,"resample_pct":-7,"widest_row_offset":null,"leaf_hue":141.8,"leaf_rgb":[64,121,85],"canopy_in_band_pct":50.2,"edge_clear_pct":72.2,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1803,"ground_spread":null,"carried_contrast":2.168,"mouth":null,"flags":[]},{"id":"chestnut_mature","file":"pack/chestnut_mature.png","family":"mature","cell_px":[379,670],"base_point":[189,617],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1746,1055],"raw_ink_ratio":0.6248,"resample_pct":-9.5,"widest_row_offset":null,"leaf_hue":127.9,"leaf_rgb":[76,110,80],"canopy_in_band_pct":30.9,"edge_clear_pct":70.5,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1618,"ground_spread":null,"carried_contrast":2.191,"mouth":null,"flags":["HUE 127.9"]},{"id":"wildpeach_sapling","file":"pack/wildpeach_sapling.png","family":"sapling","cell_px":[115,142],"base_point":[57,131],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1252,814],"raw_ink_ratio":0.6724,"resample_pct":20.5,"widest_row_offset":null,"leaf_hue":128.5,"leaf_rgb":[149,181,153],"canopy_in_band_pct":48.3,"edge_clear_pct":null,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.3866,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"wildpeach_young","file":"pack/wildpeach_young.png","family":"young","cell_px":[215,375],"base_point":[107,345],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1760,1075],"raw_ink_ratio":0.6315,"resample_pct":-9.2,"widest_row_offset":null,"leaf_hue":134.4,"leaf_rgb":[99,154,112],"canopy_in_band_pct":49.6,"edge_clear_pct":86.1,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.2401,"ground_spread":null,"carried_contrast":2.645,"mouth":null,"flags":[]},{"id":"wildpeach_mature","file":"pack/wildpeach_mature.png","family":"mature","cell_px":[379,670],"base_point":[189,617],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1704,1107],"raw_ink_ratio":0.6711,"resample_pct":-15.7,"widest_row_offset":null,"leaf_hue":146.5,"leaf_rgb":[97,149,120],"canopy_in_band_pct":60.4,"edge_clear_pct":82.4,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.2243,"ground_spread":null,"carried_contrast":2.676,"mouth":null,"flags":[]},{"id":"yellowwood_mature_b","file":"pack/yellowwood_mature_b.png","family":"mature","cell_px":[379,670],"base_point":[189,616],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1842,1062],"raw_ink_ratio":0.5961,"resample_pct":-5.1,"widest_row_offset":null,"leaf_hue":136.2,"leaf_rgb":[34,71,44],"canopy_in_band_pct":69.2,"edge_clear_pct":72.7,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0445,"ground_spread":null,"carried_contrast":1.64,"mouth":null,"flags":[]},{"id":"outeniqua_mature_b","file":"pack/outeniqua_mature_b.png","family":"mature","cell_px":[379,670],"base_point":[189,617],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1909,849],"raw_ink_ratio":0.4597,"resample_pct":23.1,"widest_row_offset":null,"leaf_hue":155.8,"leaf_rgb":[43,77,64],"canopy_in_band_pct":36.9,"edge_clear_pct":71.7,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0591,"ground_spread":null,"carried_contrast":1.54,"mouth":null,"flags":[]},{"id":"ironwood_mature_b","file":"pack/ironwood_mature_b.png","family":"mature","cell_px":[379,670],"base_point":[189,617],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1390,1049],"raw_ink_ratio":0.7801,"resample_pct":-27.5,"widest_row_offset":null,"leaf_hue":145.1,"leaf_rgb":[100,117,107],"canopy_in_band_pct":63.6,"edge_clear_pct":75.5,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.084,"ground_spread":null,"carried_contrast":1.717,"mouth":null,"flags":[]},{"id":"stinkwood_mature_b","file":"pack/stinkwood_mature_b.png","family":"mature","cell_px":[379,670],"base_point":[189,617],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1698,1063],"raw_ink_ratio":0.6473,"resample_pct":-12.6,"widest_row_offset":null,"leaf_hue":148.3,"leaf_rgb":[86,131,107],"canopy_in_band_pct":44.7,"edge_clear_pct":67.1,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1827,"ground_spread":null,"carried_contrast":2.054,"mouth":null,"flags":[]},{"id":"chestnut_mature_b","file":"pack/chestnut_mature_b.png","family":"mature","cell_px":[379,670],"base_point":[189,617],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1775,1024],"raw_ink_ratio":0.5962,"resample_pct":-5.1,"widest_row_offset":null,"leaf_hue":135.3,"leaf_rgb":[55,91,64],"canopy_in_band_pct":52,"edge_clear_pct":62.5,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1438,"ground_spread":null,"carried_contrast":2.115,"mouth":null,"flags":[]},{"id":"wildpeach_mature_b","file":"pack/wildpeach_mature_b.png","family":"mature","cell_px":[379,670],"base_point":[189,617],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1290,1113],"raw_ink_ratio":0.892,"resample_pct":-36.6,"widest_row_offset":null,"leaf_hue":131.8,"leaf_rgb":[78,135,89],"canopy_in_band_pct":60.6,"edge_clear_pct":78.2,"foliage_regrade":"canopy hue rotated into the game's 128-172 band","weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.182,"ground_spread":null,"carried_contrast":2.414,"mouth":null,"flags":[]},{"id":"alien_wattle","file":"pack/alien_wattle.png","family":"weed","cell_px":[392,441],"base_point":[195,406],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1125,900],"raw_ink_ratio":0.8272,"resample_pct":7.5,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":93.1,"foliage_regrade":null,"weed_regrade":"leaf mass rotated to green, yellow kept only as flower accent; 9.6% yellow / 40.5% green, mean RGB 128.7","contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.2567,"ground_spread":null,"carried_contrast":2.322,"mouth":null,"flags":[]},{"id":"alien_pine","file":"pack/alien_pine.png","family":"weed","cell_px":[392,441],"base_point":[196,406],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1110,533],"raw_ink_ratio":0.496,"resample_pct":79.2,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":55.5,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0388,"ground_spread":null,"carried_contrast":1.757,"mouth":null,"flags":[]},{"id":"alien_bugweed","file":"pack/alien_bugweed.png","family":"weed","cell_px":[392,441],"base_point":[195,406],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1047,643],"raw_ink_ratio":0.6352,"resample_pct":39.9,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":83,"foliage_regrade":null,"weed_regrade":"leaf mass rotated to green, yellow kept only as flower accent; 6.5% yellow / 67.1% green, mean RGB 119.7","contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.2109,"ground_spread":null,"carried_contrast":2.7,"mouth":null,"flags":[]},{"id":"alien_bramble","file":"pack/alien_bramble.png","family":"weed","cell_px":[392,441],"base_point":[196,406],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[871,1029],"raw_ink_ratio":1.2219,"resample_pct":-27.3,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":70.3,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1232,"ground_spread":null,"carried_contrast":1.745,"mouth":null,"flags":[]},{"id":"ter_grass_v1","file":"pack/ter_grass_v1.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[825,1651],"raw_ink_ratio":1.6139,"resample_pct":23.9,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0821,"ground_spread":0.0722,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_grass_v2","file":"pack/ter_grass_v2.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[808,1616],"raw_ink_ratio":1.5797,"resample_pct":26.6,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0819,"ground_spread":0.0727,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_grass_v3","file":"pack/ter_grass_v3.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[822,1645],"raw_ink_ratio":1.6045,"resample_pct":24.7,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0758,"ground_spread":0.0729,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_forest_v1","file":"pack/ter_forest_v1.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[854,1709],"raw_ink_ratio":1.6703,"resample_pct":19.7,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0627,"ground_spread":0.0601,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_forest_v2","file":"pack/ter_forest_v2.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[858,1716],"raw_ink_ratio":1.6738,"resample_pct":19.5,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0587,"ground_spread":0.0598,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_forest_v3","file":"pack/ter_forest_v3.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[828,1656],"raw_ink_ratio":1.6152,"resample_pct":23.8,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0628,"ground_spread":0.0611,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_bank_v1","file":"pack/ter_bank_v1.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[895,1791],"raw_ink_ratio":1.7471,"resample_pct":14.5,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0709,"ground_spread":0.0709,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_bank_v2","file":"pack/ter_bank_v2.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[892,1785],"raw_ink_ratio":1.7412,"resample_pct":14.9,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0691,"ground_spread":0.0702,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_bank_v3","file":"pack/ter_bank_v3.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[893,1786],"raw_ink_ratio":1.7422,"resample_pct":14.8,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.065,"ground_spread":0.0706,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_v1","file":"pack/ter_water_v1.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[895,1791],"raw_ink_ratio":1.7539,"resample_pct":14,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0919,"ground_spread":0.0741,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_v2","file":"pack/ter_water_v2.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[832,1665],"raw_ink_ratio":1.6304,"resample_pct":22.7,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0892,"ground_spread":0.0738,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_v3","file":"pack/ter_water_v3.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[871,1743],"raw_ink_ratio":1.7002,"resample_pct":17.6,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0976,"ground_spread":0.0748,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_pool_v1","file":"pack_optional/ter_pool_v1.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":true,"optional_reason":"no pool terrain exists in the game (TER_FROM has four entries), and ART-BRIEF-2026-09-27 3 asked for the pool variants to be folded into the water cycle or retired - retired. The three-variant water set now ships blue-teal; these are still the old green tiles, so promoting one later means repainting it, not just moving the file","drawn_at_px":[896,1792],"raw_ink_ratio":1.748,"resample_pct":14.4,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.087,"ground_spread":0.0466,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_pool_v2","file":"pack_optional/ter_pool_v2.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":true,"optional_reason":"no pool terrain exists in the game (TER_FROM has four entries), and ART-BRIEF-2026-09-27 3 asked for the pool variants to be folded into the water cycle or retired - retired. The three-variant water set now ships blue-teal; these are still the old green tiles, so promoting one later means repainting it, not just moving the file","drawn_at_px":[885,1771],"raw_ink_ratio":1.7275,"resample_pct":15.8,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0863,"ground_spread":0.0566,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_pool_v3","file":"pack_optional/ter_pool_v3.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":true,"optional_reason":"no pool terrain exists in the game (TER_FROM has four entries), and ART-BRIEF-2026-09-27 3 asked for the pool variants to be folded into the water cycle or retired - retired. The three-variant water set now ships blue-teal; these are still the old green tiles, so promoting one later means repainting it, not just moving the file","drawn_at_px":[895,1790],"raw_ink_ratio":1.7461,"resample_pct":14.5,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0865,"ground_spread":0.0503,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_waterfall_v1","file":"pack/ter_waterfall_v1.png","family":"waterfall","cell_px":[617,617],"base_point":[308,40],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[995,588],"raw_ink_ratio":0.591,"resample_pct":69.2,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":63.8,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0442,"ground_spread":null,"carried_contrast":1.513,"mouth":null,"flags":[]},{"id":"ter_waterfall_v2","file":"pack_optional/ter_waterfall_v2.png","family":"waterfall","cell_px":[617,617],"base_point":[308,40],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":true,"optional_reason":"alternate waterfall art - ter_waterfall_v1 is the variant the game's drawWaterfall() slot takes; kept in case the owner prefers this one","drawn_at_px":[1112,870],"raw_ink_ratio":0.7824,"resample_pct":27.8,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":59.7,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0591,"ground_spread":null,"carried_contrast":1.595,"mouth":null,"flags":[]},{"id":"obj_house","file":"pack/obj_house.png","family":"house","cell_px":[882,1060],"base_point":[441,975],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[965,992],"raw_ink_ratio":1.0629,"resample_pct":-21.7,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":66.9,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1489,"ground_spread":null,"carried_contrast":2.124,"mouth":null,"flags":[]},{"id":"obj_bin","file":"pack/obj_bin.png","family":"decor","cell_px":[350,350],"base_point":[174,322],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1028,562],"raw_ink_ratio":0.565,"resample_pct":77,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":71.9,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.059,"ground_spread":null,"carried_contrast":1.683,"mouth":null,"flags":[]},{"id":"obj_bench","file":"pack/obj_bench.png","family":"decor","cell_px":[350,350],"base_point":[175,322],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[944,947],"raw_ink_ratio":1.0369,"resample_pct":-3.6,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":63.7,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1864,"ground_spread":null,"carried_contrast":2.406,"mouth":null,"flags":[]},{"id":"obj_birdbath","file":"pack/obj_birdbath.png","family":"decor","cell_px":[350,350],"base_point":[174,322],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1008,746],"raw_ink_ratio":0.7648,"resample_pct":30.8,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":74.6,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1078,"ground_spread":null,"carried_contrast":1.94,"mouth":null,"flags":[]},{"id":"obj_sign","file":"pack/obj_sign.png","family":"decor","cell_px":[350,350],"base_point":[174,322],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1025,676],"raw_ink_ratio":0.682,"resample_pct":46.6,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":70.1,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1287,"ground_spread":null,"carried_contrast":1.541,"mouth":null,"flags":[]},{"id":"obj_hide","file":"pack/obj_hide.png","family":"decor","cell_px":[350,350],"base_point":[175,323],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[858,1013],"raw_ink_ratio":1.2199,"resample_pct":-18,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":74.4,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1148,"ground_spread":null,"carried_contrast":1.556,"mouth":null,"flags":[]},{"id":"obj_lantern","file":"pack/obj_lantern.png","family":"decor","cell_px":[350,350],"base_point":[175,322],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1035,425],"raw_ink_ratio":0.4245,"resample_pct":135.5,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":69.2,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0573,"ground_spread":null,"carried_contrast":1.466,"mouth":null,"flags":[]},{"id":"crown_v1","file":"pack/crown_v1.png","family":"crown","cell_px":[505,369],"base_point":[252,339],"anchor":"sprite, NOT a tile - the cell is 1.37:1 and the ink fills it at base_point (crowns close into one canopy, so they stay on the tile centre). Scaled from the frame box like any other sprite.","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[512,1024],"raw_ink_ratio":1.332,"resample_pct":2.7,"widest_row_offset":-0.0014,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0519,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"crown_v2","file":"pack/crown_v2.png","family":"crown","cell_px":[505,369],"base_point":[252,339],"anchor":"sprite, NOT a tile - the cell is 1.37:1 and the ink fills it at base_point (crowns close into one canopy, so they stay on the tile centre). Scaled from the frame box like any other sprite.","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[512,1024],"raw_ink_ratio":1.332,"resample_pct":2.7,"widest_row_offset":-0.0014,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.046,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"crown_v3","file":"pack/crown_v3.png","family":"crown","cell_px":[505,369],"base_point":[252,339],"anchor":"sprite, NOT a tile - the cell is 1.37:1 and the ink fills it at base_point (crowns close into one canopy, so they stay on the tile centre). Scaled from the frame box like any other sprite.","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[512,1024],"raw_ink_ratio":1.332,"resample_pct":2.7,"widest_row_offset":-0.0014,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0515,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"crown_v4","file":"pack/crown_v4.png","family":"crown","cell_px":[505,369],"base_point":[252,339],"anchor":"sprite, NOT a tile - the cell is 1.37:1 and the ink fills it at base_point (crowns close into one canopy, so they stay on the tile centre). Scaled from the frame box like any other sprite.","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[512,1024],"raw_ink_ratio":1.332,"resample_pct":2.7,"widest_row_offset":-0.0014,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0454,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"crown_v5","file":"pack/crown_v5.png","family":"crown","cell_px":[505,369],"base_point":[252,339],"anchor":"sprite, NOT a tile - the cell is 1.37:1 and the ink fills it at base_point (crowns close into one canopy, so they stay on the tile centre). Scaled from the frame box like any other sprite.","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[512,1024],"raw_ink_ratio":1.3563,"resample_pct":0.9,"widest_row_offset":0,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0462,"ground_spread":null,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"obj_nursery","file":"pack/obj_nursery.png","family":"decor","cell_px":[640,480],"base_point":[320,442],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[692,1057],"raw_ink_ratio":1.5779,"resample_pct":-15.5,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":56.7,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1777,"ground_spread":null,"carried_contrast":2.372,"mouth":null,"flags":[]},{"id":"obj_crag","file":"pack/obj_crag.png","family":"waterfall","cell_px":[760,600],"base_point":[380,552],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[820,1318],"raw_ink_ratio":1.6616,"resample_pct":-23.8,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":72.8,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0591,"ground_spread":null,"carried_contrast":1.541,"mouth":null,"flags":[]},{"id":"ter_streammouth","file":"pack/ter_streammouth.png","family":"waterfall","cell_px":[1568,840],"base_point":[784,459],"anchor":"NOT foot-anchored, and this is the one line of round 4's contract that could not be kept. base_point is the tile's own ground point, 55% down the cell, because the lip and its fall have to hang BELOW it. See the note.","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[840,1568],"raw_ink_ratio":1.5051,"resample_pct":24,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0959,"ground_spread":null,"carried_contrast":1.017,"mouth":{"ink_px":339901,"water_pct":85.5,"veg_pct":0.3,"foam_pct":9.9,"crest_cols_pct":72.1,"lip_slope":0.494,"veg_in_channel_pct":0.01,"surface_rgb":[58.7,97.3,118.6],"surface_vs_channel":12.5,"surface_lum_delta":0.0154,"surface_bg_delta":-0.3,"flags":[],"channel_ref":[50,90.8,112.4]},"flags":[]},{"id":"ani_baboon","file":"pack/ani_baboon.png","family":"animal","cell_px":[300,360],"base_point":[150,332],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[924,936],"raw_ink_ratio":1.0474,"resample_pct":-20.4,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":65.9,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.2393,"ground_spread":null,"carried_contrast":2.459,"mouth":null,"flags":[]},{"id":"ani_baboon_young","file":"pack/ani_baboon_young.png","family":"animal","cell_px":[220,260],"base_point":[110,240],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[924,936],"raw_ink_ratio":1.0474,"resample_pct":-19.2,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":71.6,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.2401,"ground_spread":null,"carried_contrast":2.453,"mouth":null,"flags":[]},{"id":"ani_parrot","file":"pack/ani_parrot.png","family":"animal","cell_px":[280,300],"base_point":[140,276],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1031,730],"raw_ink_ratio":0.732,"resample_pct":27.5,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":64.8,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.1509,"ground_spread":null,"carried_contrast":1.774,"mouth":null,"flags":[]},{"id":"ani_toad","file":"pack/ani_toad.png","family":"animal","cell_px":[240,200],"base_point":[120,185],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[798,1129],"raw_ink_ratio":1.4634,"resample_pct":-18,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":73.6,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":"silhouette lifted clear of the luminance dead zone so it separates from the brightest legal ground tone","edge_magenta_px":0,"ground_luminance":0.143,"ground_spread":null,"carried_contrast":1.481,"mouth":null,"flags":[]},{"id":"ani_bin_baboon","file":"pack/ani_bin_baboon.png","family":"animal","cell_px":[340,400],"base_point":[170,368],"anchor":"sprite is centred on base_point.x; base_point.y is where the plant meets the ground, 8% of the cell height above the bottom edge (brief 3.3).","is_tile":false,"edge_mask":null,"edge_material_measured":null,"mates":null,"optional":false,"optional_reason":null,"drawn_at_px":[1244,753],"raw_ink_ratio":0.626,"resample_pct":35.8,"widest_row_offset":null,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":83.4,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.114,"ground_spread":null,"carried_contrast":1.968,"mouth":null,"flags":[]},{"id":"ter_bank_c12","file":"pack/ter_bank_c12.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[3,4],"edge_material_measured":{"north":"water","east":"water","south":"land","west":"land"},"mates":{"east":10,"north":10,"south":10,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0714,"ground_spread":0.0712,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_bank_c23","file":"pack/ter_bank_c23.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[1,4],"edge_material_measured":{"north":"land","east":"water","south":"water","west":"land"},"mates":{"east":10,"north":10,"south":10,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0665,"ground_spread":0.0698,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_bank_c34","file":"pack/ter_bank_c34.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[1,2],"edge_material_measured":{"north":"land","east":"land","south":"water","west":"water"},"mates":{"east":10,"north":10,"south":10,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0712,"ground_spread":0.0703,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_bank_c41","file":"pack/ter_bank_c41.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[2,3],"edge_material_measured":{"north":"water","east":"land","south":"land","west":"water"},"mates":{"east":10,"north":10,"south":10,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0684,"ground_spread":0.0688,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_bank_e1","file":"pack/ter_bank_e1.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[2,3,4],"edge_material_measured":{"north":"water","east":"land","south":"land","west":"land"},"mates":{"east":9,"north":10,"south":10,"west":9},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0653,"ground_spread":0.0701,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_bank_e2","file":"pack/ter_bank_e2.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[1,3,4],"edge_material_measured":{"north":"land","east":"water","south":"land","west":"land"},"mates":{"east":10,"north":9,"south":9,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.07,"ground_spread":0.07,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_bank_e3","file":"pack/ter_bank_e3.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[1,2,4],"edge_material_measured":{"north":"land","east":"land","south":"water","west":"land"},"mates":{"east":9,"north":10,"south":10,"west":9},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0698,"ground_spread":0.0721,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_bank_e4","file":"pack/ter_bank_e4.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[1,2,3],"edge_material_measured":{"north":"land","east":"land","south":"land","west":"water"},"mates":{"east":10,"north":9,"south":9,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0647,"ground_spread":0.0716,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_c12","file":"pack/ter_water_c12.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[1,2],"edge_material_measured":{"north":"land","east":"land","south":"water","west":"water"},"mates":{"east":10,"north":10,"south":10,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.09,"ground_spread":0.0757,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_c23","file":"pack/ter_water_c23.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[2,3],"edge_material_measured":{"north":"water","east":"land","south":"land","west":"water"},"mates":{"east":10,"north":10,"south":10,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0893,"ground_spread":0.0759,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_c34","file":"pack/ter_water_c34.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[3,4],"edge_material_measured":{"north":"water","east":"water","south":"land","west":"land"},"mates":{"east":10,"north":10,"south":10,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0876,"ground_spread":0.0738,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_c41","file":"pack/ter_water_c41.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[1,4],"edge_material_measured":{"north":"land","east":"water","south":"water","west":"land"},"mates":{"east":10,"north":10,"south":10,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0883,"ground_spread":0.0747,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_e1","file":"pack/ter_water_e1.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[1],"edge_material_measured":{"north":"land","east":"water","south":"water","west":"water"},"mates":{"east":9,"north":10,"south":10,"west":9},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0908,"ground_spread":0.0739,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_e2","file":"pack/ter_water_e2.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[2],"edge_material_measured":{"north":"water","east":"land","south":"water","west":"water"},"mates":{"east":10,"north":9,"south":9,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0898,"ground_spread":0.0763,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_e3","file":"pack/ter_water_e3.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[3],"edge_material_measured":{"north":"water","east":"water","south":"land","west":"water"},"mates":{"east":9,"north":10,"south":10,"west":9},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0913,"ground_spread":0.0752,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_e4","file":"pack/ter_water_e4.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[4],"edge_material_measured":{"north":"water","east":"water","south":"water","west":"land"},"mates":{"east":10,"north":9,"south":9,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0905,"ground_spread":0.0757,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_i12","file":"pack/ter_water_i12.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[3,4],"edge_material_measured":{"north":"water","east":"water","south":"land","west":"land"},"mates":{"east":10,"north":10,"south":10,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0896,"ground_spread":0.0754,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_i23","file":"pack/ter_water_i23.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[1,4],"edge_material_measured":{"north":"land","east":"water","south":"water","west":"land"},"mates":{"east":10,"north":10,"south":10,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0876,"ground_spread":0.0743,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_i34","file":"pack/ter_water_i34.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[1,2],"edge_material_measured":{"north":"land","east":"land","south":"water","west":"water"},"mates":{"east":10,"north":10,"south":10,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0899,"ground_spread":0.0767,"carried_contrast":null,"mouth":null,"flags":[]},{"id":"ter_water_i41","file":"pack/ter_water_i41.png","family":"ground","cell_px":[450,225],"base_point":[225,207],"anchor":"full-bleed 2:1 diamond, no anchor - the ink fills the cell, so the tile is drawn to its own footprint (TW x TH) rather than scaled out of a frame box","is_tile":true,"edge_mask":[2,3],"edge_material_measured":{"north":"water","east":"land","south":"land","west":"water"},"mates":{"east":10,"north":10,"south":10,"west":10},"optional":false,"optional_reason":null,"drawn_at_px":[225,450],"raw_ink_ratio":2,"resample_pct":0,"widest_row_offset":-0.0022,"leaf_hue":null,"leaf_rgb":null,"canopy_in_band_pct":null,"edge_clear_pct":null,"foliage_regrade":null,"weed_regrade":null,"contrast_lift":null,"edge_magenta_px":0,"ground_luminance":0.0898,"ground_spread":0.0754,"carried_contrast":null,"mouth":null,"flags":[]}]});</script>
+<!-- MB-MANIFEST-END -->
+
 <script>
 (function () {
 'use strict';
@@ -430,7 +458,7 @@ var G = 40, COLS = G, ROWS = G, NTILES = G * G;
    actually here. */
 var TW = 62, TH = 31;
 var BH = 9;                      /* one height step, in px */
-var CLIFF = -3.5;                /* how far the rim falls away, in height steps */
+var CLIFF = -9.0;                /* how far the rim falls away, in height steps */
 
 /* The viewport, in CSS pixels. These are NOT constants any more — resize() sets them from the
    stage element, and the canvas backing store is this times devicePixelRatio. Every drawing
@@ -463,6 +491,11 @@ var GCX = -WX0, GCY = -WY0;
 
 var AP_MAX = 12;
 var BIN_LOAD = 3;
+/* HOW MUCH THE BIN HOLDS. Small on purpose: the hillside starts FULL, so a free sweep of the
+   opening map is a windfall rather than a session, and a small bin is what turns that windfall into
+   a rhythm. What does not fit is lost — see clearAt(). */
+var BIN_MAX = 6;
+var binWasted = 0;   /* cuttings lost to a full bin this session; not saved, it is narration */
 
 var TOKENS = ['sun', 'mist', 'rain', 'snow'];
 var TOKEN_ICON = {
@@ -495,6 +528,8 @@ var ALIENS = {
              tell: 'Low and dark green, with long pale thorns and a single red berry.',
              note: 'Roots sucker back after cutting. It takes the light from everything under it.' }
 };
+/* Per-species size on the hillside. Only the bramble is bigger — see the call site in drawTileProp. */
+var ALIEN_SCALE = { bramble: 1.45 };
 
 /* The Amathole forest is not a yellowwood plantation, it is an indigenous forest with layers in
    it, and the layers go in in an order. The pioneers take the open ground and make the shade; the
@@ -631,8 +666,18 @@ function cell(c, r) {
    and the jetty out over the water near the village.
 
    On a 40x40 map these are all DERIVED from VILLAGE rather than being magic numbers, because the
-   one thing that must never happen is the village ending up somewhere the camera does not open on. */
-var VILLAGE = { c: 20, r: 26 };
+   one thing that must never happen is the village ending up somewhere the camera does not open on.
+
+   THE VILLAGE MOVED TO THE RIVER, 2026-09-27. It was at c = 20, six tiles west of the stream, and
+   every placed thing stood in the middle of a field that grows: the bin was behind a tree in every
+   shot and the owner could not see it, and the cottage and the nursery were the same. Owner:
+   "Trees tend to block the bin which is why you cant see it, same with house and nursery, solution
+   in to move them to thr river so only water is infront of them."
+   At c = 26 the stream runs down the near side of the cluster (streamC(26) = 29, so water at
+   28-30 and bank at 27), which puts open water between every one of them and the camera — and water
+   is the only thing on this map that never grows. PLACES is derived from VILLAGE, so the whole
+   cluster moves with it and the gate's "the village sits together" check still holds. */
+var VILLAGE = { c: 23, r: 25 };
 var REMNANT = 6;                                  /* the old forest is c <= 6, r <= 6 — 49 tiles */
 
 /* THE STREAM, WHICH REPLACES THE RECTANGULAR POND.
@@ -662,16 +707,20 @@ function streamC(r) {
                                        Math.sin(r * 0.23 + 1.7) * STREAM.amp * 0.5));
 }
 function streamDist(c, r) { return Math.abs(c - streamC(r)); }
-/* THE WATERFALL IS THE LAST TILE OF THE RUN, NOT THE FIRST.
-   The first version put it at r = 0 and it never looked like a waterfall however it was drawn —
-   three attempts, each worse. The reason is the MAP'S OWN ORIENTATION, not the art: this plateau is
-   a diamond seen from the south, so r = 0 is the FAR edge. The cliff extrusion runs round the whole
-   outline, but on the far edges the wall is painted and then covered by the plateau's own ground, so
-   the only wall you can SEE is on the near edges — c = 39 and r = 39. A waterfall at r = 0 was
-   therefore falling away from the viewer, behind the plateau, into ground that had already been
-   painted over it. It was invisible by geometry, and the fix was to move it, not to redraw it.
-   At r = ROWS - 1 the stream goes over the near edge and down the wall the player is looking at. */
-function isWaterfall(c, r) { return r === ROWS - 1 && c === streamC(ROWS - 1); }
+/* THE WATERFALL IS THE FIRST TILE OF THE RUN — THE STREAM'S HEAD, NOT ITS MOUTH.
+   Owner, 2026-09-27: "Waterfall probably belongs at start of stream not end. ie Rock block at top
+   of map into stream into water running off edge of map."
+   He is right, and the reason it used to be at the near edge is still true — it was just the wrong
+   fix for it. This plateau is a diamond seen from the south, so r = 0 is the FAR edge, and a fall
+   standing there was invisible three times over. The cause is the DRAW ORDER, not the art:
+   drawWaterfall draws DOWNWARD from its base, and eachVisible walks the map in order of c + r, so
+   every tile in rows 1..n was painted over the top of a fall standing at row 0.
+   The answer is the one he gave: give the water something to stand on. A crag rising ABOVE the far
+   rim cannot be painted over, and the fall off it spills onto rows 1..3 — so the whole head is drawn
+   in a second pass AFTER the tile loop, in drawStreamHead(). The stream still runs the full height
+   of the map and now runs OFF the near edge at r = ROWS-1 with no fall there, which is the "water
+   running off the edge of the map" half of the ask. */
+function isWaterfall(c, r) { return r === 0 && c === streamC(0); }
 
 function terrainAt(c, r) {
   var d = streamDist(c, r);
@@ -685,11 +734,27 @@ function terrainAt(c, r) {
    the jetty out over the stream. These are absolute because a save restores them by coordinate.
    The jetty is placed by CALLING streamC() rather than by a hardcoded column: the stream meanders,
    so a literal column would drift onto dry ground the first time the meander is touched. */
+/* THE PLACES SIT FURTHER APART THAN THE TILE GRID MAKES THEM LOOK LIKE THEY NEED TO.
+   The drawn sizes are much bigger than a tile: obj_house is an 882x1060 cell and draws **122 x 147
+   world px** — two tiles wide and nearly five tall — and obj_nursery draws 88.8 x 66.6. The old
+   offsets put the nursery one tile diagonally from the house, which is 62px of screen separation for
+   two objects whose half-widths add to 105, so the nursery was drawn INSIDE the cottage's left wall
+   and the pair read as one building. Owner, 2026-09-28: "nursery crashing into house."
+   These offsets give 124px of separation from the house for the nursery and the sign, and 93px for
+   the bin, which clears every pair with room. See the note on the gate's "village sits together"
+   check for why its radius had to move with them. */
 var PLACES = [[VILLAGE.c, VILLAGE.r, 'house'],
-              [VILLAGE.c - 1, VILLAGE.r + 1, 'nursery'],
-              [VILLAGE.c + 1, VILLAGE.r + 1, 'sign'],
-              [VILLAGE.c, VILLAGE.r + 2, 'bin'],
-              [streamC(28) - STREAM.half - 1, 28, 'jetty']];
+              [VILLAGE.c - 2, VILLAGE.r + 2, 'nursery'],
+              [VILLAGE.c + 2, VILLAGE.r - 2, 'sign'],
+              [VILLAGE.c + 3, VILLAGE.r + 2, 'bin']];
+/* THE JETTY IS GONE. Owner, 2026-09-29: "the jetty must go." It was the last landmark still drawn as
+   code art — a flat beige plank on three legs — because `obj_jetty` was briefed two rounds running
+   and never painted. Rather than commission it a third time, the place is removed: the channel reads
+   better with a clear bank, and a plank that looks wrong is worse than no plank. `drawJetty()` and
+   its wrapper are left in place, unused, so the id is still a drop-in if it is ever painted. */
+/* The bin sits EAST of the house rather than straight south of it. Straight south put it 31px from
+   the nursery in x with only 46px between their centres in y, and the nursery is 81.6px of ink wide
+   — they overlapped. East and one row down clears every pair on at least one axis. */
 
 /* How thickly the aliens have taken each tile. It wants to be a FIELD, so it can be thick on the
    open middle and thin where the old forest still shades the ground and where the village keeps
@@ -702,8 +767,36 @@ var PLACES = [[VILLAGE.c, VILLAGE.r, 'house'],
    rather than an afternoon's chore. The ramp is over twelve tiles because the map is now thirty
    times the area of v4's — at v4's seven-tile ramp the whole map was at full density and the
    "thicker the further out you go" idea had nowhere left to go. */
+/* NOTHING GROWS IN FRONT OF A PLACE THE PLAYER HAS TO SEE.
+   Owner, 2026-09-28: "nursery moved far enough, but they still have too much space for trees in
+   front to block them." Spreading the village fixed the buildings overlapping EACH OTHER and left
+   three or four tiles of open ground in front of each one — which is exactly where the aliens seed,
+   so every placed building grew its own screen of trees and the space that made them readable is
+   the space that hid them.
+   The doorstep clear was a disc around VILLAGE, which was right when the whole village sat on one
+   tile and is wrong now that the places are spread three tiles apart. So each place gets its own
+   apron: no aliens on the tiles in front of it. "In front" here is increasing r at a similar c,
+   which on this projection is down-screen toward the camera — the direction the player looks from. */
+function apronClear(c, r) {
+  var i, p;
+  for (i = 0; i < PLACES.length; i++) {
+    p = PLACES[i];
+    /* WIDER THAN IT WAS, AND WIDER IN FRONT THAN BEHIND. Owner, 2026-09-29: "the house and nursery
+       get blocked by trees and cant be clicked." The old apron was |dc| <= 2 and br-1 .. br+3, which
+       is a tile-and-a-half either side — but obj_house is 112 px of ink, nearly two tiles wide, and
+       its own tile is only the anchor. A tree one tile outside the apron still stood in front of the
+       building it was meant to keep clear.
+       The asymmetry is the point: r ABOVE the building is behind it on this projection and cannot
+       block anything, while r BELOW is between the player and the building. So the clear runs two
+       tiles back and five forward, three tiles wide. */
+    if (Math.abs(c - p[0]) <= 3 && r >= p[1] - 2 && r <= p[1] + 5) return true;
+  }
+  return false;
+}
+
 function alienDensity(c, r) {
   if (terrainAt(c, r) !== 'grass') return 0;
+  if (apronClear(c, r)) return 0;                   /* the apron in front of every placed thing */
   var dc = c - VILLAGE.c, dr = r - VILLAGE.r;
   var fromVillage = Math.sqrt(dc * dc + dr * dr);
   if (fromVillage < 2.2) return 0;                  /* the doorstep stays clear */
@@ -746,7 +839,8 @@ function newState() {
     decor: { bench: 0, birdbath: 0, sign: 0, hide: 0, lantern: 0 },
     tiles: t, weather: null, lastDayKey: dayKey(new Date()),
     seen: { seedbank: false, baboon: false, parrot: false, shade: false,
-            toad: false, binbaboon: false, needshade: false, parrotwait: false, intro: false },
+            toad: false, binbaboon: false, needshade: false, parrotwait: false, intro: false,
+            binwaste: false, shadeclosed: false },
     log: [], cleared: 0, planted: 0, bought: 0, recycled: 0,
     /* Parrots resident in the forest. A count, not a flag — see parrotCapacity(). */
     parrots: 0,
@@ -1314,13 +1408,52 @@ function clearAt(c, r) {
   t.alien = null;
   t.seeds += def.bank;
   state.cleared++;
-  binItems += 1;
+
+  /* THE BIN IS SMALL AND WHAT DOES NOT FIT IS LOST — and that is the whole consequence.
+     The hillside starts FULL, which is the one thing this game has that a blank-map game does not:
+     a sweep of the opening map is a windfall, not a session. A daily cap on the baboon alone just
+     turns that windfall into a month of free income, so the cap has to be on the BIN: it holds
+     BIN_MAX and no more, and a cutting made with a full bin is wasted. Sweep three hundred tiles and
+     you bank six. Clear in batches and you bank everything. **Rushing is worse, and nothing had to
+     be explained to make it so.**
+     The narration says WHY, not just what — the owner's note: '"the cutting is wasted" -- explain
+     why'. */
+  if (binItems < BIN_MAX) {
+    binItems += 1;
+  } else {
+    binWasted += 1;
+    if (!state.seen.binwaste) {
+      state.seen.binwaste = true;
+      card('The bin is full',
+        'The bin holds ' + BIN_MAX + ' cuttings and it is full, so this one is on the ground. ' +
+        'The baboon only trades what fits in the bin, and it trades a few loads a day — so cutting ' +
+        'faster than you empty does not earn more, it earns less. Empty the bin and the next ' +
+        'cutting counts again.', null);
+    } else {
+      note('The bin is full — that cutting is wasted. Empty it and the next one counts.', 'warn');
+    }
+  }
+
   if (!state.seen.seedbank) {
     state.seen.seedbank = true;
     card('The seed stays behind',
       def.name + ' (' + def.sci + ') is cut, and its seed is already in the ground — this one ' +
       'leaves ' + def.bank + ' lots of it. ' + def.note + ' Rain brings it up again. ' +
       'The cuttings go in the bin.', null);
+  }
+
+  /* AND WHAT THE SHADE IS FOR. This is the only permanent progress in the game — everything else
+     regrows, and a shaded patch does not — and the player was told it once, at their first planting,
+     and never again. Say it when it is relevant: a tile that has just banked three or more lots with
+     nothing shading it is a tile that will come back for ever. */
+  if (t.seeds >= 3 && matureAround(c, r) < SHADE_CLOSES_SEED && !state.seen.needshade) {
+    state.seen.needshade = true;
+    card('Three trees close a patch',
+      'That one left ' + t.seeds + ' lots of seed in this tile, and it will keep coming back. ' +
+      'It stops when ' + SHADE_CLOSES_SEED + ' MATURE trees stand in the eight tiles around it — ' +
+      'not saplings, not half-grown ones, mature. The shade closes the seed bank and that tile is ' +
+      'finished for good. So the way to beat this hillside is not to keep cutting: it is to cut a ' +
+      'patch, plant around it, and let the canopy do the rest.', null);
   }
   return true;
 }
@@ -1340,6 +1473,26 @@ function plantAt(c, r, spKey) {
   state.ap = Math.max(0, state.ap - 1);
   t.sp = spKey; t.stage = 1; t.age = 0;
   state.planted++;
+
+  /* AND THE CONFIRMATION WHEN A PATCH CLOSES. A tile whose eight neighbours hold three mature trees
+     has had its seed bank shut for good — the only permanent progress in the game, and until now it
+     happened in silence. Planting here may have closed the patch around any of the eight. */
+  if (!state.seen.shadeclosed) {
+    var ii, jj;
+    for (ii = -1; ii <= 1; ii++) {
+      for (jj = -1; jj <= 1; jj++) {
+        if (!ii && !jj) continue;
+        if (matureAround(c + ii, r + jj) >= SHADE_CLOSES_SEED) {
+          state.seen.shadeclosed = true;
+          card('A patch closes',
+            'That is ' + SHADE_CLOSES_SEED + ' mature trees around one tile, and its seed bank is ' +
+            'shut — nothing will come up there again, this season or any other. That is what the ' +
+            'shade is for. Every patch you close stays closed, so the hillside gets quieter the ' +
+            'more of it you put back.', null);
+        }
+      }
+    }
+  }
   return true;
 }
 
@@ -1836,15 +1989,77 @@ function ridgeY(x, humps, base, amp) {
   return base - amp * v;
 }
 
+/* FILL DOWNWARD, NOT UPWARD.
+   The version this replaces built the path as (0,0) -> the ridge line -> (W,0) -> close, i.e. it
+   filled the sky ABOVE the ridge. Every band therefore covered the whole top of the screen, and
+   because they are drawn far-to-near the LAST one drawn — the nearest, lowest, darkest — swallowed
+   the two behind it completely. Three ridges were painted and exactly ONE silhouette edge reached
+   the glass, which is why the background read as two flat colour blocks meeting at a hard line:
+   "i dont see mist. i see green piece and blue piece bg."
+   Filling from the ridge line DOWN to the bottom of the screen instead means each nearer ridge
+   covers only what is below it, and the peaks of the ones behind stand up above its crest. That is
+   the whole difference between a hard horizon and a range going back in layers. */
 function ridgeBand(humps, base, amp, colour) {
   ctx.beginPath();
-  ctx.moveTo(0, 0);
   var x;
+  ctx.moveTo(0, ridgeY(0, humps, base, amp));
   for (x = 0; x <= W; x += 8) ctx.lineTo(x, ridgeY(x, humps, base, amp));
-  ctx.lineTo(W, 0);
+  ctx.lineTo(W, H);
+  ctx.lineTo(0, H);
   ctx.closePath();
   ctx.fillStyle = colour;
   ctx.fill();
+}
+
+/* THE MIST THAT GIVES THE BELT ITS NAME. Laid across the ridges AFTER them, so the far range
+   dissolves instead of ending on a hard line — and so the plateau's far rim has something to
+   dissolve into rather than stopping in mid-air, which is what makes the map read as an island.
+   Flat strips of stepped alpha, not a gradient: the whole sky is flat by design (see SKY_TONE) and
+   a gradient here is exactly what made the old sky look like a different game. Five strips is
+   enough to read as a soft edge at this size and costs nothing. */
+/* THE BANDS ARE GRADIENTS, AND THE FLAT-SKY RULE IS NARROWED RATHER THAN DELETED.
+   Four states, and the last two are the instructive ones. The band began as a full-width
+   constant-alpha rectangle — a stripe. Then five flat strips, which stepped visibly. Then 28, then
+   120 strips with a slow horizontal drift, which removed the stripe and put faint vertical edges
+   every 24px instead.
+   At 120 strips the upper sky measured smooth (median step 0.667/row, 2-5 transitions in 215 rows)
+   and I reported the banding fixed. The graphics side said they could still see steps in the LOWER
+   third. They were right and I had measured the wrong band: the low mist band is 358px tall, so 120
+   strips is a 3px pitch, and sampling it shows **spikes every 3px — 145 to 169 of them**. The strip
+   pitch, exactly.
+   So the strips have to go. The standing rule they were built to obey is "gradients exist only on
+   individual objects, never as a wash over the sky or the field", and its recorded reason is that a
+   gradient sky "read as a different game from the tiles sitting underneath it" — which was true when
+   the tiles were flat code art and is not true now that every tile is painted with gradients of its
+   own. The graphics side, which owns graphics decisions, recommends narrowing it to the sky and the
+   distant background and keeping it binding on the playfield.
+   That is what this does, and the gate is narrowed to match rather than deleted: a gradient is
+   allowed in the BACKGROUND and still forbidden on the FIELD. The playfield — ground, tiles, cliff —
+   is still flat-filled, which is the part of the rule that was ever about the game looking like one
+   game. */
+function rgba(hex, a) {
+  var r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+}
+
+function mistBand(y, h, rgb, a0) {
+  var g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, rgba(rgb, 0));
+  g.addColorStop(0.5, rgba(rgb, a0));
+  g.addColorStop(1, rgba(rgb, 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, y, W, h);
+}
+
+/* The same, one-sided: the lower sky tone arrives over a band instead of at a line. */
+function softFill(y, h, rgb) {
+  var g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, rgba(rgb, 0));
+  g.addColorStop(1, rgb);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, y, W, h);
+  ctx.fillStyle = rgb;
+  ctx.fillRect(0, y + h, W, H - (y + h) + 1);
 }
 
 /* Flat sky, flat ridges, flat horizon. The reference art has no linear gradient anywhere, and the
@@ -1871,10 +2086,14 @@ function skyKey(w) {
    horizon line to draw. */
 function drawSky(w) {
   var tone = SKY_TONE[skyKey(w)];
+  /* THE SKY HAS NO HARD SEAM IN IT. It used to be two flat fills meeting at H*0.30 — one hard
+     horizontal line right across the screen, which is the owner's "green piece and blue piece"
+     complaint relocated rather than answered. Two flat tones are still right (the reference art has
+     no gradient anywhere), but they have to MEET, so the lower tone arrives over a band of stepped
+     alpha instead of at a line. */
   ctx.fillStyle = tone[0];
   ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = tone[1];
-  ctx.fillRect(0, H * 0.30, W, H * 0.70);
+  softFill(H * 0.16, H * 0.34, tone[1]);
 
   /* The ridges hang BEHIND the plateau's far rim, so they follow it as the camera moves — but only
      by a fraction, and that difference is the entire sense of distance. Clamped at both ends, or a
@@ -1882,11 +2101,38 @@ function drawSky(w) {
      On a 40x40 map you mostly cannot see this at all, because the world fills the screen; it is
      there for the edges and for the zoomed-out view, which is exactly where a horizon is wanted. */
   var rim = (0 - camY) * zoom;
-  var base = Math.max(H * 0.08, Math.min(H * 0.68, rim + H * 0.30));
+  /* THE RIDGES SIT ABOVE THE FAR RIM, NOT BELOW IT.
+     This read `base = rim + H*0.30`, which puts every ridge 0.30*H BELOW the far rim — and the
+     plateau occupies everything below the far rim, so at village zoom the visible sky band contained
+     flat tone and NO RIDGES AT ALL. The background was drawn, correct, and entirely behind the map.
+     Measured: the visible sky above the plateau is 20.4% of the frame at phone zoom 1 and 36.0% at
+     the pinch floor, and none of it had ridges in it.
+     From a summit the distant range belongs ABOVE the near rim on screen — you are looking down at a
+     valley and out at the horizon, so the horizon is higher than the edge of your own plateau. The
+     graphics side flagged this as P1 and gated the whole panorama on it, correctly: a painted band
+     drawn into a space that is then masked is most of the work hidden. */
+  var base = Math.max(H * 0.05, Math.min(H * 0.58, rim - H * 0.05));
   var px = -camX * 0.06;
-  ridgeBand([[130 + px, 320, 1], [430 + px, 280, 0.88], [700 + px, 300, 0.76]], base, 104, 'rgba(152,176,170,0.55)');
-  ridgeBand([[250 + px, 320, 1], [610 + px, 280, 0.84]], base + 32, 80, 'rgba(112,146,131,0.70)');
-  ridgeBand([[180 + px, 340, 1], [560 + px, 310, 0.90]], base + 60, 58, 'rgba(68,106,88,0.86)');
+  /* FAR TO NEAR — and now that each band fills DOWNWARD the order finally does what it should: the
+     far range goes in first and its crests stay visible above the crest of the one in front.
+     Amplitudes FALL as the ridges come forward, because a range recedes by getting paler and
+     flatter, not by getting taller. */
+  ridgeBand([[130 + px, 320, 1], [430 + px, 280, 0.88], [700 + px, 300, 0.76]], base - 22, 66,
+            'rgba(168,188,182,0.60)');
+  ridgeBand([[250 + px, 320, 1], [610 + px, 280, 0.84]], base + 20, 50,
+            'rgba(122,156,140,0.66)');
+  ridgeBand([[180 + px, 340, 1], [560 + px, 310, 0.90]], base + 62, 38,
+            'rgba(76,116,96,0.80)');
+  /* AND THE MIST ACROSS THEM. This is the belt the forest is named for and the thing that stops the
+     plateau reading as an island: the far range dissolves instead of ending on a line, and the rim
+     of the map has something to sit in rather than stopping in mid-air.
+     THREE BANDS, not two. The graphics side measured the wide framing as "~45% empty sky above,
+     ~35% banded nothing below" — and the lower third is where the summit should be reading as a
+     summit, looking down into the valley. Two bands up near the ridges left that whole third as flat
+     tone, so the third one sits low and heavy and gives the cliff something to stand in. */
+  mistBand(base - 30, 100, '#c3cec4', 0.44);
+  mistBand(base + 52, 130, '#cdd7cc', 0.34);
+  mistBand(H * 0.72, H * 0.46, '#d6ded4', 0.30);
 }
 
 /* ---------------------------------------------------------------- the ground */
@@ -2132,7 +2378,11 @@ function drawGroundTile(c, r) {
    baked into the ground, because it changes every time the player cuts. */
 function drawSeedMarkers(c, r) {
   var t = cell(c, r);
-  if (!(t.seeds > 0) || t.ter !== 'grass' || t.alien || t.obj) return;
+  /* THE MARKERS SHOW UNDER AN ALIEN TOO. This returned early when `t.alien` was set, so the one
+     question the player actually has — "how much is waiting under this thing I am about to cut?" —
+     had no answer on screen. The bank is there whether or not something is standing on it; the
+     marker just has to be drawn behind the alien instead of not at all. */
+  if (!(t.seeds > 0) || t.ter !== 'grass' || t.obj) return;
   var z = groundZ(c, r), p = project(c, r, z);
   var sn = Math.min(4, t.seeds), sk;
   ctx.fillStyle = 'rgba(96,72,36,0.78)';
@@ -2161,13 +2411,40 @@ function drawSeedMarkers(c, r) {
    only ever blits the visible sub-rectangle of it (see blitGround). */
 var GROUND = null;
 var groundMs = 0;
+var groundRetimer = 0;   /* pending re-bake after a zoom settles — see the draw loop */
+
+/* HOW MANY CACHE PIXELS PER WORLD PIXEL — and it was 1, which is the bug the owner saw as "the
+   last 3 tiles of the river are clear sprites but the rest isnt and grass is also blurry tiles".
+   The cache was baked at WORLD_W x WORLD_H and then blitted INTO project() space, which the world
+   transform scales by `dpr * zoom`. So on any display where that product is above 1 the whole
+   ground is upscaled — soft — while every sprite, drawn straight through project(), stays crisp.
+   On a 1.75x or 2x display at zoom 1 the ground is resampled at 2x and the trees on top of it are
+   not, which is exactly the split he described.
+
+   THE CAP IS A MEMORY DECISION, NOT AN ART ONE. 2480x1280 is 3.2M world pixels; at 2.75 the cache
+   is 6820x3520 = 24M pixels = 96 MB of backing store, which is the most this should take on a
+   phone. The zoom term stops at 1.5 because a bake at ZOOM_MAX (2.4) would be 47M pixels and 188 MB,
+   so the ground is still slightly soft at maximum zoom — the real fix for that is a cache sized to
+   the VIEWPORT rather than the world and re-baked when the camera leaves it, which is a bigger
+   change than this one and is not made here. */
+function groundScale() {
+  var s = dpr * Math.min(zoom, 1.5);
+  return Math.max(1, Math.min(2.75, Math.round(s * 2) / 2));
+}
 
 function buildGround() {
   var t0 = now();
+  var S = groundScale();
   var g = document.createElement('canvas');
-  g.width = WORLD_W; g.height = WORLD_H;
+  g.width = Math.round(WORLD_W * S); g.height = Math.round(WORLD_H * S);
   var saved = ctx, scx = camX, scy = camY, sgx = gx, sgy = gy;
   ctx = g.getContext('2d');
+  /* The bake composites every tile, so it takes the same filter as the main pass — the tiles are
+     reduced inside it and the default box filter is what flattens them. */
+  if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+  /* Everything below draws in WORLD pixels, so the context carries the scale and no drawing
+     function has to know the cache is larger than the world. */
+  ctx.scale(S, S);
   /* Park the camera at the world origin and add the cache offset, so every drawing function below
      keeps using project() and none of them has to know it is painting a cache. */
   camX = 0; camY = 0; gx = WX0; gy = WY0;
@@ -2184,6 +2461,7 @@ function buildGround() {
   }
   ctx = saved;
   camX = scx; camY = scy; gx = sgx; gy = sgy;
+  g._s = S;                                 /* the scale the cache was baked at — blitGround needs it */
   GROUND = g;
   groundMs = now() - t0;
   return g;
@@ -2194,16 +2472,18 @@ function buildGround() {
    pixels to clip down to a 390x700 window every frame is work for nothing, and at a zoomed-out
    scale it is a large resample the browser may or may not do on the GPU. */
 function blitGround() {
+  /* EVERY NUMBER HERE IS IN CACHE PIXELS, WHICH ARE `_s` TIMES WORLD PIXELS. The source rect is a
+     cache question; the destination is project()'s space. Mixing the two is how the ground once
+     ended up a camera-width from the props, so the conversion is written out rather than folded. */
+  var S = GROUND._s || 1;
   var sw = W / zoom, sh = H / zoom;
-  var sx = Math.max(0, camX + WX0), sy = Math.max(0, camY + WY0);
-  var ex = Math.min(GROUND.width, camX + WX0 + sw), ey = Math.min(GROUND.height, camY + WY0 + sh);
+  var sx = Math.max(0, (camX + WX0) * S), sy = Math.max(0, (camY + WY0) * S);
+  var ex = Math.min(GROUND.width, (camX + WX0 + sw) * S);
+  var ey = Math.min(GROUND.height, (camY + WY0 + sh) * S);
   var w = ex - sx, h = ey - sy;
   if (w <= 0 || h <= 0) return;
-  /* The destination is in the SAME space the props are drawn in, which is project()'s space:
-     world minus camera. The source rect above is in cache pixels and is a different question —
-     `sx` is a cache pixel, so its world x is `sx - WX0`, and its screen x is that minus the camera.
-     Handing the world x straight to drawImage put the ground a camera-width from the props. */
-  ctx.drawImage(GROUND, sx, sy, w, h, sx - WX0 - camX, sy - WY0 - camY, w, h);
+  ctx.drawImage(GROUND, sx, sy, w, h,
+    (sx / S) - WX0 - camX, (sy / S) - WY0 - camY, w / S, h / S);
 }
 
 function shadow(cx, cy, rx, ry) {
@@ -3009,8 +3289,56 @@ function eachVisible(fn) {
   }
 }
 
+/* THE STREAM'S HEAD — THE FALL AT THE FAR RIM. DRAWN IN A SECOND PASS.
+   See isWaterfall() for why this cannot be drawn alongside the tile it stands on. The fall lands on
+   rows 1..3, which the tile loop has already painted, so it is drawn here, after it.
+
+   NO CODE CRAG. I built one — six stepped slabs meant to read as rock — and it photographed as grey
+   tombstones standing in the mist, worse than the nothing it replaced. It is not needed: the pack's
+   ter_waterfall_v1 is not just water, it is a rock face with the fall coming out of it, so the water
+   already has something to come out of. What is genuinely missing is a CRAG MASSIF — a landform
+   bigger than the fall, standing at the head of the stream on the far rim — and that is a painted
+   asset, not six rectangles. It is in ART-BRIEF-2026-09-27.md as `obj_crag`. */
+function drawStreamHead() {
+  var c = streamC(0), r = 0;
+  if (!isWaterfall(c, r)) return;
+  /* THE WATERFALL IS ANCHORED TWO TILES BACK AND TWO TILES UP FROM THE HEAD TILE.
+     Owner, 2026-09-28: "im talking about putting its base on r=0. its not currently on 0, and not on
+     midway. we dont need to move the stream, just move the waterfall to the start of the stream.
+     2 tiles back and 2 tile up."
+     The head tile is (streamC(0), 0) = (26, 0) and that IS where the anchor was. But a waterfall
+     sprite does not sit ON its base, it HANGS from it: the pack's ter_waterfall_v1 has its base_point
+     40/617 of the way down the cell, so 93.5% of an 85.6px sprite — about 80px, or five screen
+     tile-steps — is painted BELOW the anchor. Anchored on the head tile, the fall therefore stood
+     two to three tiles down-stream of the water it belongs to: in the `falls` shot it sat down-right
+     of the blue band's end with a wedge of green between them, floating on the bank rather than
+     being the source. The predicate was right and the anchor was wrong, which is why
+     `isWaterfall()` returning true on (26,0) proved nothing about the picture.
+     -2 in c and -2 in r is NOT a diagonal on screen. project() maps (c,r) to ((c-r)*TW/2,
+     (c+r)*TH/2), so subtracting 2 from BOTH leaves x untouched and lifts the sprite by 4 screen
+     tile-steps = 2 * TH = 62px — a straight vertical move on the glass, which is exactly the
+     "2 tiles back and 2 tile up" the owner described.
+     z comes from the HEAD tile, not from (c-2, r-2): that point is off the plateau and has no height
+     of its own. The fall stands at the head's elevation; only its screen position moves. */
+  var p = project(c, r, groundZ(c, r));
+  var cx = p[0], base = p[1] + TH * 0.46;
+  /* TWO DIFFERENT ANCHORS, because the two sprites are anchored differently and the maker flagged
+     it: ter_waterfall_v1 is RIM-anchored at y = 40 of a 617 cell, so its anchor is the LIP and the
+     whole fall hangs 85.6px below it; obj_crag is FOOT-anchored like every other sprite, so its base
+     is where it meets the ground and it rises from there.
+     So the crag stands ON the head tile and the fall is lifted 2 * TH, which puts its lip against the
+     crag's face and its landing on the first water tile. Anchoring the fall on the tile instead puts
+     its lip on the water and the whole fall two to three tiles downstream — a rock on the bank with a
+     wedge of green between it and the stream, which is exactly what the owner saw. */
+  SPR.crag(cx, base, TW * 1.90);
+  drawWaterfall(cx, base - 2 * TH, TW * 1.5);
+}
+
 function drawWorld() {
   eachVisible(drawTileProp);
+  /* Second pass: the stream's head. It stands on row 0 and spills onto rows 1..3, all of which the
+     first pass has already painted, so it has to be drawn after them. */
+  drawStreamHead();
 }
 
 function drawTileProp(c, r) {
@@ -3033,18 +3361,37 @@ function drawTileProp(c, r) {
      the picture showed a stream that stopped dead at the rim. A check on the predicate is not a
      check on the paint. So it is asked about first, alongside the toad. */
   var isFalls = isWaterfall(c, r);
+  /* THE MOUTH OF THE STREAM. Where the water leaves the map at the near rim — the other half of the
+     owner's sentence, "into water running off edge of map". It is not a fall, it is a LIP, and like
+     the toad and the waterfall it stands on a water tile with nothing on it, so it has to be asked
+     about before the bail below throws its tile away. It is drawn in this pass rather than a second
+     one because r = ROWS-1 is the last row, so nothing can paint over it. */
+  var isMouth = (r === ROWS - 1 && c === streamC(ROWS - 1));
   /* Most of a 40x40 map is bare grass with nothing standing on it. Bail before doing any geometry,
      or the cull above just moves the cost from the loop into the body. */
-  if (!isToad && !isFalls && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) && t.ter !== 'forest') return;
+  if (!isToad && !isFalls && !isMouth && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) &&
+      t.ter !== 'forest') return;
   var p = project(c, r, groundZ(c, r));
   var cx = p[0], base = p[1] + TH * 0.46;
+  /* THE FOOT OF A TREE SITS IN THE MIDDLE OF ITS DIAMOND, NOT ON ITS FRONT VERTEX.
+     `base` is p[1] + TH*0.46 = 14.3 px below the tile centre, where the diamond's front vertex is
+     at 15.5 — so every tree stood on the front TIP of its tile and read as belonging to the tile in
+     front of it. Owner, 2026-09-27: "Should we not put each of the trees near centre of the
+     diamonds?" The ART was already dead-centre — measured, the ink centre lands at 0.491-0.500 of
+     the cell across all 57 assets — so this was the game, not the pack.
+     The landmarks keep `base`: they are placed rather than scattered, and were tuned against it, so
+     moving them would drop the cottage and the bin through their own tiles. */
+  var tbase = p[1] + TH * 0.18;
   /* Trees and aliens get a little size and position scatter. Every one of them the same size on
      the same pitch is wallpaper, and wallpaper is what makes a tile world read as generated rather
      than grown. The landmarks — house, nursery, bin, sign, jetty — do NOT move; they are placed,
-     not scattered. */
+     not scattered.
+     The scatter was TW*0.22 = +/-6.8 px, which is 11% of a tile and put a tree visibly off its own
+     diamond on top of the foot problem above. Halved, so it still breaks the grid without
+     unhitching a tree from the tile it stands on. */
   var vs = 0.72 + jit(c, r, 71) * 0.38;
-  var tx = cx + (jit(c, r, 72) - 0.5) * TW * 0.22;
-  var tb = base + (jit(c, r, 73) - 0.5) * TH * 0.12;
+  var tx = cx + (jit(c, r, 72) - 0.5) * TW * 0.10;
+  var tb = tbase + (jit(c, r, 73) - 0.5) * TH * 0.06;
   /* Well under a tile wide, not a tile and a bit. At a full tile every tree touched its
      neighbours: a fresh plateau with 28 clumps on it read as woodland rather than a field, and a
      grown one closed into a single carpet of green with no ground showing anywhere. At 0.78 the
@@ -3058,9 +3405,17 @@ function drawTileProp(c, r) {
      crown's form, size, height and colour all come off its hash — see drawForestCanopy. It stays on
      the tile centre so the crowns still close into one canopy. */
   if (t.ter === 'forest' && !t.alien && !t.sp && !t.obj) {
-    drawForestCanopy(cx, base, TW * 1.02, c, r);
+    drawForestCanopy(cx, tbase, TW * 1.02, c, r);
   }
-  if (t.alien) drawAlien(t.alien, tx, tb, s);
+  /* THE BRAMBLE IS BIGGER THAN THE OTHER THREE, because it is the one that behaves like a bramble.
+     Owner, 2026-09-29: "can the bramble b bigger? its quite a horrible plant that loves to expand
+     itself invasively." It spreads on `spread: 3`, its note says it "suckers back after cutting", and
+     it is the only one whose tell is thorns — a plant that does all that should take up room.
+     SCALED HERE, AT THE WORLD CALL SITE, NOT IN THE drawAlien WRAPPER. Putting it in the wrapper
+     scaled the SHOP ICON too and the bramble's icon spilled out of its own 44px box — the gate caught
+     it (`no weed icon is clipped by its own canvas`). The wrapper is shared by the world, the shop
+     and the field guide; only the hillside should have a bigger bramble. */
+  if (t.alien) drawAlien(t.alien, tx, tb, s * (ALIEN_SCALE[t.alien] || 1));
   else if (t.sp) drawTree(t.sp, t.stage, tx, tb, s, t.hollow, c * 31 + r);
 
   /* THE LANDMARKS, and the waterfall is one of them. They are drawn on the tile CENTRE rather than
@@ -3068,13 +3423,22 @@ function drawTileProp(c, r) {
      like it was rolled. The mushroom house is the landmark the owner named, so it is drawn bigger
      than a tile — about two tiles across, the way the reference's is — and everything else keeps to
      its own tile. */
-  if (isFalls) drawWaterfall(cx, base, TW * 1.5);
+  /* The waterfall is NOT drawn here any more. It stands at r = 0 now, and this loop walks the map in
+     order of c + r — so anything drawn on row 0 is painted over by every row behind it. It goes in
+     drawStreamHead(), after the tile loop. `isFalls` still keeps this tile out of the early bail. */
   if (t.obj === 'house') drawHouse(cx, base, TW * 1.90);
   else if (t.obj === 'nursery') drawNursery(cx, base, TW * 1.06);
   else if (t.obj === 'bin') drawBin(cx, base, TW * 0.98, binItems >= BIN_LOAD);
   else if (t.obj === 'sign') drawSign(cx, base, TW * 0.96);
   else if (t.obj === 'jetty') drawJetty(cx, base, TW * 1.10);
   else if (DECOR[t.obj]) drawDecor(t.obj, cx, base, TW * 0.98);
+
+  /* The lip at the mouth, on the tile centre like the other landmarks so it lines up with the
+     channel. Round 4 re-cut the cell to 1568x840 — same painting, 8x the area — because at the
+     brief's 560x300 it drew 77.7 world px wide against a channel 186 px wide, a pebble in a river.
+     The cell change does the work on its own (H scales with the cell), and the draw scale is nudged
+     so the lip spans the channel rather than most of it. */
+  if (isMouth) SPR.mouth(cx, base, TW * 1.30);
 
   if (isToad) drawToad(cx, base - TH * 0.06, TW * 0.78);
 }
@@ -3189,6 +3553,11 @@ function drawActors(dt) {
     ctx.fillStyle = 'rgba(255,248,214,0.30)';
     ctx.beginPath(); ctx.arc(px, py, 36, 0, Math.PI * 2); ctx.fill();
 
+    /* THE BIRD ITSELF IS THE PACK'S WHEN THE PACK HAS ONE. The halo above and the flight arc are the
+       MECHANIC and stay the game's — the halo is what makes the bird read against a green canopy and
+       the arc is what makes the flight land on the right tree. Only the bird is swapped. Falls
+       through to the code bird, which is a real Cape parrot already: green body, red forehead. */
+    if (!SPR.bird(px, py + 6, TW * 0.86)) {
     ctx.strokeStyle = '#4e8a44';
     ctx.lineWidth = 4.4;
     ctx.lineCap = 'round';
@@ -3216,6 +3585,7 @@ function drawActors(dt) {
 
     ctx.fillStyle = '#2c2c22';
     ctx.beginPath(); ctx.arc(px + 15, py - 9, 1.7, 0, Math.PI * 2); ctx.fill();
+    }
   }
 }
 
@@ -3321,7 +3691,18 @@ function frame(ts) {
 
   /* The ground is a baked image. The terrain never changes — the aliens and the trees stand ON it —
      so the per-tile gradients and the cliff extrusion are paid for once, not sixty times a second. */
+  /* RE-BAKE WHEN THE SCALE CHANGES, BUT NOT MID-GESTURE. A pinch crosses two half-steps between
+     zoom 1 and 2.4, and a 2x bake is 12.7M pixels — a hitch the player would feel under their
+     fingers. So the scale is checked every frame and the bake is deferred until the zoom has been
+     still for a moment. The first bake is immediate, because there is nothing to see until it lands. */
   if (!GROUND) buildGround();
+  else if (GROUND._s !== groundScale()) {
+    if (groundRetimer) clearTimeout(groundRetimer);
+    groundRetimer = setTimeout(function () {
+      groundRetimer = 0;
+      if (GROUND && GROUND._s !== groundScale()) buildGround();
+    }, 260);
+  }
   blitGround();
 
   drawWorld();
@@ -3449,7 +3830,9 @@ function renderHud() {
       ? state.ap + ' of ' + AP_MAX + ' action points left today'
       : 'All ' + AP_MAX + ' action points spent \u2014 they come back when the day rolls over';
   }
-  if (els.binBadge) els.binBadge.textContent = String(binItems);
+  /* SHOW THE CAP, not just the count. The bin holds BIN_MAX and what does not fit is lost, so
+       '4' is not the same information as '4/6' — the player has to be able to see it filling up. */
+  if (els.binBadge) els.binBadge.textContent = binItems + '/' + BIN_MAX;
   if (els.btnBox) {
     if (binItems >= BIN_LOAD) els.btnBox.className = 'boxbtn ready';
     else els.btnBox.className = 'boxbtn';
@@ -3866,9 +4249,15 @@ function resize() {
   var ch = box && box.height ? box.height : (typeof innerHeight === 'number' ? innerHeight : 700);
   W = Math.max(240, Math.round(cw));
   H = Math.max(320, Math.round(ch));
-  /* Capped at 2. A 3x backing store on a 40x40 world costs a third more fill rate per frame for a
-     difference nobody can see on a tile this flat. */
-  dpr = Math.min(2, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
+  /* CAPPED AT 3, NOT 2 — and the cap is why the owner's browser looked softer than the shots.
+     The shot harness runs Chrome at a device scale factor of 2, so every screenshot was taken at
+     exactly the cap. On a 3x display the cap bites: the backing store stays at 2x while the display
+     is 3x, so the whole canvas is upscaled and EVERYTHING softens — ground, water and sprites
+     together. A cap that matches the instrument that checks it cannot see the case above it.
+     The cost is real: a 3x backing store on a large window is about 2.25x the fill rate of 2x, which
+     is why this was capped in the first place. It is worth it — detail the player can see beats fill
+     rate they cannot — and `groundScale()` follows dpr, so the ground bake sharpens with it. */
+  dpr = Math.min(3, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
   if (cv) {
     if (cv.setAttribute) {
       cv.setAttribute('width', Math.round(W * dpr));
@@ -3884,7 +4273,7 @@ function resize() {
 }
 
 function boot() {
-  var ids = ['cv', 'stage', 'wxIcon', 'wxText', 'tokenBar', 'btnGear', 'btnBox', 'binBadge', 'dock',
+  var ids = ['cv', 'stage', 'packWarn', 'wxIcon', 'wxText', 'tokenBar', 'btnGear', 'btnBox', 'binBadge', 'dock',
              'notes', 'btnHome', 'btnNotes', 'mNotes', 'notesClose',
              'apPill', 'apNow',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
@@ -3898,15 +4287,70 @@ function boot() {
   notesEl = els.notes;
   cv = els.cv;
   if (cv && cv.getContext) ctx = cv.getContext('2d');
+
+  /* THE DOWNSCALE FILTER MATTERS MORE THAN THE BACKING STORE HERE, and it was left at the default.
+     A ground tile's source is 450x225 and at zoom 1 it is drawn at 62x31 device px on a 1x display —
+     a **7.3x reduction**. Chrome's default smoothing at that ratio is a cheap box filter and it
+     averages the painted texture away, which is why the ground reads as flat fill on a desktop and
+     looks better in the shots: the shot harness runs at a device scale factor of 2, so the same tile
+     is drawn at 124 px there and only reduced 3.6x.
+     'high' asks for the proper multi-tap filter, which is the one thing that actually recovers
+     apparent detail at this ratio. It costs some fill rate on the ground blit and the tile pass. */
+  if (ctx && 'imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+
+  /* THREE SECONDS, THEN SAY SO OUT LOUD. The painted pack is fetched at runtime, so when it failed
+     the game simply drew its code art and looked like an older build — which cost a round of "no new
+     sprites" and "its blue grass" that were one failed fetch, and then a second round of me proving
+     the fetch worked in a browser that was not the owner's. A failure the player can SEE ends that.
+     Nothing is shown when the pack loads, so this is invisible in normal play. */
+  if (typeof setTimeout === 'function') {
+    /* ANY UNCAUGHT ERROR GOES IN THE BANNER TOO. A page that throws while loading looks exactly
+       like a page that loaded and drew the fallback — same flat blue water, same old trees, no
+       explanation. The owner spent two rounds on that. Now the message is on the screen. */
+    if (typeof addEventListener === 'function') {
+      addEventListener('error', function (ev) {
+        var el2 = els.packWarn;
+        if (!el2) return;
+        var msg = (ev && ev.message) ? ev.message : 'unknown error';
+        var at = (ev && ev.lineno) ? (' line ' + ev.lineno) : '';
+        el2.textContent = 'Something failed while loading: ' + msg + at;
+        el2.hidden = false;
+      });
+    }
+    setTimeout(function () {
+      var el = els.packWarn;
+      if (!el) return;
+      var ready = (typeof API !== 'undefined' && API && API.sprites && API.sprites.ready)
+        ? API.sprites.ready() : false;
+      if (ready) { el.hidden = true; return; }
+      var st = (typeof API !== 'undefined' && API && API.sprites && API.sprites.status)
+        ? API.sprites.status() : 'no sprite layer at all';
+      el.textContent = 'Painted art did not load — this is the drawn fallback. ' + st;
+      el.hidden = false;
+    }, 3000);
+  }
   resize();
   if (typeof addEventListener === 'function') {
     addEventListener('resize', function () { resize(); });
     addEventListener('orientationchange', function () { resize(); });
   }
   /* Open on the village, at the scale the reference art is drawn at. zoom first — centreOn divides
-     by it, so setting it afterwards would centre the camera for the wrong scale. */
-  zoom = 1;
-  centreOn(VILLAGE.c, VILLAGE.r);
+     by it, so setting it afterwards would centre the camera for the wrong scale.
+
+     A LANDSCAPE WINDOW OPENS ON THE WHOLE PLATEAU INSTEAD. Zoom 1 is the phone framing: it fills a
+     phone with the village, and in a desktop window it fills the middle of the screen with the
+     village and shows nothing else. The owner: "would be better on desktop if you could see whole
+     map." zoomMin() already computes the scale at which the entire 40x40 diamond fits — it is what
+     the pinch floor uses — so the only thing missing was to open there. Gated on the window being
+     wider than it is tall, so a phone in portrait, and the shot harness's 390x780 viewport, keep the
+     framing every existing check assumes. */
+  if (W > H * 1.15) {
+    zoom = zoomMin();
+    centreOn((COLS - 1) / 2, (ROWS - 1) / 2);
+  } else {
+    zoom = 1;
+    centreOn(VILLAGE.c, VILLAGE.r);
+  }
 
   state = loadLocal() || newState();
 
@@ -3949,7 +4393,19 @@ function boot() {
   if (els.shopClose) els.shopClose.addEventListener('click', function () { hideModal(els.mShop); });
   if (els.cardOk) els.cardOk.addEventListener('click', function () { hideModal(els.mCard); });
   if (els.btnGear) els.btnGear.addEventListener('click', function () { renderBoard(); showModal(els.mBoard); });
-  if (els.btnBox) els.btnBox.addEventListener('click', function () { renderShop(); showModal(els.mShop); });
+  if (els.btnBox) els.btnBox.addEventListener('click', function () {
+    /* THE BIN RECYCLES; THE NURSERY SELLS — and this opened the SHOP, the same modal the nursery
+       opens, so the bin had no job of its own and everything in the game happened at the nursery.
+       Owner, 2026-09-29: "clicking the baboon bin does nothing. all happens at nursery, so whys the
+       bin there?"
+       `recycle()` was written and wired to nothing: it trades BIN_LOAD cuttings for tokens of the
+       CURRENT WEATHER — which is the loop the guide describes and the one the baboon card announces.
+       The button just never called it. */
+    if (!recycle()) {
+      note('The bin needs ' + BIN_LOAD + ' cuttings before the baboon will trade. ' +
+        (binItems ? 'It has ' + binItems + '.' : 'It is empty.'), 'dim');
+    }
+  });
   /* Tapping the counter asks the question the owner asked. One place to find out what the number
      means and what happens when it is gone — so a player who has run out does not have to work out
      that tapping a weed they cannot cut is the way to be told. */
@@ -4219,6 +4675,593 @@ var API = {
 };
 
 if (typeof globalThis !== 'undefined') globalThis.__MB = API;
+
+/* ===================== PAINTED PACK (added 2026-09-27) ===================== */
+/* ================================================================================================
+   THE PAINTED PACK
+
+   The game draws itself: twenty-odd draw* functions and not one image file. This layer puts the
+   painted asset pack underneath those calls WITHOUT TOUCHING A SINGLE ONE OF THEM. Every family is
+   wrapped, not rewritten, so the code path is still the fallback — if the pack is absent, slow, or
+   simply has no art for something, the game looks exactly as it did the moment before this existed.
+
+   THE GEOMETRY, and why it is a formula rather than a table of magic numbers. Every cell in the
+   pack was authored at the same scale, PPWW pixels per world pixel, and each cell holds its
+   family's worst-case frame box at that family's REFERENCE draw scale. So a cell of height h holds
+   h / PPWW world pixels of ink at s_ref, and that same sprite asked to draw at the game's current s
+   wants (h / PPWW) * (s / s_ref) — which is frame_h * s, the box the code art would have filled.
+   base_point then says which pixel of the cell is the anchor, so the sprite lands on the tile the
+   way the code art did rather than near it.
+
+   WHY IT DOES NOT USE fetch(): the shot harness deliberately stubs window.fetch to reject, so the
+   weather cannot reach the network and every scene's sky is the sky in the picture. A loader built
+   on fetch would therefore work live and silently fall back to code art in every screenshot, which
+   is the worst of both. XMLHttpRequest is not stubbed, so it works in both places.
+
+   Point window.__MB_PACK_ROOT at the pack to load it from somewhere other than next to the page.
+   ================================================================================================ */
+var SPR = (function () {
+  var ROOT = (typeof window !== 'undefined' && window.__MB_PACK_ROOT) || '';
+  var PPWW = 7.207;          /* the pack's authoring scale: atlas pixels per world pixel */
+  var REF = {                /* the draw scale each family's cell was authored at, in world px */
+    sapling: TW * 0.78 * 1.10, young: TW * 0.78 * 1.10, mature: TW * 0.78 * 1.10,
+    weed: TW * 0.78, decor: TW * 0.98, house: TW * 1.90,
+    crown: TW * 1.02, waterfall: TW * 1.50, animal: TW * 0.98
+  };
+  /* ONE AUTHORED CELL PER FAMILY CANNOT SERVE A 2 m SHRUB AND A 15 m TREE.
+     The pack authored all four weeds at the same cell (392x441), so a bugweed drew at EXACTLY the
+     size of a black wattle — 55.7 world px, which is 72% of a mature tree, 129% of a young tree, and
+     132% of the code-art weed it replaced. Owner, 2026-09-27: "bugweed isnt the size of a tree."
+     Measured on the shipped PNGs, not guessed. These are the real heights against a 76.9 px mature
+     tree. A per-ID multiplier rather than a family one, because the whole point is that the family
+     shares a cell and must not share a size. */
+  var SIZE = {
+    alien_pine: 1.65,      /* Pinus patula, 20-30 m — a plantation pine is TALLER than the natives */
+    alien_wattle: 0.82,    /* Acacia mearnsii, 6-15 m */
+    alien_bugweed: 0.40,   /* Solanum mauritianum, 2-4 m shrub */
+    alien_bramble: 0.32    /* Rubus, 1-3 m scrambler */
+  };
+  var rec = {}, nWant = 0, nGot = 0, failed = [], ready = false, on = true, started = false;
+  var status = 'idle';
+
+  function sRef(f) { return REF[f] || TW * 0.78; }
+
+  /* Draw one sprite so its base_point lands exactly on (cx, base). */
+  function put(e, cx, base, s, f) {
+    if (!e || !e.img || !e.img.width) return false;
+    var H = (e.cell[1] / PPWW) * (s / sRef(f || e.family));
+    if (!(H > 1)) return false;
+    var W = H * (e.cell[0] / e.cell[1]);
+    ctx.drawImage(e.img, cx - (e.base[0] / e.cell[0]) * W, base - (e.base[1] / e.cell[1]) * H, W, H);
+    return true;
+  }
+
+  /* The per-species size multiplier rides on `s`, so sRef() stays the family's authored scale and
+     the override is per ID — see SIZE above for why the family scale is not enough. */
+  function prop(id, cx, base, s, f) {
+    return on && ready && put(rec[id], cx, base, s * (SIZE[id] || 1), f);
+  }
+
+  /* THE FOUR DIAMOND EDGES, NAMED THE WAY THE PACK NAMES THEM.
+     The pack names them CLOCKWISE FROM THE UPPER-LEFT: north = upper-left edge, east = upper-right,
+     south = lower-right, west = lower-left. A 2:1 diamond shares its EDGES with the DIAGONAL
+     neighbours, so in this grid those four are (c-1,r), (c,r-1), (c+1,r) and (c,r+1) — the four
+     diagonal screen directions, not the orthogonal ones. Getting this mapping wrong rotates the
+     entire river, so it is read off the pack's own table rather than reasoned about: every river tile
+     in `qa/QA-RESULTS.json` carries its measured `edge_material` per edge, and the ids below come
+     from that.
+
+       e1..e4            one edge is the odd one out
+       c12/c23/c34/c41   two ADJACENT edges differ — the water's own convex corner (OUTER)
+       i12/i23/i34/i41   the same two edges differ but the corner between them is LAND, so the water
+                         sits in a notch (INNER). c12 and i34 are the SAME edge configuration painted
+                         twice — outer and inner — and the same for the other three pairs.
+       ter_water_v1..3   the fully-surrounded channel centre, for when no edge differs.
+
+     OFF-MAP COUNTS AS DIFFERING, so the channel gets a painted edge at the rim rather than pretending
+     the water runs on past the edge of the world. */
+  var E_N = 1, E_E = 2, E_S = 3, E_W = 4;
+
+  function outsideMap(c, r) { return c < 0 || c >= COLS || r < 0 || r >= ROWS; }
+  function ter2(c, r) { return outsideMap(c, r) ? null : terrainAt(c, r); }   /* null = off-map */
+
+  function edgeDiff(c, r) {
+    var ter = terrainAt(c, r), m = 0;
+    if (ter2(c - 1, r) !== ter) m |= E_N;    /* upper-left  */
+    if (ter2(c, r - 1) !== ter) m |= E_E;    /* upper-right */
+    if (ter2(c + 1, r) !== ter) m |= E_S;    /* lower-right */
+    if (ter2(c, r + 1) !== ter) m |= E_W;    /* lower-left  */
+    return m;
+  }
+
+  function riverEdgeId(c, r) {
+    var m = edgeDiff(c, r);
+    var n = (m & E_N) ? 1 : 0, e = (m & E_E) ? 1 : 0,
+        s = (m & E_S) ? 1 : 0, w = (m & E_W) ? 1 : 0;
+    var k = n + e + s + w, corner, outer, inner;
+    if (k === 1) return n ? 'e1' : e ? 'e2' : s ? 'e3' : 'e4';
+    if (k !== 2) return null;
+    /* The corner BETWEEN the two differing edges is the corner-neighbour: up for N+E, right for E+S,
+       down for S+W, left for W+N. */
+    if (n && e) { corner = [c - 1, r - 1]; outer = 'c12'; inner = 'i34'; }
+    else if (e && s) { corner = [c + 1, r - 1]; outer = 'c23'; inner = 'i41'; }
+    else if (s && w) { corner = [c + 1, r + 1]; outer = 'c34'; inner = 'i12'; }
+    else if (w && n) { corner = [c - 1, r + 1]; outer = 'c41'; inner = 'i23'; }
+    else return null;                     /* N+S or E+W: a one-tile channel, does not occur here */
+    /* WHICH OF THE TWO PAINTINGS, DECIDED FROM THE TILES RATHER THAN FROM THE LABELS.
+       c12 and i34 are the same edge configuration — land on the upper-left and upper-right edges —
+       painted twice, and the words "inner" and "outer" are used both ways round in the wild, so the
+       names are not a reliable guide. Measured on the shipped PNGs instead: at the corner between
+       the two land edges, `ter_water_c12` reads **0% water** (the land wraps the corner) and
+       `ter_water_i34` reads **100% water** (a channel passes through it). And the game's own terrain
+       settles which case occurs: every two-edge water cell on a fresh 40x40 has LAND at the
+       diagonal, so the land wraps the corner and the c-tile is the right one.
+       THIS TEST WAS INVERTED, and it is the hard zigzag at every bend: with it backwards, every
+       bend in the channel took the tile painted for a channel passing through the corner, so the
+       bank stepped instead of curving. The graphics side spotted the symptom on screen and the
+       tiles settle the direction. */
+    return (ter2(corner[0], corner[1]) === 'water') ? inner : outer;
+  }
+
+  function bankEdgeId(c, r) {
+    /* A bank tile meets the channel on one edge — or on TWO ADJACENT edges, when it sits on the
+       OUTSIDE OF A BEND. Round 4 shipped the four corner tiles for exactly that case; until they
+       existed this could only ever pick an e-tile, so the bank stepped at every bend instead of
+       curving round it. Measured on a fresh 40x40: **38 of 80 bank cells** have two adjacent water
+       edges, so at a bend this is the common case, not the exception.
+       The pack names the bank tiles by the WATER side — the opposite of the water tiles, whose e<n>
+       names the LAND side — and its c-tiles take the same N/E/S/W adjacency as the water ones. Both
+       read off qa/QA-RESULTS.json's measured edge_material rather than reasoned about:
+         ter_bank_c12 {north:water, east:water}   ter_bank_c23 {east:water, south:water}
+         ter_bank_c34 {south:water, west:water}   ter_bank_c41 {north:water, west:water}   */
+    var n = ter2(c - 1, r) === 'water', e = ter2(c, r - 1) === 'water',
+        s = ter2(c + 1, r) === 'water', w = ter2(c, r + 1) === 'water';
+    var k = (n ? 1 : 0) + (e ? 1 : 0) + (s ? 1 : 0) + (w ? 1 : 0);
+    if (k === 1) return n ? 'e1' : e ? 'e2' : s ? 'e3' : 'e4';
+    if (k === 2) {
+      if (n && e) return 'c12';
+      if (e && s) return 'c23';
+      if (s && w) return 'c34';
+      if (w && n) return 'c41';
+      return null;                     /* N+S or E+W: a one-tile channel, does not occur here */
+    }
+    return null;
+  }
+
+  /* A GROUND tile is the one thing in the pack that really is a full-bleed 2:1 diamond: its ink
+     fills the whole cell, so it is drawn to the tile's own footprint rather than scaled out of a
+     frame box. The grout goes down first in the terrain's own edge colour, so a hairline at the
+     diamond edge shows the tile's colour instead of the sky behind it.
+
+     A CROWN is NOT a tile, whatever the manifest's anchor text says — it is a 1.37:1 blob with its
+     own base point, and drawing it as a 2:1 diamond would stretch it and float it. It goes through
+     put() like any other sprite. */
+  function tile(c, r) {
+    if (!on || !ready) return false;
+    var t = cell(c, r), e = null;
+    /* WATER AND BANK ARE PICKED BY EDGE, NOT BY VARIANT.
+       A full-bleed diamond can only say "this whole tile is water". A river is a BOUNDARY — water on
+       one side, land on the other — so with plain diamonds the bank can only ever be the diamond's
+       own four straight sides and the channel reads as a stair-stepped band of tiles. The 16 edge
+       tiles are what make it a stream, and they are in the pack as of round 3.
+       The edge tile is tried first; if this tile's edge configuration has no tile (three or four
+       edges differ, which a three-wide channel does not produce), it falls through to the variant. */
+    if (t.ter === 'water' || t.ter === 'bank') {
+      var suf = (t.ter === 'water') ? riverEdgeId(c, r) : bankEdgeId(c, r);
+      if (suf) e = rec['ter_' + t.ter + '_' + suf];
+      if (e && (!e.img || !e.img.width)) e = null;
+    }
+    if (!e) {
+      /* HASH the variant per tile, never cycle it. `(c * 5 + r * 3) % 3` is `(2c) % 3` — the row term
+         vanishes modulo 3, so every tile took its variant from its COLUMN and the variants ran in
+         vertical stripes. drawGroundTile hashes its shade for exactly this reason (see TILE_ART). */
+      e = rec['ter_' + t.ter + '_v' + (1 + Math.floor(jit(c, r, 37) * 3))];
+    }
+    if (!e || !e.img || !e.img.width) return false;
+    /* WATER IS REJECTED ONLY ON AN AFFIRMATIVE "THIS IS NOT WATER" — see isBlueDominant(). It
+       returns null when the pixels cannot be read at all (a tainted canvas off the disk), and null
+       must pass, or opening the game by double-clicking it loses the river. */
+    if (t.ter === 'water' && e.waterish === false) return false;
+    var z = groundZ(c, r), p = project(c, r, z);
+    var a = TILE_ART[t.ter] || TILE_ART.grass;
+    tilePath(c, r, z, 1.0, 0);
+    ctx.fillStyle = a.edge;
+    ctx.fill();
+    ctx.drawImage(e.img, p[0] - TW / 2, p[1] - TH / 2, TW, TH);
+    return true;
+  }
+
+  /* ---------------- the wrappers. Each one falls through to the original on any doubt. -------- */
+
+  var _tile = drawGroundTile;
+  drawGroundTile = function (c, r) { if (tile(c, r)) return; return _tile(c, r); };
+
+  var _tree = drawTree;
+  drawTree = function (sp, stage, cx, base, s, hollow, seed) {
+    var st = stage === 3 ? 'mature' : stage === 2 ? 'young' : stage === 1 ? 'sapling' : null;
+    if (st) {
+      /* A STAND OF YELLOWWOOD WAS ONE DRAWING REPEATED, which is what made the forest read as a
+         plantation rather than a forest. Round 4 added six `_b` mature silhouettes; the choice is
+         hashed from the tile's own seed (drawTileProp passes `c * 31 + r`), so it is stable frame to
+         frame and varies across the map, and it falls through to the single mature sprite if the
+         variant is missing. Only mature — a sapling is a stick and has nothing to vary. */
+      if (st === 'mature' && seed !== undefined) {
+        if ((seed * 7919 + 13) % 100 < 45 && prop(sp + '_mature_b', cx, base, s, st)) return;
+      }
+      if (prop(sp + '_' + st, cx, base, s, st)) return;
+    }
+    return _tree.apply(null, arguments);
+  };
+
+  var _alien = drawAlien;
+  drawAlien = function (kind, cx, base, s) {
+    if (prop('alien_' + kind, cx, base, s, 'weed')) return;
+    return _alien.apply(null, arguments);
+  };
+
+  var _crown = drawForestCanopy;
+  /* OPTION A — THE FOREST INTERIOR IS DRAWN WITH TREES, NOT WITH THE PACK'S CROWNS.
+     crown_v1..v5 are 505x369 cells whose ink fills the cell: they are PLAN-VIEW aerial canopy
+     patches, a diamond of treetops seen from directly overhead. Every other tree in the game is
+     drawn side-on / three-quarter. Putting a plan view beside side-on trees is not a style
+     mismatch, it is a different projection — and they also drew at 70.1 x 51.2 on a 62 x 31 tile,
+     wider AND taller than the tile they stand on. Owner, 2026-09-27: "The old growth canopy remnant
+     is flat top view and doesnt make sense in context of the other trees. it doesnt work."
+     So the remnant is planted with the pack's OWN mature sprites instead: same projection, same
+     artist, no new art needed. The old-growth three, hashed per tile so the stand reads as a mixed
+     remnant rather than a monoculture. The crowns stay loaded and stay reachable through SPR, so
+     this can be flipped back without a rebuild. */
+  var OG = ['yellowwood_mature', 'outeniqua_mature', 'ironwood_mature',
+            'yellowwood_mature_b', 'outeniqua_mature_b', 'ironwood_mature_b'];
+  drawForestCanopy = function (cx, base, s, c, r) {
+    if (on && ready) {
+      var ts = TW * 0.78 * (0.86 + jit(c, r, 54) * 0.26);
+      if (prop(OG[Math.floor(jit(c, r, 53) * 6) % 6], cx, base, ts, 'mature')) return;
+    }
+    return _crown.apply(null, arguments);
+  };
+
+  var _house = drawHouse;
+  drawHouse = function (cx, base, s) {
+    if (prop('obj_house', cx, base, s, 'house')) return;
+    return _house.apply(null, arguments);
+  };
+
+  var _bin = drawBin;
+  drawBin = function (cx, base, s, full) {
+    /* The code bin sits LEFT of the tile centre on purpose: the baboon has the right-hand side.
+       The pack's bin is a lone object centred in its cell, so it is anchored where the code bin
+       is drawn, not on the tile centre, or the pair stops composing.
+
+       AND THE BABOON IS PART OF THIS DRAWING, NOT A SEPARATE ONE. `drawBin()` ends by calling
+       `drawBinBaboon()`, so returning here after painting the bin CUT THE BABOON OUT OF THE PICTURE
+       — the bin was painted, `ani_bin_baboon` shipped and was in the manifest, and no baboon ever
+       appeared on the glass. Owner, 2026-09-28: "wheres the baboon?"
+       This is the shape to watch for in every wrapper in this file: wrapping a function that
+       COMPOSES two things and returning after the first one silently deletes the second. The
+       wrapper has to preserve the composition, not just the anchor. */
+    if (prop('obj_bin', cx - s * 0.16, base, s, 'decor')) {
+      /* ONE BIN, NOT TWO. `ani_bin_baboon` is painted WITH a bin — the brief asked for "a baboon up
+         on the rim of a bin, reaching in" — so drawing the pack's `obj_bin` beside it puts two bins
+         on the tile, a wooden barrel and a green one. The baboon sprite already IS the bin plus its
+         occupant, so when it is present it stands in for both and the barrel is skipped.
+         Worth flagging to the graphics side: the painted `obj_bin` is a wooden barrel and the bin
+         inside `ani_bin_baboon` is green, so they read as two different bins when both are on screen.
+         Either the baboon is re-cut bare so it can perch on the player's barrel, or the barrel is
+         repainted green to match. Until then this draws the pair the asset actually depicts. */
+      if (prop('ani_bin_baboon', cx - s * 0.16, base, s, 'animal')) return;
+      drawBinBaboon(cx + s * 0.28, base, s * 0.82);
+      return;
+    }
+    return _bin.apply(null, arguments);
+  };
+
+  var _sign = drawSign;
+  drawSign = function (cx, base, s) {
+    if (prop('obj_sign', cx, base, s, 'decor')) return;
+    return _sign.apply(null, arguments);
+  };
+
+  var _decor = drawDecor;
+  drawDecor = function (kind, cx, base, s) {
+    if (prop('obj_' + kind, cx, base, s, 'decor')) return;
+    return _decor.apply(null, arguments);
+  };
+
+  var _falls = drawWaterfall;
+  drawWaterfall = function (cx, base, s) {
+    if (prop('ter_waterfall_v1', cx, base, s, 'waterfall')) return;
+    return _falls.apply(null, arguments);
+  };
+
+  var _nursery = drawNursery;
+  drawNursery = function (cx, base, s) {
+    if (prop('obj_nursery', cx, base, s, 'decor')) return;
+    return _nursery.apply(null, arguments);
+  };
+
+  /* The jetty has no pack sprite yet and is in the brief; wrapped anyway so it is a drop-in. */
+  var _jetty = drawJetty;
+  drawJetty = function (cx, base, s) {
+    if (prop('obj_jetty', cx, base, s, 'decor')) return;
+    return _jetty.apply(null, arguments);
+  };
+
+  /* ---------------- the animals ----------------
+     The pack had no animal sprite of any kind — the parrot, the troop, the bin baboon and the toad
+     were all code art. These wrappers are the drop-in for ART-BRIEF-2026-09-27.md section 5: each
+     starts using its sprite when it lands and falls through to the code art until then, which is the
+     same contract as every other wrapper here.
+
+     drawCritter is keyed by the GAME's kind names, which are not the pack's ids — 'monkey' is the
+     troop's baboon — so the mapping is written out rather than concatenated. 'ani_' + 'monkey' would
+     look for a file that will never exist and would fail silently, which is the worst way for a
+     wiring bug to behave: it looks exactly like the art not having arrived yet. */
+  var CRITTER_ID = { monkey: 'ani_baboon', bushbuck: 'ani_bushbuck', parrot: 'ani_parrot',
+                     porcupine: 'ani_porcupine', turaco: 'ani_turaco' };
+  var _critter = drawCritter;
+  drawCritter = function (kind, cx, base, s) {
+    var id = CRITTER_ID[kind];
+    if (id && prop(id, cx, base, s, 'animal')) return;
+    return _critter.apply(null, arguments);
+  };
+
+  var _binBaboon = drawBinBaboon;
+  drawBinBaboon = function (cx, base, s) {
+    if (prop('ani_bin_baboon', cx, base, s, 'animal')) return;
+    return _binBaboon.apply(null, arguments);
+  };
+
+  var _toad = drawToad;
+  drawToad = function (cx, base, s) {
+    if (prop('ani_toad', cx, base, s, 'animal')) return;
+    return _toad.apply(null, arguments);
+  };
+
+  /* ---------------- loading ---------------- */
+
+  function finish() {
+    ready = true;
+    status = 'ready ' + nGot + '/' + nWant + (failed.length ? ' (' + failed.length + ' failed)' : '');
+    retone();                   /* re-measure the grout from the pack; clears the bake itself */
+    if (on) GROUND = null;      /* the bake was made with the code art; rebuild it painted */
+    if (typeof console !== 'undefined' && console.log) console.log('mistbelt pack: ' + status);
+  }
+
+  /* THE GROUT IS RE-MEASURED FROM THE PACK.
+     Each ground tile paints a full-size diamond UNDER itself in the terrain's `edge` colour, so the
+     hairline where two tiles' anti-aliased edges meet shows that colour instead of the sky. Those
+     edge colours were tuned against the CODE art's flat tiles, and the pack's painted tiles are a
+     different tone — so the hairline showed as a hard diamond lattice across every surface. Measured
+     against the shipped pack: grass off by 17, forest 35, water 35, bank 28. Forest and water are
+     lighter in the pack than the code art ever was, so the lattice read as a rendering fault.
+     Rather than retype four colours that will be wrong again the moment the maker repaints, each
+     terrain family is averaged as it loads and the grout is set just under that mean. The 0.94 keeps
+     a faint grid, because a visible tile texture is deliberate (see TILE_K); what was not deliberate
+     is a lattice 35 units off the surface it sits in. */
+  var famSum = {}, famN = {};
+
+  function meanRGB(img) {
+    try {
+      var n = 24, cv = document.createElement('canvas'), c2;
+      cv.width = n; cv.height = n;
+      c2 = cv.getContext('2d');
+      c2.drawImage(img, 0, 0, n, n);
+      var d = c2.getImageData(0, 0, n, n).data, r = 0, g = 0, b = 0, k = 0;
+      for (var i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 200) continue;      /* the diamond's own taper is not the surface */
+        r += d[i]; g += d[i + 1]; b += d[i + 2]; k++;
+      }
+      return k ? [r / k, g / k, b / k] : null;
+    } catch (err) { return null; }         /* tainted canvas on file:// — keep the code grout */
+  }
+
+  function noteFamily(id, img) {
+    var m = /^ter_(grass|forest|water|bank)_/.exec(id);
+    if (!m) return;
+    var c = meanRGB(img);
+    if (!c) return;
+    var s = famSum[m[1]] || (famSum[m[1]] = [0, 0, 0]);
+    s[0] += c[0]; s[1] += c[1]; s[2] += c[2];
+    famN[m[1]] = (famN[m[1]] || 0) + 1;
+  }
+
+  function retone() {
+    for (var f in famSum) {
+      if (!famN[f] || !TILE_ART[f]) continue;
+      var s = famSum[f], n = famN[f];
+      /* WATER GETS NO DARKENING AT ALL. The 0.94 was meant to leave a faint tile texture on the
+         ground, which is deliberate on grass and forest — but on water it is a lattice: the tiles are
+         full-bleed diamonds whose edges taper to transparent over a pixel, so the grout underneath
+         shows as a hairline around every diamond. At 0.94 that hairline is 3 to 5 units darker than
+         the water, and on a flat blue surface that reads as a grid of blue squares. Owner, 2026-09-28:
+         "still just blue squares."
+         Set to 1.0 the grout IS the water colour and the seam disappears — which is what a river
+         should have and a field should not. */
+      var k = (f === 'water') ? 1.0 : 0.94;
+      var r = Math.round(s[0] / n * k), g = Math.round(s[1] / n * k), b = Math.round(s[2] / n * k);
+      TILE_ART[f].edge = 'rgb(' + r + ',' + g + ',' + b + ')';
+    }
+    GROUND = null;                          /* the bake carries the old grout */
+  }
+
+  /* IS THE PACK'S WATER ACTUALLY WATER?
+     The shipped ter_water_v1..3 measure GREEN — mean R61 G93 B81, so B-G = -12 — where the game's own
+     water is the blue #5c8fa8. Wired in blind they turned the stream into a band of slightly lighter
+     grass: measured on the `planting` scene, the stream region fell from 20.7% blue-dominant pixels
+     to 0.3%, and the water stopped reading as water at all.
+     Rather than hardcode a decision that is wrong the moment the maker repaints them, the tiles are
+     MEASURED as they load. Ship blue water and the game picks it up with no code change; ship green
+     water and the code art stands. A rule about a colour should be checked against the colour, not
+     written down next to it. */
+  function isBlueDominant(img) {
+    try {
+      var n = 24, cv = document.createElement('canvas'), c2;
+      cv.width = n; cv.height = n;
+      c2 = cv.getContext('2d');
+      c2.drawImage(img, 0, 0, n, n);
+      var d = c2.getImageData(0, 0, n, n).data, g = 0, b = 0, k = 0;
+      for (var i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 128) continue;
+        g += d[i + 1]; b += d[i + 2]; k++;
+      }
+      return k > 0 && (b - g) / k > 6;
+    } catch (err) {
+      /* A TAINTED CANVAS CANNOT BE MEASURED, AND "CANNOT MEASURE" IS NOT "NOT WATER".
+         This returned false, which meant that opening the game straight off the disk — where every
+         image taints the canvas and getImageData throws — rejected every water tile and fell back to
+         the code art. The owner saw exactly that: "there no water, its blue grass". Fixing the
+         manifest alone would have left the water unpainted for this reason instead.
+         So it returns null and the caller only rejects on an affirmative false. The colour check
+         still runs whenever the pixels CAN be read — a served copy, or file:// with the flag — and
+         when they cannot, the manifest is the authority, which is where the water-blue fact has
+         lived since round 3 anyway. */
+      return null;
+    }
+  }
+
+  function adopt(man) {
+    var list = (man.assets || []).filter(function (e) { return !e.optional; });
+    nWant = list.length;
+    if (!nWant) { status = 'manifest held no shipping assets'; return; }
+    list.forEach(function (e) {
+      var r = rec[e.id] = { id: e.id, family: e.family, cell: e.cell_px, base: e.base_point,
+                            file: e.file, img: null, waterish: null };
+      var im = new Image();
+      im.onload = function () {
+        r.img = im;
+        if (/^ter_water/.test(e.id)) r.waterish = isBlueDominant(im);
+        noteFamily(e.id, im);
+        nGot++; if (nGot === nWant) finish();
+      };
+      im.onerror = function () { failed.push(e.id); nGot++; if (nGot === nWant) finish(); };
+      im.src = ROOT + e.file;
+    });
+  }
+
+  function start() {
+    if (started) return;
+    started = true;
+    if (typeof XMLHttpRequest === 'undefined' || typeof Image === 'undefined') {
+      status = 'no XHR or Image here — code art stands';
+      return;
+    }
+
+    function adoptText(txt) {
+      try { adopt(JSON.parse(txt)); }
+      catch (e) { status = 'manifest did not parse — code art stands'; }
+    }
+
+    /* XHR IS THE FALLBACK, NOT THE FIRST CHOICE.
+       This used to fetch PACK-MANIFEST.json with XMLHttpRequest. A `file://` page may not XHR
+       another `file://` URL — Chrome refuses it — so opening the game by double-clicking index.html
+       silently fell back to the code art: no painted sprites at all, and the code-art water is a flat
+       blue fill on grass-shaped tiles, which the owner reported as "there no water, its blue grass".
+       The shot harness never caught it because it runs Chrome with --allow-file-access-from-files, so
+       every screenshot proved the pack loaded in a browser that had been told to allow it.
+       A classic <script src> is NOT subject to that restriction, so the manifest is also emitted as
+       PACK-MANIFEST.js, beside the manifest (by _emit_manifest_js.js), and injected here. XHR still runs if the script
+       cannot be loaded — a served copy, or a pack without the emitted file. */
+    /* THE INLINE COPY FIRST, AND IT IS THE ONE THAT MATTERS.
+       This file fetched the manifest by XHR, then by a script tag, and BOTH were refused on the
+       owner's machine while working on mine — his page reported "manifest unreachable" with the
+       script route in place. The manifest is now also written straight into this page between the
+       MB-MANIFEST markers, so there is nothing to fetch and nothing to refuse: it is parsed with the
+       document. The other two routes stay as fallbacks for a copy of the page without the block. */
+    if (typeof window !== 'undefined' && window.__MB_MANIFEST) {
+      try { adopt(window.__MB_MANIFEST); return; }
+      catch (e) { status = 'inline manifest did not adopt — trying the script'; }
+    }
+
+    function viaXHR() {
+      try {
+        var x = new XMLHttpRequest();
+        x.open('GET', ROOT + 'PACK-MANIFEST.json', true);
+        x.onload = function () {
+          if (x.status >= 200 && x.status < 300) adoptText(x.responseText);
+          else status = 'manifest HTTP ' + x.status + ' — code art stands';
+        };
+        x.onerror = function () { status = 'manifest unreachable — code art stands'; };
+        x.send();
+      } catch (e) { status = 'manifest request threw — code art stands'; }
+    }
+
+    if (typeof document !== 'undefined' && document.createElement && document.head) {
+      var sc = document.createElement('script');
+      /* The cache-buster matters: a browser that fetched this path once while it did not exist can
+         hold the 404, and then the script never loads and the loader falls back to XHR — which is
+         the thing that cannot work on file://. One local file, 75 KB, so it is always re-read. */
+      sc.src = ROOT + 'PACK-MANIFEST.js?t=' + (new Date().getTime());
+      sc.onload = function () {
+        if (typeof window !== 'undefined' && window.__MB_MANIFEST) {
+          try { adopt(window.__MB_MANIFEST); }
+          catch (e) { status = 'inlined manifest did not adopt — code art stands'; }
+        } else { viaXHR(); }
+      };
+      sc.onerror = function () { viaXHR(); };
+      document.head.appendChild(sc);
+      return;
+    }
+    viaXHR();
+  }
+
+  /* ---------------- the handle ---------------- */
+
+  var api = {
+    start: start,
+    /* So a throw inside start() is readable instead of leaving the status at "idle". */
+    fail: function (e) { status = 'the sprite layer threw: ' + ((e && e.message) ? e.message : String(e)); },
+    status: function () { return status; },
+    ready: function () { return ready; },
+    isOn: function () { return on; },
+    counts: function () { return { want: nWant, got: nGot, failed: failed.slice() }; },
+    /* A/B the pack against the code art in place, so a review can flip between them on one
+       machine without a rebuild. */
+    set: function (v) {
+      var was = on;
+      on = !!v;
+      if (was !== on) GROUND = null;
+      return on;
+    },
+    /* The parrot is NOT drawn through drawCritter — it has its own flight, with an arc, a bob and a
+       flat halo, and all of that is the MECHANIC and stays the game's. So the bird itself is offered
+       as a method rather than wrapped as a function: drawActors asks, and keeps the code bird if the
+       pack has not got one. Returns true if it painted. */
+    bird: function (px, py, s) {
+      return on && ready && prop('ani_parrot', px, py, s, 'animal');
+    },
+    /* The crag at the head of the stream. I built a code crag, looked at it, and threw it away — six
+       stepped slabs that read as grey tombstones standing in the mist. So this is sprite-or-nothing:
+       no stand-in, because the stand-in was worse than the gap. */
+    crag: function (cx, base, s) {
+      return on && ready && prop('obj_crag', cx, base, s, 'waterfall');
+    },
+    /* The lip where the stream runs off the near edge. Sprite-or-nothing too. */
+    mouth: function (cx, base, s) {
+      return on && ready && prop('ter_streammouth', cx, base, s, 'waterfall');
+    },
+    toggle: function () { return api.set(!on); }
+  };
+  return api;
+})();
+
+API.sprites = SPR;
+/* A THROW HERE IS INVISIBLE AND LOOKS LIKE NOTHING HAPPENED. `status` stays at its initial 'idle',
+   the banner says "Painted art did not load — this is the drawn fallback. idle", and there is no
+   clue which line failed. The owner hit exactly that. Catch it and put the message where he can
+   read it back. */
+try { SPR.start(); }
+catch (e) { SPR.fail(e); }
+
+/* P flips the painted pack against the code art. The only other key the game listens for is
+   Escape, which closes a modal, so this collides with nothing. */
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'p' || ev.key === 'P') SPR.toggle();
+  });
+}
+/* =================== end painted pack =================== */
+
 
 if (typeof document !== 'undefined' && document.getElementById) {
   try { boot(); } catch (e) { if (typeof console !== 'undefined') console.error(e); }
