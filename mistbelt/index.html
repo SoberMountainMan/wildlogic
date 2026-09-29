@@ -28,7 +28,15 @@
     #app{max-width:none}
     .dockwrap{justify-content:center}
     .dock{flex:0 1 auto;max-width:900px}
-    .notes{max-width:640px;left:50%;transform:translateX(-50%)}
+    /* NOT `left:50%;transform:translateX(-50%)`. That pair is a centring idiom for an element with
+       `position:absolute`, and `.notes` is a plain static block inside the sheet — so `left` did
+       nothing and the TRANSFORM DID. It slid the whole field-notes block half its width to the left,
+       which pushed the save-code input off the panel's left edge and ran the text past it.
+       Owner, 2026-09-30: "field notes text overflows its box" — and the box that looked collapsed
+       was the input, half outside the sheet. The block is already full width inside a 378 px sheet,
+       so the honest rule is no centring at all; `margin:0 auto` keeps the max-width meaningful if the
+       sheet ever grows. */
+    .notes{max-width:640px;margin:0 auto}
   }
   #stage{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;line-height:0}
   canvas#cv{position:absolute;left:0;top:0;display:block;touch-action:none;cursor:pointer;
@@ -186,10 +194,18 @@
   .notes p.warn{color:#e0b070}
   .notes p.dim{color:#7d9686}
   .coderow{display:flex;gap:6px;margin-top:10px}
-  .coderow input{flex:1;min-width:0;font:inherit;font-size:11px;padding:8px;border-radius:9px;
+  /* THE SAVE BOX COLLAPSED TO A SLIVER. Owner, 2026-09-30: "field notes text overflows its box."
+     `flex:1` is `1 1 0%` and `min-width:0` lets the box shrink past its content, so on a row with
+     two content-sized buttons the input was the only thing that could give -- and it gave all the
+     way down to about 30 px, leaving an empty dark slot beside "Save code" with no placeholder and
+     nothing to type into. Measured on the wide shot: the panel is 372 px, the buttons take about
+     180 of it, and the input was getting 32.
+     A FLOOR, not a preference: `flex-basis` is the size it asks for and `min-width` is the size it
+     will not go below, so the input now holds 120 px and the BUTTONS give instead. */
+  .coderow input{flex:1 1 120px;min-width:120px;font:inherit;font-size:11px;padding:8px;border-radius:9px;
     border:1px solid #2c4436;background:#0f1a14;color:#cfe0d4}
-  .coderow button{font:inherit;font-size:11.5px;font-weight:800;padding:8px 10px;border-radius:9px;
-    border:1px solid #2c4436;background:#22362b;color:#dbe8de;cursor:pointer}
+  .coderow button{flex:0 1 auto;font:inherit;font-size:11.5px;font-weight:800;padding:8px 10px;border-radius:9px;
+    border:1px solid #2c4436;background:#22362b;color:#dbe8de;cursor:pointer;white-space:nowrap}
   /* ---- THE FIELD GUIDE. Owner, 2026-09-21: "we cant tell what alien is what." The guide existed
      only as a PNG in `_shots` — a file on the build machine, not a thing a player can open — so a
      cut naming its weed was the only identification the game gave. This puts it in the game, and it
