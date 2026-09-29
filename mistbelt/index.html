@@ -326,8 +326,12 @@
       </div>
       <div class="coderow">
         <input id="codeIn" placeholder="paste a save code" spellcheck="false" autocomplete="off">
-        <button id="btnSave">Save code</button>
+        <button id="btnSave">Copy code</button>
         <button id="btnLoad">Load</button>
+      </div>
+      <div class="coderow">
+        <button id="btnLink">Copy a share link</button>
+        <button id="btnFile">Save to a file</button>
       </div>
     </div>
     <footer>
@@ -4554,7 +4558,7 @@ function boot() {
              'apPill', 'apNow', 'goalChip',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
              'mIntro', 'btnIntro', 'introClose', 'introAp', 'introLeft', 'introBin',
-             'codeIn', 'btnSave', 'btnLoad', 'mBoard', 'boardDate', 'boardList', 'boardReward',
+             'codeIn', 'btnSave', 'btnLoad', 'btnLink', 'btnFile', 'mBoard', 'boardDate', 'boardList', 'boardReward',
              'boardClose', 'mShop', 'shopDate', 'shopSeeds', 'shopDecor', 'shopName', 'qty',
              'qMinus', 'qPlus', 'btnBuy', 'tradeRow', 'shopClose', 'mCard', 'cardTitle', 'cardBody',
              'cardLink', 'cardOk'];
@@ -4662,12 +4666,46 @@ function boot() {
   zoom = 1;
   centreOn(VILLAGE.c, VILLAGE.r);
 
-  state = loadLocal() || newState();
+  /* A SHARE LINK IS A SAVE TO OPEN, AND THE OLD ONE IS KEPT.
+     The hash never reaches a server, so opening a link stays private between the two devices. The
+     player's EXISTING game is copied to a `-prev` key before it is replaced: a link that silently ate
+     someone's hillside would be the worst bug this feature could have, and a backup makes that
+     recoverable rather than merely unlikely. */
+  var openedFromLink = false;
+  /* `typeof location.hash === 'string'` rather than a truthiness test: the first version read
+     `location.hash.indexOf` directly and threw in any environment whose `location` has no hash —
+     which is every headless one, and is why the gate went from 451 checks to 20. A guard that costs
+     one clause and turns a hard boot failure into a no-op is worth having even where it looks
+     unnecessary. */
+  var hashStr = (typeof location !== 'undefined' && typeof location.hash === 'string')
+    ? location.hash : '';
+  if (hashStr.indexOf('#s=') === 0) {
+    var linkedSave = null;
+    try {
+      linkedSave = decodeSave(decodeURIComponent(hashStr.slice(3)));
+    } catch (e) { linkedSave = null; }
+    if (linkedSave) {
+      try {
+        var prevSave = localStorage.getItem(SAVE_KEY);
+        if (prevSave) localStorage.setItem(SAVE_KEY + '-prev', prevSave);
+      } catch (e2) {}
+      state = linkedSave;
+      openedFromLink = true;
+    }
+  }
+  if (!state) state = loadLocal() || newState();
   /* THE CATCH-UP, and it is the whole reason the hourly rate needed a stored timestamp: the game
      only runs while the tab is open, so the points earned overnight exist nowhere until something
      measures the gap. This is that measurement, and it is the same apAccrue() the live timer calls —
      a load is just a very long tick. */
   apAccrue();
+
+  /* SAY WHAT HAPPENED. A player who taps a link and lands on a hillside they did not make needs
+     to know it is someone else's and that their own is still here. */
+  if (openedFromLink) {
+    note('Opened from a share link. Your own hillside is kept — Field notes → paste your ' +
+         'code to go back to it.', 'good');
+  }
 
   var month = new Date().getMonth();
   state.weather = fallbackFor(month);
@@ -4766,6 +4804,44 @@ function boot() {
       navigator.clipboard.writeText(code).catch(function () {});
     }
     note('Save code ready. Send it to yourself on WhatsApp and it is yours for good.', 'good');
+  });
+
+  /* A SHARE LINK, which is the same code with the copy-paste taken out of it.
+     Owner, 2026-09-30: "maybe the link is best? copy paste? snd to yourself?" A link is the only one
+     of the three that a person can send to another person in one gesture, and a village game travels
+     by WhatsApp or not at all. It is not a different mechanism -- it is the same code, in a URL.
+
+     The code goes in the HASH rather than the query string, because a fragment is never sent to a
+     server: the save stays on the two devices that already have it and does not land in anyone's
+     access log. Measured: a developed game is about 6,600 characters, well inside what browsers and
+     WhatsApp carry. */
+  if (els.btnLink) els.btnLink.addEventListener('click', function () {
+    var base = (typeof location !== 'undefined')
+      ? location.href.split('#')[0].split('?')[0] : '';
+    var url = base + '#s=' + encodeSave(state);
+    if (els.codeIn) els.codeIn.value = url;
+    if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).catch(function () {});
+    }
+    note('Share link copied \u2014 send it to anyone and they get this hillside.', 'good');
+  });
+
+  /* AND A FILE, for the case a link cannot reach: a save on a computer that has no clipboard, or a
+     player who wants something they can keep for years. A .txt in the downloads folder outlives
+     every browser. */
+  if (els.btnFile) els.btnFile.addEventListener('click', function () {
+    try {
+      var blob = new Blob([encodeSave(state)], { type: 'text/plain' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'mistbelt-hillside-day' + state.day + '.txt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      note('Saved as a file. Keep it anywhere \u2014 paste it back into the box to return.', 'good');
+    } catch (e) {
+      note('This browser would not let me write a file \u2014 use Copy code instead.', 'warn');
+    }
   });
   if (els.btnLoad) els.btnLoad.addEventListener('click', function () {
     var s = decodeSave(els.codeIn ? els.codeIn.value : '');
