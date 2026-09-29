@@ -4337,20 +4337,17 @@ function boot() {
   /* Open on the village, at the scale the reference art is drawn at. zoom first — centreOn divides
      by it, so setting it afterwards would centre the camera for the wrong scale.
 
-     A LANDSCAPE WINDOW OPENS ON THE WHOLE PLATEAU INSTEAD. Zoom 1 is the phone framing: it fills a
-     phone with the village, and in a desktop window it fills the middle of the screen with the
-     village and shows nothing else. The owner: "would be better on desktop if you could see whole
-     map." zoomMin() already computes the scale at which the entire 40x40 diamond fits — it is what
-     the pinch floor uses — so the only thing missing was to open there. Gated on the window being
-     wider than it is tall, so a phone in portrait, and the shot harness's 390x780 viewport, keep the
-     framing every existing check assumes. */
-  if (W > H * 1.15) {
-    zoom = zoomMin();
-    centreOn((COLS - 1) / 2, (ROWS - 1) / 2);
-  } else {
-    zoom = 1;
-    centreOn(VILLAGE.c, VILLAGE.r);
-  }
+     EVERY WINDOW OPENS ON THE VILLAGE AT ZOOM 1, AND THE LANDSCAPE SPECIAL CASE IS GONE.
+     It used to open a landscape window on the WHOLE plateau at `zoomMin()`, on the owner's request
+     ("would be better on desktop if you could see whole map"). Then he saw it. At 1092x614 zoomMin
+     is **0.44**, so a ground tile is drawn at 62 x 0.44 = **27 device px** from a 450x225 source —
+     a **17x reduction** — and every painted ripple, pebble and tuft averages away. Owner,
+     2026-09-29: "i want detail."
+     Zoom 1 puts a tile at 62 px, which is the framing the shot harness has been showing him all
+     along and the one he said looked better. **The whole map is still one pinch away**: zoomMin() is
+     unchanged and remains the floor. Detail by default, overview on demand. */
+  zoom = 1;
+  centreOn(VILLAGE.c, VILLAGE.r);
 
   state = loadLocal() || newState();
 
