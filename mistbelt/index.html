@@ -5383,8 +5383,33 @@ var SPR = (function () {
 
        The tile is drawn 2% large so the neighbour's solid paint covers the ~1 px half-transparent
        ramp that canvas bilinear leaves at a hard alpha edge. */
+    /* THE TILE IS RESAMPLED ONCE, AT THE SIZE IT IS DRAWN, NOT EVERY FRAME FROM A BIG SOURCE.
+       Owner: "my running game is blurrier than the examples you show me." He was right, and the
+       harness was the reason I could not see it: the shots are taken at deviceScaleFactor 2, so a
+       tile lands at 62 * 2 = 124 px there, while a 1x screen gets 62 px. Measured on the same
+       crop: mean neighbour step 6.14 at dpr 2 against 2.50 at dpr 1. The ground is 2.5x softer on
+       a 1x screen and I had been showing him the sharp one.
+
+       The cause is that the source is 170 px whatever the screen is. At dpr 2 that is a 1.37x
+       reduction; at dpr 1 it is 2.7x, and canvas bilinear at 2.7x does not average -- it samples,
+       so it drops most of the texels and softens what is left.
+
+       So each tile is downscaled ONCE into a cache the size it will be drawn at (TW * S by TH * S)
+       and that copy is what gets blitted. The draw is then essentially 1:1 at ANY dpr, which is
+       the only way one source can be right on both a 1x and a 3x screen. The cache is keyed on S,
+       so a zoom or dpr change rebuilds it and nothing goes stale. */
+    var S = groundScale();
+    if (e._scS !== S || !e._sc) {
+      var cw = Math.max(1, Math.round(TW * S)), ch = Math.max(1, Math.round(TH * S));
+      var sc2 = document.createElement('canvas');
+      sc2.width = cw; sc2.height = ch;
+      var sctx = sc2.getContext('2d');
+      if ('imageSmoothingQuality' in sctx) sctx.imageSmoothingQuality = 'high';
+      sctx.drawImage(e.img, 0, 0, cw, ch);
+      e._sc = sc2; e._scS = S;
+    }
     var OVER = 1.02;
-    ctx.drawImage(e.img, p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
+    ctx.drawImage(e._sc, p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
     return true;
   }
 
