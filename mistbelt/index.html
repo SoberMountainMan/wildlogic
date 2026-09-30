@@ -5354,27 +5354,30 @@ var SPR = (function () {
        must pass, or opening the game by double-clicking it loses the river. */
     if (t.ter === 'water' && e.waterish === false) return false;
     var z = groundZ(c, r), p = project(c, r, z);
-    var a = TILE_ART[t.ter] || TILE_ART.grass;
-    tilePath(c, r, z, 1.0, 0);
-    /* THE FLAT FILL IS THE MESH, AND IT SHOULD NOT BE UNDER A PAINTED TILE.
-       Owner: "edge blur mesh also still there." He is right, and it was never in the art. This fill
-       is the code-art fallback -- one flat colour per terrain -- and it was being painted under
-       EVERY tile, painted ones included. A tile is 450 px drawn at about 62, so the browser reduces
-       it roughly 3x with bilinear, and bilinear cannot hold a one-pixel alpha edge: the diamond's
-       boundary arrives as a ~1 px half-transparent ramp. Two tiles each contribute half, so the join
-       is a line of half-alpha -- and through it you see THIS FLAT COLOUR. That is the mesh: a grid of
-       one-colour lines, in the code-art palette, laid over a painted floor.
-       So it is drawn only when there is no image to draw. The diamonds tile the plane exactly, so
-       there is nothing left for a fallback to cover.
-       The tiles are also drawn 2% large, because the same ramp leaves a hairline the neighbour's
-       solid paint should cover. Uniform scale, so the diamond keeps its 2:1 shape.
-       Measured, so this is not a guess: the join reads 0.67 out of 255 at native resolution. */
-    var painted = !!(e.img && e.img.width);
-    if (!painted) { ctx.fillStyle = a.edge; ctx.fill(); }
-    if (painted) {
-      var OVER = 1.02;
-      ctx.drawImage(e.img, p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
-    }
+
+    /* IF THERE IS A PAINTED TILE FOR THIS CELL, THE CODE ART IS NOT DRAWN AT ALL.
+       Owner: "edge blur mesh also still there. why cant we fix the detail on all the floor tiles?"
+       This is why, and it was never in the art.
+
+       Everything the original path drew -- the grout, the per-tile shade, the puff, the blobs, the
+       water discs -- is the code-art fallback, and all of it is FLAT colour from a small palette.
+       It was drawn under and over EVERY tile, painted ones included.
+
+       A painted tile is a DIAMOND. The grout and the shade are FULL SQUARES. So wherever a painted
+       diamond does not reach -- the four corners of its cell -- a flat code-art colour showed
+       through, and because the shade is picked per tile from a four-colour palette, the corners of
+       neighbouring cells were DIFFERENT flat colours. That is the lattice: a grid of flat one-colour
+       patches, in the code-art palette, behind a painted floor. It is what four rounds of repainting
+       the grass were chasing.
+
+       The diamonds tile the plane exactly -- measured, 0.0% uncovered -- so a painted cell needs
+       none of it. The `return false` above already guarantees `e` has an image here, so this is the
+       only path a painted tile ever takes.
+
+       The tile is drawn 2% large so the neighbour's solid paint covers the ~1 px half-transparent
+       ramp that canvas bilinear leaves at a hard alpha edge. */
+    var OVER = 1.02;
+    ctx.drawImage(e.img, p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
     return true;
   }
 
