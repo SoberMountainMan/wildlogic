@@ -5345,7 +5345,14 @@ var SPR = (function () {
          called the gain small at this tile size — so this is applied to water only, where the argument
          is structural rather than visual. The edge tiles' `_r2`/`_r3` variants are NOT in the pack, so
          only the `_v` fall-through is changed, exactly as their note says. */
-      var vk = t.ter === 'water' ? (1 + (r % 3)) : (1 + Math.floor(jit(c, r, 37) * 3));
+      /* WATER USES ONE VARIANT, NOT THREE. The three variants differ on 8% of their pixels by more
+     than 12 grey, and the water switched variant EVERY ROW -- so on a FLAT surface, which has
+     nothing else for the eye to rest on, every row boundary showed the change. Measured: v1 vs
+     v2 mean 3.33, v1 vs v3 mean 3.21, with 8% of pixels over 12. A repeating texture hides that;
+     a flat one does not. This was my own round-7 change, made to stop the river restarting
+     three times as it flows -- it did that, and it replaced a per-cell change with a per-row
+     one. One variant removes the change entirely. */
+    var vk = t.ter === 'water' ? 1 : (1 + Math.floor(jit(c, r, 37) * 3));
       e = rec['ter_' + t.ter + '_v' + vk];
     }
     if (!e || !e.img || !e.img.width) return false;
