@@ -1383,7 +1383,7 @@ function tickDay(w) {
       continue;
     }
     if (t.stage !== 3) continue;
-    if (Math.random() < SNAG_RATE) { t.dead = true; t.snagDays = 0; t.hollow = false; died++; }
+    if (Math.random() < SNAG_RATE) { t.dead = true; t.snagDays = 0; t.hollow = false; died++; GROUND = null; }
   }
   if (died) line.push(died + ' tree' + (died === 1 ? '' : 's') + ' died and ' +
                       (died === 1 ? 'is' : 'are') + ' standing dead.');
@@ -1404,7 +1404,7 @@ function tickDay(w) {
       t.sp = null; t.stage = 0; t.age = 0; lost++; continue;
     }
     t.age += Math.max(0, g);
-    if (t.age >= (sd.slow ? 7 : 4)) { t.stage = 3; t.age = 0; }
+    if (t.age >= (sd.slow ? 7 : 4)) { t.stage = 3; t.age = 0; GROUND = null; }
     else if (t.age >= (sd.slow ? 3 : 2)) t.stage = 2;
     if (g > 0) grew++;
   }
@@ -1892,7 +1892,7 @@ function plantAt(c, r, spKey) {
   else if (state.tokens[def.token] >= def.cost) state.tokens[def.token] -= def.cost;
   else return false;
   state.ap = Math.max(0, state.ap - 1);
-  t.sp = spKey; t.stage = 1; t.age = 0;
+  t.sp = spKey; t.stage = 1; t.age = 0; GROUND = null;
   state.planted++;
 
   /* BEAT 5 — THE FIRST PLANTING, AND THE PROMISE. A sapling is the most disappointing object in the
@@ -2933,6 +2933,22 @@ var TILE_ART = {
   grass:  { shades: ['#33553e', '#365842', '#30523b', '#395b44'],
             edge: '#2c4836',
             blob: 'rgba(214,240,208,0.13)', n: 12, r0: 0.060, r1: 0.110 },
+  /* THE SHADE RAMP. Three steps, because the game has THREE thresholds and the player has to be
+     able to see which one they have reached:
+       1 mature neighbour  -> the seed bank slows   (0.43 a wet day, from 0.55)
+       2 mature neighbours -> OLD-GROWTH WILL GO IN  (SHADE_FOR_OLDGROWTH)
+       3 mature neighbours -> the seed bank CLOSES   (SHADE_CLOSES_SEED)
+     Owner, 2026-10-03: "how does that work if old growth needs 2 trees around it? do we see the
+     shading from one tree already? shouldnt the shading level show the requirement? ie 1 tree slight
+     shade 2 trees more shade."
+     He is right, and one flat level could not answer it: a single tree showed the same ground as a
+     closed canopy, so the player could not tell the difference between "shade has started" and "the
+     wall is up". These two families are the grass shades blended 34% and 67% toward the forest's,
+     so the ramp is one continuous colour and the steps read as depth rather than as three palettes. */
+  shade1: { shades: ['#2c4c37', '#2f503a', '#294934', '#31533c'], edge: '#264130',
+            blob: 'rgba(214,240,208,0.12)', n: 12, r0: 0.060, r1: 0.110 },
+  shade2: { shades: ['#25442f', '#274833', '#23402c', '#2a4b35'], edge: '#203b29',
+            blob: 'rgba(210,238,206,0.115)', n: 12, r0: 0.060, r1: 0.110 },
   forest: { shades: ['#1e3b28', '#20402b', '#1c3725', '#22432d'],
             edge: '#1a3423',
             blob: 'rgba(200,235,200,0.11)', n: 12, r0: 0.060, r1: 0.110 },
@@ -2955,7 +2971,24 @@ var CLIFF_K = 0.86;     /* narrower than the ground, so the plateau overhangs th
 
 function drawGroundTile(c, r) {
   var t = cell(c, r);
-  var a = TILE_ART[t.ter] || TILE_ART.grass;
+  /* SHADE SPREADS BY USING THE SAME GROUND THE REMNANT USES.
+     Owner, 2026-10-03: "the existing remnant tile shade is already right colour, slightly darker than
+     grass. just needs to spread to affected tiles? why dont i see the tiles around the remnant as
+     being darker?"
+     Because nothing was spreading it. The remnant's OWN tiles are drawn with TILE_ART.forest, which is
+     the darker pair -- and every grass tile around it, which the shade rule ALREADY treats as shaded,
+     was still drawn as grass. So the mechanic shaded and the ground did not say so.
+     A tile that `matureAround()` counts as shaded now draws with the forest ground. The remnant is
+     counted by matureAround, so its shade spreads outward from it exactly as a planted stand's does --
+     one rule, one look, and the player can see the wall of shade the whole game turns on. */
+  var _ter = t.ter;
+  if (_ter === 'grass') {
+    /* THE STEP IS `matureAround()` ITSELF, so the ground cannot disagree with the rule. One
+       neighbour is the first step, two is the old-growth threshold, three is the wall. */
+    var _m = matureAround(c, r);
+    _ter = _m >= SHADE_CLOSES_SEED ? 'forest' : _m >= SHADE_FOR_OLDGROWTH ? 'shade2' : _m >= 1 ? 'shade1' : 'grass';
+  }
+  var a = TILE_ART[_ter] || TILE_ART.grass;
   var z = groundZ(c, r), p = project(c, r, z);
   var i, u, v, rr;
 
@@ -4476,11 +4509,11 @@ function frame(ts) {
      fingers. So the scale is checked every frame and the bake is deferred until the zoom has been
      still for a moment. The first bake is immediate, because there is nothing to see until it lands. */
   if (!GROUND) buildGround();
-  else if (GROUND._s !== groundScale()) {
+  else if (GROUND._s !== groundScale() || GROUND._dirty) {
     if (groundRetimer) clearTimeout(groundRetimer);
     groundRetimer = setTimeout(function () {
       groundRetimer = 0;
-      if (GROUND && GROUND._s !== groundScale()) buildGround();
+      if (GROUND && (GROUND._s !== groundScale() || GROUND._dirty)) buildGround();
     }, 260);
   }
   blitGround();
@@ -6074,35 +6107,9 @@ var SPR = (function () {
     }
     var OVER = 1.02;
     ctx.drawImage(e._sc, p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
-    /* A SHADED TILE LOOKS SHADED, SO THE PLAYER CAN SEE WHEN THE REQUIREMENT IS MET.
-       Owner, 2026-10-03: "will planted trees that hit mature also change tile colour darker so people
-       can see the shade requirement is now met? it should as thats how you know when shade is
-       effective."
-       He is right, and the game was inconsistent about it: the old-growth remnant's ground is drawn
-       with the DARKER `forest` shades, so the remnant visibly shades -- and a player's own mature
-       stand did not, so the one thing they were working towards was the one thing they could not see.
-       TWO ATTEMPTS AT THIS WERE WRONG IN THE SAME WAY. The first tinted each tile at 0.26, and the
-       shot was a field of dark DIAMONDS -- the tile grid, which this project spent a day removing.
-       Halving the alpha to 0.13 made it fainter and did not help, because the problem was never the
-       strength: a tint whose boundary is the tile's boundary IS a diamond, however faint.
-       SO THE SHADE IS A SOFT POOL CENTRED ON THE TREE, not a tint on the cell. It spills across the
-       tile edge into the neighbours, which is both what real shade does and what makes the grid
-       impossible to see. Several mature trees together merge into one canopy shadow, which is the
-       succession the whole game is about, made visible.
-       A SNAG POOLS TOO, and should: it is still standing and still casts shade, which is exactly why
-       leaving one up costs the player nothing but the canopy count. */
-    if (t.sp && t.stage === 3) {
-      var _sy = p[1] + TH * 0.18;
-      var _g = ctx.createRadialGradient(p[0], _sy, 0, p[0], _sy, TW * 1.05);
-      /* MEASURED, NOT GUESSED: at 0.30 peak the shade changed a mean of 7 of 255 across the pixels
-         it touched, which is real but too quiet to answer the question it exists to answer -- the
-         player has to be able to SEE that the requirement is met. 0.46 peak measures about 12. */
-      _g.addColorStop(0, 'rgba(15,37,24,0.46)');
-      _g.addColorStop(0.55, 'rgba(15,37,24,0.24)');
-      _g.addColorStop(1, 'rgba(15,37,24,0)');
-      ctx.fillStyle = _g;
-      ctx.fillRect(p[0] - TW * 1.2, _sy - TW * 1.2, TW * 2.4, TW * 2.4);
-    }
+    /* (The soft pool that used to live here is gone: the GROUND now carries the shade, which is
+       what the owner asked for -- the remnant's own colour, spread to the tiles it affects. Two
+       shade systems would have doubled up on the same pixel.) */
     return true;
   }
 
