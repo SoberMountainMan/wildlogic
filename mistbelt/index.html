@@ -2684,10 +2684,24 @@ function blitGround() {
     (sx / S) - WX0 - camX, (sy / S) - WY0 - camY, w / S, h / S);
 }
 
+/* ONE LIGHT DIRECTION FOR EVERY PROP.
+   The Mistbelt ledger names this as the gap between the game and the finish it is aiming at: 13
+   props, 15 shadow() calls, and EVERY call passed the object's OWN centre -- so every shadow sat
+   directly under its object and nothing in the world shared a light. An object whose shadow is at
+   its own centre has no light on it, it has a smudge under it.
+
+   The code art already says the light comes from the upper left, so every shadow now falls to the
+   LOWER RIGHT by a fixed fraction of the object's own footprint. Because the offset is applied
+   HERE, inside shadow(), every caller gets it and no caller can forget it -- and a prop added
+   later is lit correctly without anyone having to remember.
+
+   The fraction is of the SHADOW's own radius, so a big tree's shadow moves further than a bin's in
+   proportion to its size, which is what a real light does. */
+var SHADOW_DX = 0.30, SHADOW_DY = 0.45;
 function shadow(cx, cy, rx, ry) {
   ctx.fillStyle = 'rgba(30,60,40,0.20)';
   ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx + rx * SHADOW_DX, cy + ry * SHADOW_DY, rx, ry, 0, 0, Math.PI * 2);
   ctx.fill();
 }
 
