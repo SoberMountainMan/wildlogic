@@ -2504,62 +2504,6 @@ var TILE_K = 0.985;
 var TILE_F = 0.11;      /* how far the corners round off; the "little soft puff" */
 var CLIFF_K = 0.86;     /* narrower than the ground, so the plateau overhangs the wall */
 
-
-/* THE RIVER IS ONE CONTINUOUS RIBBON, NOT A CHAIN OF TILES.
-   Owner: "all horrible and blurry. 1 is best simply because everything blurs together" -- which says
-   the blur is what HIDES the bead, so the bead is the fault and sharpening works against us.
-
-   The river is ONE TILE WIDE. Every other material has neighbours of its own kind around it, so a
-   tile boundary has somewhere to hide; the river is single file, so EVERY boundary sits on the
-   centreline of the water and the tile grid IS the river.
-
-   So the water is no longer drawn tile by tile. A field of water is laid once on the isometric
-   lattice -- the diamonds tile the plane exactly, so the field is opaque -- and each water cell
-   takes a WINDOW from that field at a position that slides along the channel. One step down the
-   river slides the window by exactly one cell, so the ripples flow continuously instead of
-   restarting at every cell. The diamond silhouette is applied afterwards with a clip. */
-var RIVER = null, RIVER_S = 0;
-/* THE WHOLE RIVER, AS ONE IMAGE, LAID ONCE.
-   Owner: "the only way it could be ok is if we generated an entire river as one image to laydown
-   somehow." He is right, and it also fixes my bug -- the previous version cropped a 50% patch of a
-   170 px tile and stretched it 2x, which is exactly why it came out blurry. This lays every water
-   tile into ONE canvas at the exact position and size the ground bake would use, so nothing is
-   scaled and the diamonds interlock naturally. The result is a single image of the whole channel.
-   Everything it needs is passed in, because this function sits outside the scope that holds rec,
-   cell, COLS and ROWS -- reading them directly is what broke the first attempt. */
-function riverImage(rec, cellFn, cols, rows, worldW, worldH, wx0, wy0) {
-  var S = groundScale();
-  if (RIVER && RIVER_S === S) return RIVER;
-  var w = Math.round(TW * S), h = Math.round(TH * S);
-  var cv = document.createElement('canvas');
-  cv.width = Math.round(worldW * S); cv.height = Math.round(worldH * S);
-  var x = cv.getContext('2d');
-  if ('imageSmoothingQuality' in x) x.imageSmoothingQuality = 'high';
-  var tr = rec['ter_water_v1'];
-  if (tr && tr.img && tr.img.width) {
-    /* FROM THE TILE'S INTERIOR, AT 1:1, TILED -- NOT FROM THE WHOLE TILE.
-       The owner: "youre not looking at the river." He was right and I was not: I had been cropping
-       grass. When I finally framed it, the beads were fully there -- because laying whole tiles into
-       the river image reproduces the tiles, diamonds and all. The diamond edge is the last thing in
-       the tile and it survives every copy of it.
-
-       So the river image is built from a PLAIN RECTANGULAR PATCH of the tile's middle, well inside
-       the diamond, and that patch is TILED AT ITS OWN SIZE across the whole channel. Nothing is
-       scaled -- the earlier attempt stretched a patch 2x and came out blurry, which is a different
-       fault from this one -- and no tile edge is ever drawn into the river. */
-    var iw = tr.img.width, ih = tr.img.height;
-    var px = Math.round(iw * 0.22), py = Math.round(ih * 0.26);
-    var pw = Math.round(iw * 0.56), ph = Math.round(ih * 0.48);
-    for (var ty = -ph; ty < cv.height + ph; ty += ph) {
-      for (var tx = -pw; tx < cv.width + pw; tx += pw) {
-        x.drawImage(tr.img, px, py, pw, ph, tx, ty, pw, ph);
-      }
-    }
-  }
-  RIVER = cv; RIVER_S = S;
-  return cv;
-}
-
 function drawGroundTile(c, r) {
   var t = cell(c, r);
   var a = TILE_ART[t.ter] || TILE_ART.grass;
@@ -5465,24 +5409,6 @@ var SPR = (function () {
       e._sc = sc2; e._scS = S;
     }
     var OVER = 1.02;
-    if (t.ter === 'water') {
-      var R = riverImage(rec, cell, COLS, ROWS, WORLD_W, WORLD_H, WX0, WY0);
-      var b2 = bakePoint(c, r, z);
-      if (R && R.width > 4 && R.height > 4) {
-        /* CLIP THE WATER TO ITS OWN CELL. Without it the blit spills the overscan onto the
-           neighbouring BANK cell and covers part of it -- which is the brown rectangle the owner
-           saw at the river's edge. Clipped at OVER so the anti-aliased edge still falls outside
-           the cell and the neighbour's water covers it. */
-        ctx.save();
-        tilePath(c, r, z, OVER, 0);
-        ctx.clip();
-        ctx.drawImage(R,
-          (b2[0] - TW * OVER / 2) * S, (b2[1] - TH * OVER / 2) * S, TW * OVER * S, TH * OVER * S,
-          p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
-        ctx.restore();
-        return true;
-      }
-    }
     ctx.drawImage(e._sc, p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
     return true;
   }
