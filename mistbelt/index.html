@@ -2287,6 +2287,47 @@ function skyKey(w) {
   return k.snow ? 'snow' : k.wet ? 'wet' : k.mist ? 'mist' : k.frost ? 'frost' : 'clear';
 }
 
+/* THE GAME HAS A CLOCK NOW.
+   Owner, 2026-10-02: "could we do a day night version? would be cool to have the sky change
+   according to the time. sun moving then moon. and then current weather."
+
+   REAL LOCAL TIME, not a game clock, and that is the consistent choice rather than the easy one:
+   the weather is already the real weather for Hogsback and the action points already accrue on the
+   real hour, so a third system on a different clock would disagree with both.
+
+   `t` is the day as a fraction, 0 at midnight and 1 at the next midnight. Everything below reads
+   from it, so there is one source of truth for what time it is. */
+function dayFrac(d) {
+  d = d || new Date();
+  return (d.getHours() + d.getMinutes() / 60) / 24;
+}
+/* The sun's height, 0 at the horizon and 1 at noon, and NEGATIVE at night. Dawn is 06:00 and dusk
+   18:00, which is close enough for a valley at this latitude and does not pretend to be an
+   ephemeris. */
+function sunHeight(t) {
+  return Math.sin((t * 24 - 6) / 12 * Math.PI);
+}
+/* How dark the sky is: 0 in full day, 1 at the dead of night, with dawn and dusk passing through.
+   The ramp is 90 minutes either side of the horizon, because a mistbelt valley does not go from
+   light to dark in ten minutes and the whole point is that the player SEES the change. */
+function nightAmount(t) {
+  var h = sunHeight(t);
+  if (h >= 0.25) return 0;
+  if (h <= -0.25) return 1;
+  return (0.25 - h) / 0.5;
+}
+/* One flat colour mixed toward another by `k`. Kept here rather than using globalAlpha so the sky
+   stays two FLAT fills, which is the rule the rest of the art follows. */
+function mixHex(a, b, k) {
+  function h2(s) { return [parseInt(s.substr(1, 2), 16), parseInt(s.substr(3, 2), 16), parseInt(s.substr(5, 2), 16)]; }
+  var A = h2(a), B = h2(b), o = '#', i;
+  for (i = 0; i < 3; i++) {
+    var v = Math.round(A[i] + (B[i] - A[i]) * k);
+    o += ('0' + Math.max(0, Math.min(255, v)).toString(16)).slice(-2);
+  }
+  return o;
+}
+
 /* The world is a summit, so there is nothing behind it but sky, the rest of the range, and the
    mist that gives the belt its name. Two things matter: the ridges are BROAD and rolling (narrow
    tall humps read as a saw blade, not a mountain), and the far bands are washed out rather than
@@ -2294,14 +2335,46 @@ function skyKey(w) {
    horizon line to draw. */
 function drawSky(w) {
   var tone = SKY_TONE[skyKey(w)];
+  /* THE WEATHER PICKED THE COLOUR; THE CLOCK DECIDES HOW BRIGHT IT IS. Two flat tones stay two
+     flat tones -- the night is the same pair mixed toward one dark blue, not a gradient. */
+  var t = dayFrac(), night = nightAmount(t);
+  var upper = tone[0], lower = tone[1];
+  if (night > 0) {
+    upper = mixHex(upper, '#1b2733', night);
+    lower = mixHex(lower, '#2b3a4a', night);
+  }
   /* THE SKY HAS NO HARD SEAM IN IT. It used to be two flat fills meeting at H*0.30 — one hard
      horizontal line right across the screen, which is the owner's "green piece and blue piece"
      complaint relocated rather than answered. Two flat tones are still right (the reference art has
      no gradient anywhere), but they have to MEET, so the lower tone arrives over a band of stepped
      alpha instead of at a line. */
-  ctx.fillStyle = tone[0];
+  ctx.fillStyle = upper;
   ctx.fillRect(0, 0, W, H);
-  softFill(H * 0.16, H * 0.34, tone[1]);
+  softFill(H * 0.16, H * 0.34, lower);
+
+  /* THE SUN, AND THEN THE MOON. One arc, one body: the sun rides it while it is above the horizon
+     and the moon rides the same path while it is below, so the thing that moves across the sky is
+     always the one that should be up. Both are flat discs, because everything else on this screen
+     is flat. */
+  var h = sunHeight(t);
+  var isSun = h > 0;
+  /* THE MOON RIDES THE SAME ARC AS THE SUN, half a day behind it. So the body that is up is
+     always the one that should be up, and it crosses the sky the same way -- there is one arc in
+     the game, not two. */
+  var phase = isSun ? (t * 24 - 6) / 12 : ((t * 24 - 6) / 12 + 1) % 1;
+  var x = W * (0.06 + 0.88 * phase);
+  /* THE ARC SITS BELOW THE HUD. The first version rode between 26% and 84% of a 30% band, which put
+     the midday sun at y = 61 on a 780 px screen -- directly behind the weather pill, invisible at
+     exactly the hour you would look for it. The band now runs from 15% of the screen height (clear
+     of the HUD on every phone shape the layout gate checks) down to 30%, which is the far rim. */
+  var y = H * (0.150 + 0.150 * (1 - Math.abs(h)));
+  if (x > -40 && x < W + 40) {
+    ctx.fillStyle = isSun ? mixHex('#ffe9a8', '#ffd166', Math.max(0, h))
+                          : mixHex('#dfe7ef', '#c3ced9', night);
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(7, H * 0.021), 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   /* The ridges hang BEHIND the plateau's far rim, so they follow it as the camera moves — but only
      by a fraction, and that difference is the entire sense of distance. Clamped at both ends, or a
@@ -3999,6 +4072,19 @@ function frame(ts) {
   drawActors(dt);
   drawFloats(dt);
   ctx.restore();
+
+  /* NIGHT FALLS ON THE WHOLE HILLSIDE, NOT JUST THE SKY.
+     The sky tone is darkened in drawSky, but the ground, the trees and the house are a baked image
+     and a pile of sprites -- they do not know what time it is. Darkening only the sky left a bright
+     green field under a dark blue sky, which reads as a rendering fault rather than as dusk.
+     So one flat wash goes over everything the world drew, AFTER the zoom transform is restored so
+     it covers the canvas exactly once, and BEFORE the weather, so mist and rain stay the colour of
+     mist and rain. Flat, not a gradient -- the same rule the sky follows. */
+  var nightAmt = nightAmount(dayFrac());
+  if (nightAmt > 0) {
+    ctx.fillStyle = 'rgba(20,29,46,' + (nightAmt * 0.46).toFixed(3) + ')';
+    ctx.fillRect(0, 0, W, H);
+  }
 
   drawWeather(w);
   if (binFlash > 0) {
