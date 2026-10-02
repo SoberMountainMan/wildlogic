@@ -2504,41 +2504,6 @@ var TILE_K = 0.985;
 var TILE_F = 0.11;      /* how far the corners round off; the "little soft puff" */
 var CLIFF_K = 0.86;     /* narrower than the ground, so the plateau overhangs the wall */
 
-
-/* THE RIVER IS ONE CONTINUOUS RIBBON, NOT A CHAIN OF TILES.
-   Owner: "all horrible and blurry. 1 is best simply because everything blurs together" -- which says
-   the blur is what HIDES the bead, so the bead is the fault and sharpening works against us.
-
-   The river is ONE TILE WIDE. Every other material has neighbours of its own kind around it, so a
-   tile boundary has somewhere to hide; the river is single file, so EVERY boundary sits on the
-   centreline of the water and the tile grid IS the river.
-
-   So the water is no longer drawn tile by tile. A field of water is laid once on the isometric
-   lattice -- the diamonds tile the plane exactly, so the field is opaque -- and each water cell
-   takes a WINDOW from that field at a position that slides along the channel. One step down the
-   river slides the window by exactly one cell, so the ripples flow continuously instead of
-   restarting at every cell. The diamond silhouette is applied afterwards with a clip. */
-var WATER_FIELD = null, WATER_FIELD_S = 0, WATER_FIELD_N = 14;
-function waterField(rec) {
-  var S = groundScale();
-  if (WATER_FIELD && WATER_FIELD_S === S) return WATER_FIELD;
-  var w = Math.round(TW * S), h = Math.round(TH * S);
-  var N = WATER_FIELD_N;
-  var cv = document.createElement('canvas');
-  cv.width = w * N; cv.height = h * N;
-  var x = cv.getContext('2d');
-  if ('imageSmoothingQuality' in x) x.imageSmoothingQuality = 'high';
-  for (var rr = 0; rr < N; rr++) {
-    for (var cc = 0; cc < N; cc++) {
-      var tr = rec['ter_water_v' + (1 + ((cc + rr) % 3))];
-      if (!tr || !tr.img || !tr.img.width) continue;
-      x.drawImage(tr.img, (cc - rr) * w / 2 + (N * w) / 2 - w / 2, (cc + rr) * h / 2 - h / 2, w, h);
-    }
-  }
-  WATER_FIELD = cv; WATER_FIELD_S = S;
-  return cv;
-}
-
 function drawGroundTile(c, r) {
   var t = cell(c, r);
   var a = TILE_ART[t.ter] || TILE_ART.grass;
@@ -5444,23 +5409,6 @@ var SPR = (function () {
       e._sc = sc2; e._scS = S;
     }
     var OVER = 1.02;
-    if (t.ter === 'water') {
-      var F = waterField(rec);
-      var w = Math.round(TW * S), h = Math.round(TH * S);
-      var maxx = F.width - w, maxy = F.height - h;
-      if (maxx > 0 && maxy > 0) {
-        var ox = Math.round((F.width / 2) + (c + r) * w / 2 - w / 2);
-        var oy = Math.round((c + r) * h / 2 - h / 2);
-        ox = ((ox % maxx) + maxx) % maxx;
-        oy = ((oy % maxy) + maxy) % maxy;
-        ctx.save();
-        tilePath(c, r, z, 1.0, 0);
-        ctx.clip();
-        ctx.drawImage(F, ox, oy, w, h, p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
-        ctx.restore();
-        return true;
-      }
-    }
     ctx.drawImage(e._sc, p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
     return true;
   }
