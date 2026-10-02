@@ -4350,10 +4350,19 @@ function renderShop() {
     }
   }
   if (els.tradeRow) {
-    var html = 'short? trade 3 of one for 1:';
+    /* THE LABEL SAYS WHAT THE TRADE NEEDS, BEFORE YOU CLICK IT.
+       It read "short? trade 3 of one for 1:" with no mention that a tree has to be picked first, and
+       the token you are trading toward is the token THAT tree costs. So the row looked like it would
+       just work, and did nothing. */
+    var html = state.pick
+      ? 'short? trade 3 of one for 1 ' + ((SPECIES[state.pick] || DECOR[state.pick] || {}).token || '') + ':'
+      : 'short? pick a tree first, then trade 3 of one for 1:';
     var i;
     for (i = 0; i < TOKENS.length; i++) {
-      html += ' <button data-trade="' + TOKENS[i] + '">' + TOKENS[i] + '</button>';
+      var off = state.pick ? (TOKENS[i] === (SPECIES[state.pick] || DECOR[state.pick] || {}).token) : false;
+      var short = (state.tokens[TOKENS[i]] || 0) < 3;
+      html += ' <button data-trade="' + TOKENS[i] + '"' + ((off || short) ? ' class="dim"' : '') + '>' +
+              TOKENS[i] + ' ' + (state.tokens[TOKENS[i]] || 0) + '</button>';
     }
     els.tradeRow.innerHTML = html;
   }
@@ -4956,9 +4965,34 @@ function boot() {
   });
   if (els.tradeRow) els.tradeRow.addEventListener('click', function (ev) {
     var to = ev.target && ev.target.getAttribute ? ev.target.getAttribute('data-trade') : null;
-    if (!to || !state.pick) return;
+    if (!to) return;
+    /* A SWAP THAT SILENTLY DOES NOTHING IS A BUG REPORT WAITING TO HAPPEN.
+       Owner, 2026-10-02: "i think the swap mechanics is broken. ie swap 3 tokens for 1 in nursery.
+       nothing happens?"
+       The mechanic is not broken -- it works. It just refused in two cases and SAID NOTHING, so from
+       the outside a refusal and a dead button are the same thing:
+         1. no tree is picked, and the trade needs one, because the token you are trading TOWARD is
+            the token the picked tree costs;
+         2. you clicked the token you are already holding enough of, i.e. from === to.
+       Both now say why. The rule in this house is that a thing that does not happen has to say so. */
+    if (!state.pick) {
+      note('Pick the tree you want first \u2014 the trade gives you the token THAT tree costs.', 'warn');
+      return;
+    }
     var def = SPECIES[state.pick] || DECOR[state.pick];
-    if (trade(to, def.token)) { saveLocal(); renderShop(); renderHud(); }
+    if (!def) return;
+    if (to === def.token) {
+      note('You already have ' + state.tokens[to] + ' ' + to + ', and that is what this tree costs.', 'warn');
+      return;
+    }
+    if ((state.tokens[to] || 0) < 3) {
+      note('A trade needs 3 ' + to + ' and you have ' + (state.tokens[to] || 0) + '.', 'warn');
+      return;
+    }
+    if (trade(to, def.token)) {
+      saveLocal(); renderShop(); renderHud();
+      note('Traded 3 ' + to + ' for 1 ' + def.token + '.', 'good');
+    }
   });
   if (els.btnSave) els.btnSave.addEventListener('click', function () {
     var code = encodeSave(state);
