@@ -972,11 +972,16 @@ function weatherFrom(payload, month) {
            rain: num(d.precipitation_sum, 0), snow: num(d.snowfall_sum, 0),
            wind: num(d.wind_speed_10m_max, 0), cloud: one(c.cloud_cover),
            temp: one(c.temperature_2m), code: one(c.weather_code), month: month,
-           /* THE REAL HORIZON, not a fixed six and six.
-              Owner, 2026-10-02: "cant you get actual days sunrise/sunset time from somewhere? and
-              adjust accordingly?" Open-Meteo gives both, so the arc is anchored to the sun this
-              valley actually gets -- 05:48 and 18:15 today, which is two hours wider than the fixed
-              06:00/18:00 it was drawn with, and it will swing the other way in June. */
+           /* WHAT IS HAPPENING NOW, AS OPPOSED TO WHAT TODAY ADDS UP TO.
+              Owner, 2026-10-03, after checking the sky against his own window: "i live here and its not
+              currently raining... must be future prediction for today?" He was right. The day was
+              forecast 19.1 mm and NOTHING was falling, and the game drew rain from midnight because
+              classify() read the day's total.
+              These four fields were already arriving on every load and being thrown away. They are what
+              the sky, the rain, the weather pill and the day's token now read. */
+           nowRain: num(c.precipitation, 0), nowTemp: one(c.temperature_2m),
+           nowCloud: one(c.cloud_cover), nowWind: one(c.wind_speed_10m),
+           /* THE REAL HORIZON, not a fixed six and six. */
            sunrise: hourFrac(one(d.sunrise)), sunset: hourFrac(one(d.sunset)) };
 }
 
@@ -989,17 +994,54 @@ function hourFrac(s) {
   return (parseInt(m[1], 10) + parseInt(m[2], 10) / 60) / 24;
 }
 
-function fallbackFor(month) {
+/* THE FALLBACK HAS TO VARY, OR OFFLINE OCTOBER IS A PERMANENT RAINSTORM.
+   It returns ONE row per month, and October's row is `rain: 2.6` -- a constant. So with no network
+   every single day in October is wet, the seed bank rolls every day, the growth bonus is always on,
+   and no day is ever dry, misty, frosty or clear. The whole weather system collapses to one state
+   and nothing tells the player it has.
+   A deterministic per-day noise now spreads each month's average into real days: some dry, some
+   wet, occasionally heavy. Deterministic because it is derived from the DATE -- so the same day
+   reads the same on every reload, and a save made offline still describes the day it was made on. */
+function dayNoise(d) {
+  var m = d.getMonth() + 1, dd = d.getDate();
+  var x = Math.sin(m * 127.1 + dd * 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+function fallbackFor(month, when) {
   var s = SEASON[month];
-  return { tmax: s.tmax, tmin: s.tmin, rain: s.rain, snow: s.snow, wind: s.wind,
-           cloud: s.cloud, temp: (s.tmax + s.tmin) / 2, code: s.cloud > 60 ? 3 : 0,
-           month: month, fallback: true };
+  var d = when || new Date();
+  var n = dayNoise(d);
+  /* n is 0..1. A quarter of days come out dry, most are light, a few are heavy -- which is what a
+     mistbelt month actually looks like, and it keeps the month's AVERAGE roughly where the table
+     says it is. */
+  var rain = Math.max(0, s.rain * (n * 2.0 - 0.5));
+  var cloud = Math.round(s.cloud * (0.55 + 0.75 * n));
+  var wind = Math.round(s.wind * (0.6 + 0.8 * n));
+  return { tmax: s.tmax, tmin: s.tmin, rain: rain, snow: s.snow, wind: wind,
+           cloud: cloud, temp: (s.tmax + s.tmin) / 2, code: cloud > 60 ? 3 : 0,
+           month: month, fallback: true,
+           /* Offline there is no hourly data, so "now" IS the day -- but at least the day varies. */
+           nowRain: rain, nowTemp: (s.tmax + s.tmin) / 2, nowCloud: cloud, nowWind: wind };
 }
 
+/* WHAT THE WEATHER IS DOING, NOT WHAT TODAY ADDS UP TO.
+   Owner, 2026-10-03: "do it. b makes sense. pay for the current weather on load."
+   Every field below used to be the DAY's figure -- the minimum temperature, the day's total rain,
+   the day's maximum wind -- and that produced three separate lies, all of the same shape:
+     1. rain drawn at midnight on a day forecast to rain, while nothing was falling (his own report)
+     2. frost reported at 11pm from a minimum that happened at dawn, next to a pill reading 18 C
+     3. a sky identical at 06:00 and 23:00, because the day's figures never change
+   The current figures arrive on every load and were being thrown away. They are what everything the
+   player SEES and is PAID now reads. The day's totals stay on `w` for the field notes and for the
+   growth bonus, which is genuinely a question about the day rather than about this minute. */
 function classify(w) {
-  return { wet: w.rain >= 1, heavy: w.rain >= 5, frost: w.tmin <= 2,
-           mist: w.cloud >= 85 && w.wind < 16 && w.rain < 1,
-           berg: w.wind >= 35, snow: w.snow > 0 };
+  var rain = (w.nowRain != null) ? w.nowRain : w.rain;
+  var temp = (w.nowTemp != null) ? w.nowTemp : w.tmin;
+  var cloud = (w.nowCloud != null) ? w.nowCloud : w.cloud;
+  var wind = (w.nowWind != null) ? w.nowWind : w.wind;
+  return { wet: rain >= 1, heavy: rain >= 5, frost: temp <= 2,
+           mist: cloud >= 85 && wind < 16 && rain < 1,
+           berg: wind >= 35, snow: w.snow > 0 };
 }
 
 function tokenOf(w) {
