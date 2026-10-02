@@ -594,6 +594,14 @@ var ALIENS = {
 };
 /* Per-species size on the hillside. Only the bramble is bigger — see the call site in drawTileProp. */
 var ALIEN_SCALE = { bramble: 1.45 };
+/* A WEED IS NOT FULL GROWN THE DAY IT COMES UP. Three stages, the same shape the planted trees use
+   (0.26 / 0.56 / 1), sized so a fresh sprout reads as a seedling on the tile rather than as a tree
+   that was not there a second ago. Index 0 is deliberately absent -- an alien is never stage 0 --
+   and an undefined stage falls through to 1, so a save from before this change draws full size. */
+var ALIEN_STAGE_SCALE = { 1: 0.30, 2: 0.60, 3: 1 };
+/* How many days a weed spends at each stage. One day small, one day medium, then full: a weed is
+   fast, and the point is only that it is not INSTANT. */
+var ALIEN_STAGE_DAYS = 1;
 
 /* The Amathole forest is not a yellowwood plantation, it is an indigenous forest with layers in
    it, and the layers go in in an order. The pioneers take the open ground and make the shade; the
@@ -1211,9 +1219,17 @@ function tickDay(w) {
            as before) and only closes where the card says it closes: three. */
         var shade = matureAround(c, r);
         var chance = shade >= SHADE_CLOSES_SEED ? 0 : Math.max(0.2, 0.55 - 0.12 * shade);
-        if (Math.random() < chance) { t.alien = pickAlien(t); t.seeds -= 1; sprouted++; }
+        if (Math.random() < chance) { t.alien = pickAlien(t); t.astage = 1; t.seeds -= 1; sprouted++; }
       }
       if (t.alien && Math.random() < 0.10 && t.seeds < 6) t.seeds += 1;
+      /* AND IT GROWS UP. A weed that sprouted yesterday is a seedling today and a bush the day
+         after -- see ALIEN_STAGE_SCALE. Nothing about the weed's BEHAVIOUR changes with the stage;
+         only what the player sees, because the complaint was a full pine appearing out of bare
+         ground, not that the weed was doing too much. */
+      if (t.alien && (t.astage || 3) < 3) {
+        t.aage = (t.aage || 0) + 1;
+        if (t.aage >= ALIEN_STAGE_DAYS) { t.aage = 0; t.astage = (t.astage || 1) + 1; }
+      }
     }
   }
   if (sprouted) line.push(sprouted + ' alien seedling' + (sprouted === 1 ? '' : 's') + ' came up out of the seed bank.');
@@ -1871,7 +1887,9 @@ function encodeTiles(tiles) {
       occ += b64i(i) + 't' + String(SP_CODE[t.sp] || 0) + String(clamp(t.stage, 0, 3)) +
              pad2(clamp(Math.round(t.age * 2), 0, 1295).toString(36)) + (t.hollow ? '1' : '0');
     } else if (t.alien) {
-      occ += b64i(i) + 'a' + String(ALIEN_CODE[t.alien] || 0) + String(clamp(t.seeds, 0, 9));
+      var asg = t.astage || 3;
+      occ += b64i(i) + (asg < 3 ? 'A' : 'a') + String(ALIEN_CODE[t.alien] || 0) +
+             String(clamp(t.seeds, 0, 9)) + (asg < 3 ? String(asg) : '');
     } else if (t.seeds > 0) {
       occ += b64i(i) + 's' + String(clamp(t.seeds, 0, 9));
     }
@@ -1928,12 +1946,15 @@ function decodeTiles(str) {
       v = parseInt(occ.charAt(i), 10); i += 1;
       if (!(v >= 1 && v <= 9)) return null;
       t.seeds = v;
-    } else if (kind === 'a') {
+    } else if (kind === 'a' || kind === 'A') {
       var ak = parseInt(occ.charAt(i), 10), as = parseInt(occ.charAt(i + 1), 10);
       i += 2;
       if (!(ak >= 1 && ak <= 4) || !(as >= 0 && as <= 9)) return null;
       t.alien = ALIEN_FROM[ak];
       t.seeds = as;
+      /* 'A' carries a third digit: the growth stage. 'a' has none, and means full grown. */
+      if (kind === 'A') { var asg2 = parseInt(occ.charAt(i), 10); i += 1;
+        if (!(asg2 >= 1 && asg2 <= 2)) return null; t.astage = asg2; }
     } else if (kind === 't') {
       var sk = parseInt(occ.charAt(i), 10), st = parseInt(occ.charAt(i + 1), 10);
       var ag = parseInt(occ.substr(i + 2, 2), 36), ho = occ.charAt(i + 4);
@@ -3884,7 +3905,16 @@ function drawTileProp(c, r) {
      scaled the SHOP ICON too and the bramble's icon spilled out of its own 44px box — the gate caught
      it (`no weed icon is clipped by its own canvas`). The wrapper is shared by the world, the shop
      and the field guide; only the hillside should have a bigger bramble. */
-  if (t.alien) drawAlien(t.alien, tx, tb, s * (ALIEN_SCALE[t.alien] || 1));
+  /* AN ALIEN NOW COMES UP SMALL AND GROWS, LIKE EVERYTHING ELSE ON THIS HILLSIDE.
+     Owner, 2026-10-03: "might need smaller aliens for first growth stage? i think i just saw a huge
+     pine pop up out of nowhere."
+     He did. `drawAlien` took no stage at all, so a weed that sprouted this morning was drawn at full
+     height the instant it appeared -- a mature pine out of bare ground. The planted trees have had
+     three stages since the beginning (0.26 / 0.56 / 1); the weeds never got them.
+     `astage` runs 1, 2, 3 and is treated as 3 when absent, so every save written before this change
+     draws exactly as it did. */
+  var ascale = ALIEN_STAGE_SCALE[t.astage] || 1;
+  if (t.alien) drawAlien(t.alien, tx, tb, s * (ALIEN_SCALE[t.alien] || 1) * ascale);
   else if (t.sp) {
     drawTree(t.sp, t.stage, tx, tb, s, t.hollow, c * 31 + r);
     /* A PARROT PERCHES ON A HOLLOW TREE, AND IT HAS NEVER BEEN ON SCREEN BEFORE.
