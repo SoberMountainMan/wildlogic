@@ -940,7 +940,7 @@ function newState() {
     bag: { wildpeach: 1, chestnut: 1, stinkwood: 0, whitepair: 0, knobwood: 0,
            yellowwood: 0, outeniqua: 0, ironwood: 0 },
     decor: { bench: 0, birdbath: 0, sign: 0, hide: 0, lantern: 0 },
-    tiles: t, weather: null, lastDayKey: dayKey(new Date()),
+    tiles: t, weather: null, lastDayKey: dayKey(new Date()), lastTickAt: Date.now(),
     seen: { seedbank: false, baboon: false, parrot: false, shade: false,
             toad: false, binbaboon: false, needshade: false, parrotwait: false, intro: false,
             binwaste: false, shadeclosed: false, planted1: false,
@@ -1941,7 +1941,7 @@ function encodeSave(s) {
   for (i = 0; i < SP_KEYS.length; i++) bag += clamp(s.bag[SP_KEYS[i]] || 0, 0, 9);
   for (i = 0; i < DECOR_KEYS.length; i++) dec += clamp(s.decor[DECOR_KEYS[i]] || 0, 0, 9);
   var payload = { v: s.v, d: s.day, a: s.ap, s: seen, l: s.cleared, p: s.planted,
-                  b: s.bought, y: s.recycled, k: s.lastDayKey, t: encodeTiles(s.tiles),
+                  b: s.bought, y: s.recycled, k: s.lastDayKey, t: encodeTiles(s.tiles), z: s.lastTickAt || 0,
                   g: bag, c: dec, n: clamp(binItems, 0, 99),
                   /* pr is a NEW field. decodeSave reads every field with a default, so a save code
                      written before this existed simply comes back with 0 parrots rather than
@@ -1976,6 +1976,11 @@ function decodeSave(code) {
   s.day = p.d; s.ap = p.a; s.cleared = p.l || 0; s.planted = p.p || 0;
   s.bought = p.b || 0; s.recycled = p.y || 0;
   s.lastDayKey = p.k || dayKey(new Date());
+  /* THE WORLD ROLLS ON A ROLLING CLOCK, NOT ON MIDNIGHT.
+     An old save carries no tick timestamp, so it falls back to the midnight key ONCE and migrates:
+     if the day key differs from today the world is due a tick, and from then on the rolling clock
+     carries it. */
+  s.lastTickAt = p.z || (s.lastDayKey === dayKey(new Date()) ? Date.now() : Date.now() - 86400000);
   s.seen = { seedbank: !!(p.s & 1), baboon: !!(p.s & 2), parrot: !!(p.s & 4), shade: !!(p.s & 8),
              toad: !!(p.s & 16), binbaboon: !!(p.s & 32), needshade: !!(p.s & 64),
              parrotwait: !!(p.s & 128), intro: !!(p.s & 256) };
@@ -2033,8 +2038,39 @@ function b64decode(s) {
   for (i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
   return new TextDecoder().decode(b);
 }
+/* A SAVE THAT FAILS SILENTLY IS THE WORST KIND.
+   Owner, 2026-10-02, on a tester's report: "she reopened the game and new aliens had regrown in a place
+   she cleared." The weeds did not regrow -- the SAVE NEVER WROTE. This function was
+     `try { localStorage.setItem(...) } catch (e) {}`
+   and an empty catch means that if storage throws -- quota, private browsing, storage disabled on the
+   device -- the game carries on looking exactly as if it had saved. The player cuts a tile, it clears on
+   screen, the AP drops, and nothing is written. Reopen and the old save loads, so the tile is weedy
+   again, which from the outside is indistinguishable from regrowth.
+
+   Every other refusal in this game now says why. This is the one place it matters most, because the
+   player has no other way of knowing their game is not being kept. */
+var saveFailed = false;
 function saveLocal() {
-  try { if (typeof localStorage !== 'undefined') localStorage.setItem(SAVE_KEY, encodeSave(state)); } catch (e) {}
+  try {
+    if (typeof localStorage === 'undefined') throw new Error('no localStorage');
+    localStorage.setItem(SAVE_KEY, encodeSave(state));
+    if (saveFailed) { saveFailed = false; note('Saving again.', 'good'); }
+    return true;
+  } catch (e) {
+    if (!saveFailed) {
+      saveFailed = true;
+      note('THIS GAME IS NOT BEING SAVED \u2014 ' + (e && e.name ? e.name : 'storage refused') +
+           '. Private browsing, or storage is full or blocked on this device. Your progress will be ' +
+           'lost when you close the tab. Use Field notes \u2192 Save code to keep it.', 'warn');
+      var el = els && els.packWarn;
+      if (el) {
+        el.className = 'ov packwarn';
+        el.textContent = 'Not saving \u2014 progress will be lost when you close. Field notes \u2192 Save code.';
+        el.hidden = false;
+      }
+    }
+    return false;
+  }
 }
 function loadLocal() {
   try {
@@ -4957,8 +4993,23 @@ function boot() {
   state.weather = fallbackFor(month);
   if (!state.board) rollBoard(state.weather);
 
-  var today = dayKey(new Date());
-  var newDay = state.lastDayKey !== today;
+  /* THE WORLD ROLLS ON A ROLLING CLOCK, NOT ON MIDNIGHT.
+     Owner, 2026-10-02: "game should roll with the per hour AP."
+     It used to advance when the CALENDAR DATE changed -- `state.lastDayKey !== dayKey(now)` -- which
+     meant a player who looked in at 23:00 and again at 01:00 got TWO world days in two hours, while
+     one who played at 09:00 and again at 20:00 the next day got ONE in thirty-five. A night owl's
+     hill regrew twice as fast as a morning player's.
+     The action points were moved off midnight for exactly this reason -- the note on AP_MS says it
+     "replaces the midnight refill rather than adding to it" -- and the same argument applies to the
+     world word for word. It was never applied here.
+     Now the world is due a tick when 24 real hours have passed since the last one, and the phase is
+     kept by advancing the stamp by whole days rather than resetting it to now, so a player who
+     visits every 23 hours still gets their tick. */
+  var TICK_MS = 24 * 60 * 60 * 1000;
+  var nowMs = Date.now();
+  if (state.lastTickAt == null) state.lastTickAt = nowMs;
+  var ticksDue = Math.floor((nowMs - state.lastTickAt) / TICK_MS);
+  var newDay = ticksDue >= 1;
 
   /* Wait for the real forecast before rolling the day. Ticking against the season average and
      then swapping the live weather in afterwards meant the field note described a different day
@@ -4967,8 +5018,14 @@ function boot() {
   fetchForecast(month).then(function (w) {
     state.weather = w;
     if (newDay) {
-      state.ap = AP_MAX;
-      state.lastDayKey = today;
+      /* THE AP IS NOT REFILLED HERE, AND THAT WAS A REAL BUG.
+         tickDay()'s own note says the day roll no longer touches AP, because an hourly trickle PLUS
+         a lump is two grants and doubles the budget. The lump was removed from tickDay and left
+         sitting here in the load path, so it was still being handed out -- one full 24 every time
+         the date changed, on top of the hourly accrual. Removing it is what makes the two clocks
+         agree, which is the whole point of this change. */
+      state.lastTickAt += ticksDue * TICK_MS;
+      state.lastDayKey = dayKey(new Date());
       tickDay(w);
       saveLocal();
     } else {
