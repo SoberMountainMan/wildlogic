@@ -926,7 +926,7 @@ function newState() {
     }
   }
   var i;
-  for (i = 0; i < PLACES.length; i++) t[idx(PLACES[i][0], PLACES[i][1])].obj = PLACES[i][2];
+  for (i = 0; i < PLACES.length; i++) { var _t = t[idx(PLACES[i][0], PLACES[i][1])]; _t.obj = PLACES[i][2]; _t.lm = 1; }
   return {
     v: VERSION, day: 1, ap: AP_MAX,
     /* WHEN THE CLOCK STARTED. A fresh save starts FULL, so `apAt` only matters once the first point
@@ -1989,7 +1989,7 @@ function decodeSave(code) {
   for (i = 1; i <= 5; i++) if (OBJ_FROM[i]) LM[OBJ_FROM[i]] = 1;
   for (i = 0; i < PLACES.length; i++) LM[PLACES[i][2]] = 1;
   for (i = 0; i < s.tiles.length; i++) if (LM[s.tiles[i].obj]) s.tiles[i].obj = null;
-  for (i = 0; i < PLACES.length; i++) s.tiles[idx(PLACES[i][0], PLACES[i][1])].obj = PLACES[i][2];
+  for (i = 0; i < PLACES.length; i++) { var _u = s.tiles[idx(PLACES[i][0], PLACES[i][1])]; _u.obj = PLACES[i][2]; _u.lm = 1; }
   /* The bin is module state, not tile state, so it has to be restored alongside the tiles —
      otherwise a player who cuts two aliens and comes back finds the bin empty and the cuttings
      gone. decodeSave is the only thing that knows what was in it. */
@@ -3686,6 +3686,20 @@ function drawTileProp(c, r) {
   if (t.obj === 'house') drawHouse(cx, base, TW * 1.90);
   else if (t.obj === 'nursery') drawNursery(cx, base, TW * 1.06);
   else if (t.obj === 'bin') drawBin(cx, base, TW * 0.98, binItems >= BIN_LOAD);
+  /* THE VILLAGE SIGN AND THE SHOP'S SIGN ARE NOT THE SAME SIGN.
+     Owner, 2026-10-02: "is that sign gonna be the same one you can buy in the shop? i dont think it
+     should be." He is right, and the code says so out loud -- OBJ_CODE has 'sign' at code 4, which
+     is FROZEN because it is already inside save codes players are holding, and the shop sells the
+     same key through DECOR_KEYS. So a single painted sprite would put the village's place names on
+     every sign a player ever buys.
+     The landmark is stamped with `lm` where PLACES is applied, so the two can diverge: the village
+     sign gets the painted one with the words, and a bought sign gets the plain one. */
+  /* THE VILLAGE SIGN AND A BOUGHT SIGN ARE SEPARATE BRANCHES, ON PURPOSE.
+     They both fall through to drawSign() today, which is the plain plank -- so nothing changes on
+     screen until the art lands. The split is here so that when the two sprites exist they have two
+     places to go and cannot be confused: the village's carries the place names, a bought one must
+     not. The landmark is stamped `lm` where PLACES is applied. */
+  else if (t.obj === 'sign' && t.lm) drawSign(cx, base, TW * 0.96);
   else if (t.obj === 'sign') drawSign(cx, base, TW * 0.96);
   else if (t.obj === 'jetty') drawJetty(cx, base, TW * 1.10);
   else if (DECOR[t.obj]) drawDecor(t.obj, cx, base, TW * 0.98);
