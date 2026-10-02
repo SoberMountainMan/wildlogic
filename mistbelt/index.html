@@ -1160,7 +1160,7 @@ function plantable(c, r) {
 
 function stats() {
   var alien = count(function (t) { return !!t.alien; });
-  var mature = count(function (t) { return t.sp && t.stage === 3; });
+  var mature = count(function (t) { return t.sp && t.stage === 3 && !t.dead; });
   var growing = count(function (t) { return t.sp && t.stage > 0 && t.stage < 3; });
   var grass = count(function (t) { return t.ter === 'grass'; });
   return { alien: alien, mature: mature, growing: growing, total: NTILES, grass: grass,
@@ -1309,6 +1309,34 @@ function tickDay(w) {
   if (spread) line.push('Seed moved ' + spread + ' step' + (spread === 1 ? '' : 's') + ' down the hill.');
 
   var grew = 0, lost = 0;
+  /* A MATURE TREE CAN DIE, AND ONLY A DEAD TREE CAN HOLD A PARROT NEST.
+     Owner, 2026-10-03: "parrots only nesting in yellowwood. thats not technically correct. they nest in
+     dead hollow trees. They nest in dying decaying trees. The cannot make holes. so maybe we need an
+     old tree to eventually die to bring a parrot nest."
+     He is right, and it changes the shape of the goal. A Cape parrot cannot excavate -- it needs a
+     cavity that already exists, and cavities form in big old trees that are damaged, dying or dead.
+     The shortage of big standing dead trees is a recognised limit on the species. So the nest is not
+     a reward for a species, it is a reward for TIME and for leaving something alone.
+     A dead tree STAYS: it still stands, still casts shade, still holds the ground it grew on. It is
+     not a wasted tree. */
+  var died = 0, holed = 0;
+  for (i = 0; i < NTILES; i++) {
+    t = state.tiles[i];
+    if (!t.sp) continue;
+    if (t.dead) {
+      /* A CAVITY TAKES YEARS TO FORM, which is the whole reason old trees are worth more than young
+         ones. Scaled to the game: SNAG_DAYS of standing dead before it will hold a bird. */
+      t.snagDays = (t.snagDays || 0) + 1;
+      if (!t.hollow && t.snagDays >= SNAG_DAYS) { t.hollow = true; holed++; }
+      continue;
+    }
+    if (t.stage !== 3) continue;
+    if (Math.random() < SNAG_RATE) { t.dead = true; t.snagDays = 0; t.hollow = false; died++; }
+  }
+  if (died) line.push(died + ' tree' + (died === 1 ? '' : 's') + ' died and ' +
+                      (died === 1 ? 'is' : 'are') + ' standing dead.');
+  if (holed) line.push(holed === 1 ? 'A dead tree has gone hollow.' : holed + ' dead trees have gone hollow.');
+
   for (i = 0; i < NTILES; i++) {
     t = state.tiles[i];
     if (!t.sp || t.stage === 0 || t.stage === 3) continue;
@@ -1418,11 +1446,52 @@ var PARROT_STEP_CANOPY = 3;   /* each bird after the first wants three more matu
 var PARROT_STEP_MIX = 1;      /* ...and one more species in the mix */
 var PARROT_MAX = 12;          /* a ceiling, so the ladder cannot run away */
 
+/* THE NEST COMES FROM A DEAD TREE, AND THE PATCH AROUND IT IS WHAT MAKES IT WORTH USING.
+   See the note on the death loop in tickDay for why. These are the four numbers that decide it, and
+   they are constants so they can be tuned without hunting through the file:
+     SNAG_RATE   how likely a mature tree is to die on any given day. 0.4% is an expected life of
+                 about 250 days after maturity -- fast enough that a well-planted hill produces a
+                 snag within a few days of play, slow enough that death is an event rather than a
+                 churn.
+     SNAG_DAYS   how long a dead tree stands before it goes hollow. A cavity is not instant, and this
+                 is what makes an OLD dead tree worth more than a new one.
+     PARROT_R     the radius around a snag that counts. A parrot forages around its nest; it does not
+                 care what the rest of the map looks like. Radius 4 is an 81-tile patch.
+     PARROT_PATCH_TREES / _SPECIES  what has to be inside that patch. */
+var SNAG_RATE = 0.004;
+var SNAG_DAYS = 8;
+var PARROT_R = 4;
+var PARROT_PATCH_TREES = 12;
+var PARROT_PATCH_SPECIES = 3;
+
+/* What is around a tile, in the sense a parrot cares about: living mature trees, the old-growth
+   remnant (which is mature forest even though it is terrain rather than a planted tile), and how
+   many different species are among them. A DEAD tree is deliberately not counted as canopy -- it is
+   standing structure, not a living forest -- which is what makes letting trees die a cost. */
+function patchAround(c, r) {
+  var trees = 0, species = {}, dc, dr, t;
+  for (dr = -PARROT_R; dr <= PARROT_R; dr++) {
+    for (dc = -PARROT_R; dc <= PARROT_R; dc++) {
+      t = cell(c + dc, r + dr);
+      if (!t) continue;
+      if (t.ter === 'forest') { trees += 1; species.remnant = 1; continue; }
+      if (t.sp && t.stage === 3 && !t.dead) { trees += 1; species[t.sp] = 1; }
+    }
+  }
+  var n = 0, k;
+  for (k in species) if (species.hasOwnProperty(k)) n++;
+  return { trees: trees, species: n };
+}
+/* A snag that is hollow AND has a real forest around it. This is the whole new nest rule. */
+function isNestSite(t) {
+  return !!(t && t.sp && t.dead && t.hollow);
+}
+
 function forestMix() {
   var seen = {}, i, n = 0;
   for (i = 0; i < NTILES; i++) {
     var t = state.tiles[i];
-    if (t.sp && t.stage === 3 && !seen[t.sp]) { seen[t.sp] = true; n++; }
+    if (t.sp && t.stage === 3 && !t.dead && !seen[t.sp]) { seen[t.sp] = true; n++; }
   }
   return n;
 }
@@ -1438,24 +1507,35 @@ function hollowTrees() {
   return n;
 }
 
-/* The first hollow-capable mature tree with no nest in it yet, or -1 if there is none. */
+/* THE FIRST HOLLOW DEAD TREE WITH A REAL STAND AROUND IT AND NO BIRD IN IT YET, or -1.
+   This used to return any living mature yellowwood. It now wants a SNAG, because a Cape parrot
+   cannot make its own hole -- and it wants a FOREST around that snag, because the canopy and the mix
+   are the bird's foraging range, not a number about the whole map. See the note on the death loop in
+   tickDay. */
 function nestFor() {
-  var i;
+  var i, t, p;
   for (i = 0; i < NTILES; i++) {
-    var t = state.tiles[i];
-    if (t.sp && SPECIES[t.sp] && SPECIES[t.sp].hollow && t.stage === 3 && !t.hollow) return i;
+    t = state.tiles[i];
+    if (!isNestSite(t) || t.nest) continue;
+    p = patchAround(i % COLS, Math.floor(i / COLS));
+    if (p.trees >= PARROT_PATCH_TREES && p.species >= PARROT_PATCH_SPECIES) return i;
   }
   return -1;
 }
 
-/* How many parrots this forest can hold TODAY. Recomputed every time, never remembered, so it
-   tracks the forest in both directions and a cut-back forest loses birds. */
+/* EVERY QUALIFYING SNAG IS A NEST, AND EVERY NEST HOLDS ONE BIRD.
+   So the score is not a ladder of map-wide totals any more -- it is HOW MANY GOOD PLACES YOU HAVE
+   MADE. The old version asked for 6 trees then 9 then 12 across the entire 1,600-tile map, which was
+   0.4% of the hill: six trees scattered anywhere and a parrot arrived, with no place to point at. */
 function parrotCapacity() {
-  var mature = stats().mature, mix = forestMix(), hol = hollowTrees(), n = 0;
-  while (n < PARROT_MAX && n < hol &&
-         mature >= PARROT_CANOPY + n * PARROT_STEP_CANOPY &&
-         mix >= PARROT_MIX + n * PARROT_STEP_MIX) n++;
-  return n;
+  var i, t, p, n = 0;
+  for (i = 0; i < NTILES; i++) {
+    t = state.tiles[i];
+    if (!isNestSite(t)) continue;
+    p = patchAround(i % COLS, Math.floor(i / COLS));
+    if (p.trees >= PARROT_PATCH_TREES && p.species >= PARROT_PATCH_SPECIES) n++;
+  }
+  return Math.min(n, PARROT_MAX);
 }
 
 function parrotCheck() {
@@ -1466,7 +1546,8 @@ function parrotCheck() {
        at once — and so the count is something the player watches climb. */
     var idx = nestFor();
     if (idx < 0) return false;
-    state.tiles[idx].hollow = true;
+    /* The snag is already hollow -- that is WHY it is a nest site. The bird claims it. */
+    state.tiles[idx].nest = true;
     state.parrots += 1;
     if (state.seen.parrot) {
       saveLocal();
@@ -1488,14 +1569,15 @@ function parrotCheck() {
        non-public prototype, but nothing points at them until they have approved the working version.
        card() already treats a missing third argument as "hide the Learn more link", so this is the
        whole change — the text still names them, and no traffic is sent their way. */
-    card('A Cape parrot lands in the yellowwood',
+    card('A Cape parrot lands in the dead tree',
       'South Africa\u2019s only endemic parrot, and fewer than two thousand are left in the wild. ' +
-      'It nests in the hollow of an old yellowwood, high off the ground, and it feeds on the seed ' +
-      'of the trees that grow here. The Cape Parrot Project started in this village in 2009, ' +
-      'growing indigenous seedlings in community nurseries and putting them back into the mistbelt. ' +
-      'This is the first to move in. Grow the canopy and more will come \u2014 and if you cut the ' +
-      'forest back, they will leave again.');
-    note('A Cape parrot landed in the yellowwood you grew.', 'good');
+      'It CANNOT make its own hole \u2014 it needs one that already exists, and those form in big ' +
+      'old trees that are dying or dead. That is why this one is standing in a tree you left alone ' +
+      'instead of cutting, with a stand of mixed indigenous canopy around it to feed in. The Cape ' +
+      'Parrot Project started in this village in 2009, growing indigenous seedlings in community ' +
+      'nurseries and putting them back into the mistbelt. This is the first to move in. ' +
+      'Leave more old trees standing and more will come.');
+    note('A Cape parrot moved into a dead tree you left standing.', 'good');
     return true;
   }
 
@@ -1924,8 +2006,16 @@ function encodeTiles(tiles) {
          a misty day gains one and a half — so rounding age to whole days would quietly delay a
          tree by up to half a day every time the player saved and reloaded. Two base-36 characters
          hold 1,295 half-days, and a tree resets its age at seven. */
-      occ += b64i(i) + 't' + String(SP_CODE[t.sp] || 0) + String(clamp(t.stage, 0, 3)) +
-             pad2(clamp(Math.round(t.age * 2), 0, 1295).toString(36)) + (t.hollow ? '1' : '0');
+      if (t.dead) {
+        /* A DEAD TREE IS ITS OWN RECORD. Old saves have none, so an old code decodes with every
+           tree alive -- exactly as it was. Fields: species, days standing (2 base36), hollow, nest. */
+        occ += b64i(i) + 'D' + String(SP_CODE[t.sp] || 0) +
+               pad2(clamp(t.snagDays || 0, 0, 1295).toString(36)) +
+               (t.hollow ? '1' : '0') + (t.nest ? '1' : '0');
+      } else {
+        occ += b64i(i) + 't' + String(SP_CODE[t.sp] || 0) + String(clamp(t.stage, 0, 3)) +
+               pad2(clamp(Math.round(t.age * 2), 0, 1295).toString(36)) + (t.hollow ? '1' : '0');
+      }
     } else if (t.alien) {
       var asg = t.astage || 3;
       occ += b64i(i) + (asg < 3 ? 'A' : 'a') + String(ALIEN_CODE[t.alien] || 0) +
@@ -1995,6 +2085,16 @@ function decodeTiles(str) {
       /* 'A' carries a third digit: the growth stage. 'a' has none, and means full grown. */
       if (kind === 'A') { var asg2 = parseInt(occ.charAt(i), 10); i += 1;
         if (!(asg2 >= 1 && asg2 <= 2)) return null; t.astage = asg2; }
+    } else if (kind === 'D') {
+      var dk = parseInt(occ.charAt(i), 10);
+      var dd = parseInt(occ.substr(i + 1, 2), 36);
+      var dh = occ.charAt(i + 3), dn = occ.charAt(i + 4);
+      i += 5;
+      if (!(dk >= 1 && dk <= 9) || !isFinite(dd)) return null;
+      if (dh !== '0' && dh !== '1') return null;
+      if (dn !== '0' && dn !== '1') return null;
+      t.sp = SP_FROM[dk]; t.stage = 3; t.age = 0;
+      t.dead = true; t.snagDays = dd; t.hollow = dh === '1'; t.nest = dn === '1';
     } else if (kind === 't') {
       var sk = parseInt(occ.charAt(i), 10), st = parseInt(occ.charAt(i + 1), 10);
       var ag = parseInt(occ.substr(i + 2, 2), 36), ho = occ.charAt(i + 4);
@@ -3227,6 +3327,45 @@ function treeTrunk(cx, base, w, h) {
 
    Adding a tree is still a row of data: `form` is a field, and an unknown form falls back to the
    old shape, so a species added without one cannot crash the draw. */
+/* A DEAD TREE, STANDING. A bare trunk, a few broken limbs, and -- once it has gone hollow -- a dark
+   hole in it, because the hole is the thing the whole mechanic is about and the player has to be
+   able to find it on the hillside. Grey-brown, not the living brown of bark: a dead tree reads as
+   dead from its colour before its shape.
+   Drawn rather than painted because the pack has no snag, and the alternative was holding a
+   mechanic the owner has already decided on behind an art round. */
+function drawSnag(cx, base, s, hollow, seed) {
+  shadow(cx, base, s * 0.26, s * 0.09);
+  var k1 = jit(seed, 1, 41), k2 = jit(seed, 2, 42), k3 = jit(seed, 3, 43);
+  var h = s * (0.72 + k1 * 0.20);
+  var w = s * 0.11;
+  ctx.fillStyle = '#6d6259';
+  ctx.beginPath();
+  ctx.moveTo(cx - w, base);
+  ctx.lineTo(cx - w * 0.55, base - h);
+  ctx.lineTo(cx + w * 0.45, base - h);
+  ctx.lineTo(cx + w, base);
+  ctx.closePath(); ctx.fill();
+  /* two broken limbs, and they are not symmetrical -- a dead tree that looks symmetrical looks
+     drawn rather than grown */
+  ctx.strokeStyle = '#6d6259';
+  ctx.lineWidth = Math.max(1, s * 0.045);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx - w * 0.2, base - h * (0.55 + k2 * 0.15));
+  ctx.lineTo(cx - s * (0.18 + k2 * 0.14), base - h * (0.78 + k3 * 0.12));
+  ctx.moveTo(cx + w * 0.2, base - h * (0.68 + k3 * 0.10));
+  ctx.lineTo(cx + s * (0.14 + k1 * 0.12), base - h * (0.86 + k2 * 0.10));
+  ctx.stroke();
+  /* THE HOLE. Only once the tree has gone hollow -- so the player can watch a dead tree become a
+     nest site rather than having to guess. */
+  if (hollow) {
+    ctx.fillStyle = '#241d17';
+    ctx.beginPath();
+    ctx.ellipse(cx + w * 0.10, base - h * 0.62, s * 0.055, s * 0.075, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 function drawTree(sp, stage, cx, base, s, hollow, seed) {
   var def = SPECIES[sp] || {};
   var scale = stage === 1 ? 0.26 : stage === 2 ? 0.56 : 1;
@@ -3955,7 +4094,12 @@ function drawTileProp(c, r) {
      draws exactly as it did. */
   if (t.alien) drawAlien(t.alien, tx, tb, s * (ALIEN_SCALE[t.alien] || 1), t.astage);
   else if (t.sp) {
-    drawTree(t.sp, t.stage, tx, tb, s, t.hollow, c * 31 + r);
+    /* A DEAD TREE IS DRAWN AS A BARE STANDING TRUNK, and that is the whole point of the mechanic:
+       the player has to be able to SEE the thing a parrot nests in. There is no painted snag in the
+       pack, so this is drawn -- which is honest, because the alternative was waiting on art for a
+       mechanic the owner has already decided he wants. */
+    if (t.dead) drawSnag(tx, tb, s * (SPECIES[t.sp].tall || 1), t.hollow, c * 31 + r);
+    else drawTree(t.sp, t.stage, tx, tb, s, t.hollow, c * 31 + r);
     /* A PARROT PERCHES ON A HOLLOW TREE, AND IT HAS NEVER BEEN ON SCREEN BEFORE.
        `ani_parrot` has been painted since the first animal round and nothing has ever drawn it: the
        game's only use of a parrot is a POPULATION COUNT (parrotCheck), so a Cape parrot moving in was
@@ -5556,6 +5700,11 @@ var API = {
      screenshot cannot see it — the check has to drive the clock rather than look at the HUD. */
   apAccrue: apAccrue, msToNextAp: msToNextAp, apWaitText: apWaitText, PLACES: PLACES, TILE_ART: TILE_ART, TOAD_AT: TOAD_AT,
   TOAD_PATCH: TOAD_PATCH, aliensNear: aliensNear,
+  /* The snag-and-stand rule. Exported because the parrot's requirements are now LOCAL -- a patch
+     around a dead tree -- and a check that cannot count the patch cannot tell a real stand from a
+     lone tree. SNAG_DAYS is exported so a fixture can age a snag without running the tick. */
+  patchAround: patchAround, isNestSite: isNestSite, SNAG_DAYS: SNAG_DAYS, SNAG_RATE: SNAG_RATE,
+  PARROT_R: PARROT_R, PARROT_PATCH_TREES: PARROT_PATCH_TREES, PARROT_PATCH_SPECIES: PARROT_PATCH_SPECIES,
   newState: newState, getState: function () { return state; }, setState: function (s) { state = s; },
   setTool: function (t) { tool = t; }, terrainAt: terrainAt,
   tickDay: tickDay, clearAt: clearAt, plantAt: plantAt, placeDecor: placeDecor,
