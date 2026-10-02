@@ -2518,21 +2518,35 @@ var CLIFF_K = 0.86;     /* narrower than the ground, so the plateau overhangs th
    takes a WINDOW from that field at a position that slides along the channel. One step down the
    river slides the window by exactly one cell, so the ripples flow continuously instead of
    restarting at every cell. The diamond silhouette is applied afterwards with a clip. */
-var WATER_FIELD = null, WATER_FIELD_S = 0, WATER_FIELD_N = 14;
+var WATER_FIELD = null, WATER_FIELD_S = 0, WATER_FIELD_N = 12;
+/* THE FIELD MUST NOT BE MADE OF DIAMONDS.
+   First attempt built the field from the same tiles in the same order as the river lays them, so
+   sliding the window by one cell per step showed exactly what the un-slid version showed -- the
+   owner looked and said "looks the same", and he was right, it was a no-op.
+
+   The diamond structure is IN the tiles. Windowing cannot remove it. So the field is built from a
+   PLAIN RECTANGULAR patch of water -- the middle of a tile, cropped away from its own edges --
+   tiled into a rectangle. That is a continuous ripple field with no per-tile structure anywhere in
+   it, and the diamonds are then cut out of it by the clip. */
 function waterField(rec) {
   var S = groundScale();
   if (WATER_FIELD && WATER_FIELD_S === S) return WATER_FIELD;
   var w = Math.round(TW * S), h = Math.round(TH * S);
+  var tr = rec['ter_water_v1'];
+  if (!tr || !tr.img || !tr.img.width) return null;
+  // a plain patch from the middle of the tile, well clear of the diamond's own edge
+  var iw = tr.img.width, ih = tr.img.height;
+  var px = Math.round(iw * 0.25), py = Math.round(ih * 0.30);
+  var pw = Math.round(iw * 0.50), ph = Math.round(ih * 0.40);
   var N = WATER_FIELD_N;
   var cv = document.createElement('canvas');
   cv.width = w * N; cv.height = h * N;
   var x = cv.getContext('2d');
   if ('imageSmoothingQuality' in x) x.imageSmoothingQuality = 'high';
-  for (var rr = 0; rr < N; rr++) {
-    for (var cc = 0; cc < N; cc++) {
-      var tr = rec['ter_water_v' + (1 + ((cc + rr) % 3))];
-      if (!tr || !tr.img || !tr.img.width) continue;
-      x.drawImage(tr.img, (cc - rr) * w / 2 + (N * w) / 2 - w / 2, (cc + rr) * h / 2 - h / 2, w, h);
+  // tile the patch across the whole field -- periodic by construction, so no seam anywhere
+  for (var yy = 0; yy < N; yy += 2) {
+    for (var xx = 0; xx < N; xx += 2) {
+      x.drawImage(tr.img, px, py, pw, ph, xx * w, yy * h, w * 2, h * 2);
     }
   }
   WATER_FIELD = cv; WATER_FIELD_S = S;
@@ -5454,7 +5468,11 @@ var SPR = (function () {
         ox = ((ox % maxx) + maxx) % maxx;
         oy = ((oy % maxy) + maxy) % maxy;
         ctx.save();
-        tilePath(c, r, z, 1.0, 0);
+        /* THE CLIP MUST MATCH THE OVERSCAN. Clipping at exactly 1.0 cuts the tile back to the
+           cell, so two neighbours' anti-aliased clip ramps multiply at the shared edge and leave a
+           faint line -- the last of the lattice. Clipping at OVER puts that ramp outside the cell,
+           where the neighbour's solid water covers it, which is what the overscan is for. */
+        tilePath(c, r, z, OVER, 0);
         ctx.clip();
         ctx.drawImage(F, ox, oy, w, h, p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
         ctx.restore();
