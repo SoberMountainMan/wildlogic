@@ -971,7 +971,22 @@ function weatherFrom(payload, month) {
   return { tmax: num(d.temperature_2m_max, 0), tmin: num(d.temperature_2m_min, 0),
            rain: num(d.precipitation_sum, 0), snow: num(d.snowfall_sum, 0),
            wind: num(d.wind_speed_10m_max, 0), cloud: one(c.cloud_cover),
-           temp: one(c.temperature_2m), code: one(c.weather_code), month: month };
+           temp: one(c.temperature_2m), code: one(c.weather_code), month: month,
+           /* THE REAL HORIZON, not a fixed six and six.
+              Owner, 2026-10-02: "cant you get actual days sunrise/sunset time from somewhere? and
+              adjust accordingly?" Open-Meteo gives both, so the arc is anchored to the sun this
+              valley actually gets -- 05:48 and 18:15 today, which is two hours wider than the fixed
+              06:00/18:00 it was drawn with, and it will swing the other way in June. */
+           sunrise: hourFrac(one(d.sunrise)), sunset: hourFrac(one(d.sunset)) };
+}
+
+/* "2026-10-02T05:48" -> 0.2417 of a day. Returns null on anything unexpected, and every caller
+   treats null as "use the default horizon", so a malformed field cannot stop the sky drawing. */
+function hourFrac(s) {
+  if (typeof s !== 'string') return null;
+  var m = /T(\d{2}):(\d{2})/.exec(s);
+  if (!m) return null;
+  return (parseInt(m[1], 10) + parseInt(m[2], 10) / 60) / 24;
 }
 
 function fallbackFor(month) {
@@ -1011,7 +1026,7 @@ function fetchForecast(month) {
   var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + SPOT.lat +
     '&longitude=' + SPOT.lon +
     '&current=temperature_2m,precipitation,cloud_cover,wind_speed_10m,weather_code' +
-    '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_speed_10m_max' +
+    '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_speed_10m_max,sunrise,sunset' +
     '&timezone=Africa%2FJohannesburg&forecast_days=1';
   if (typeof fetch !== 'function') return Promise.resolve(fallbackFor(month));
   return fetch(url).then(function (r) { return r.json(); })
@@ -2301,17 +2316,36 @@ function dayFrac(d) {
   d = d || new Date();
   return (d.getHours() + d.getMinutes() / 60) / 24;
 }
-/* The sun's height, 0 at the horizon and 1 at noon, and NEGATIVE at night. Dawn is 06:00 and dusk
-   18:00, which is close enough for a valley at this latitude and does not pretend to be an
-   ephemeris. */
-function sunHeight(t) {
-  return Math.sin((t * 24 - 6) / 12 * Math.PI);
+/* THE PHASE OF THE MOON, 0 at new and 0.5 at full.
+   Owner, 2026-10-02: "and phase of moon." Open-Meteo does not publish it, so it is computed: the
+   synodic month is 29.530588853 days and there was a known new moon at 2000-01-06 18:14 UTC, so the
+   phase is just how far through that cycle today is. Accurate to well under a day over the range
+   anyone will play, which is more than enough for a 16-pixel disc. */
+function moonPhase(d) {
+  d = d || new Date();
+  var SYN = 29.530588853;
+  var EPOCH = Date.UTC(2000, 0, 6, 18, 14) / 86400000;
+  var now = d.getTime() / 86400000;
+  return (((now - EPOCH) / SYN) % 1 + 1) % 1;
+}
+/* The sun's height, 0 at the horizon and 1 at noon, and NEGATIVE at night. The horizon is the REAL
+   one when the weather payload carries it and 06:00/18:00 when it does not, so the game still runs
+   with no network. In October the real day is 05:48 to 18:15; in June it will be a good deal
+   shorter, and the arc will move with it. */
+var SUNRISE_DEF = 6 / 24, SUNSET_DEF = 18 / 24;
+function sunHeight(t, w) {
+  var rise = (w && w.sunrise != null) ? w.sunrise : SUNRISE_DEF;
+  var set = (w && w.sunset != null) ? w.sunset : SUNSET_DEF;
+  var span = set - rise;
+  if (!(span > 0.05)) span = SUNSET_DEF - SUNRISE_DEF;
+  return Math.sin((t - rise) / span * Math.PI);
 }
 /* How dark the sky is: 0 in full day, 1 at the dead of night, with dawn and dusk passing through.
-   The ramp is 90 minutes either side of the horizon, because a mistbelt valley does not go from
-   light to dark in ten minutes and the whole point is that the player SEES the change. */
-function nightAmount(t) {
-  var h = sunHeight(t);
+   The ramp is a tenth of a day either side of the horizon -- about two hours -- because a mistbelt
+   valley does not go from light to dark in ten minutes and the whole point is that the player SEES
+   the change. */
+function nightAmount(t, w) {
+  var h = sunHeight(t, w);
   if (h >= 0.25) return 0;
   if (h <= -0.25) return 1;
   return (0.25 - h) / 0.5;
@@ -2337,7 +2371,7 @@ function drawSky(w) {
   var tone = SKY_TONE[skyKey(w)];
   /* THE WEATHER PICKED THE COLOUR; THE CLOCK DECIDES HOW BRIGHT IT IS. Two flat tones stay two
      flat tones -- the night is the same pair mixed toward one dark blue, not a gradient. */
-  var t = dayFrac(), night = nightAmount(t);
+  var t = dayFrac(), night = nightAmount(t, w);
   var upper = tone[0], lower = tone[1];
   if (night > 0) {
     upper = mixHex(upper, '#1b2733', night);
@@ -2356,12 +2390,17 @@ function drawSky(w) {
      and the moon rides the same path while it is below, so the thing that moves across the sky is
      always the one that should be up. Both are flat discs, because everything else on this screen
      is flat. */
-  var h = sunHeight(t);
+  var h = sunHeight(t, w);
   var isSun = h > 0;
   /* THE MOON RIDES THE SAME ARC AS THE SUN, half a day behind it. So the body that is up is
      always the one that should be up, and it crosses the sky the same way -- there is one arc in
-     the game, not two. */
-  var phase = isSun ? (t * 24 - 6) / 12 : ((t * 24 - 6) / 12 + 1) % 1;
+     the game, not two. Both use the REAL horizon, so the sun is at the left edge at 05:48 this
+     month and at the right edge at 18:15, and the moon takes the rest of the day. */
+  var rise = (w && w.sunrise != null) ? w.sunrise : SUNRISE_DEF;
+  var set = (w && w.sunset != null) ? w.sunset : SUNSET_DEF;
+  var span = set - rise;
+  if (!(span > 0.05)) span = SUNSET_DEF - SUNRISE_DEF;
+  var phase = isSun ? (t - rise) / span : (((t - rise) / span) + 1) % 1;
   var x = W * (0.06 + 0.88 * phase);
   /* THE ARC SITS BELOW THE HUD. The first version rode between 26% and 84% of a 30% band, which put
      the midday sun at y = 61 on a 780 px screen -- directly behind the weather pill, invisible at
@@ -2369,11 +2408,46 @@ function drawSky(w) {
      of the HUD on every phone shape the layout gate checks) down to 30%, which is the far rim. */
   var y = H * (0.150 + 0.150 * (1 - Math.abs(h)));
   if (x > -40 && x < W + 40) {
-    ctx.fillStyle = isSun ? mixHex('#ffe9a8', '#ffd166', Math.max(0, h))
-                          : mixHex('#dfe7ef', '#c3ced9', night);
-    ctx.beginPath();
-    ctx.arc(x, y, Math.max(7, H * 0.021), 0, Math.PI * 2);
-    ctx.fill();
+    var rr = Math.max(7, H * 0.021);
+    if (isSun) {
+      ctx.fillStyle = mixHex('#ffe9a8', '#ffd166', Math.max(0, h));
+      ctx.beginPath();
+      ctx.arc(x, y, rr, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      /* THE MOON IS LIT THE WAY THE MOON IS LIT. A flat pale disc reads as a hole punched in the
+         sky; the phase is what makes it a moon. The lit limb is drawn as a disc and the dark side
+         is covered by two shapes inside a clip -- the dark half, plus the terminator, which is an
+         ellipse whose width goes to zero at half moon and full at new and full moon. */
+      var mp = moonPhase();
+      var k = (1 - Math.cos(2 * Math.PI * mp)) / 2;      /* 0 new, 1 full */
+      /* SOUTHERN HEMISPHERE, SO THE MOON IS THE OTHER WAY UP. Hogsback is at latitude -32.59, and
+         south of the equator the whole sky is rotated 180 degrees -- a waning gibbous is lit on the
+         RIGHT here and on the left in Europe. Getting this wrong is the kind of detail that only a
+         local would notice, which is exactly the kind worth getting right. */
+      var southern = SPOT.lat < 0;
+      var waxing = (mp < 0.5) !== southern;               /* lit on the right, or on the left */
+      ctx.save();
+      ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI * 2); ctx.clip();
+      /* the lit body */
+      ctx.fillStyle = mixHex('#dfe7ef', '#c3ced9', night);
+      ctx.fillRect(x - rr, y - rr, rr * 2, rr * 2);
+      /* the unlit part: the half away from the sun, then the terminator ellipse over it */
+      ctx.fillStyle = mixHex('#2b3a4a', '#3d4d60', 1 - night * 0.4);
+      ctx.beginPath();
+      if (waxing) ctx.arc(x, y, rr, Math.PI / 2, Math.PI * 1.5, false);
+      else ctx.arc(x, y, rr, -Math.PI / 2, Math.PI / 2, false);
+      ctx.closePath(); ctx.fill();
+      var ta = rr * Math.abs(1 - 2 * k);
+      if (ta > 0.4) {
+        ctx.beginPath();
+        /* the ellipse sits on the LIT side when the moon is a crescent and on the dark side once it
+           is past half -- which is the whole difference between a waxing crescent and a gibbous */
+        ctx.ellipse(x, y, ta, rr, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
   }
 
   /* The ridges hang BEHIND the plateau's far rim, so they follow it as the camera moves — but only
@@ -4080,7 +4154,7 @@ function frame(ts) {
      So one flat wash goes over everything the world drew, AFTER the zoom transform is restored so
      it covers the canvas exactly once, and BEFORE the weather, so mist and rain stay the colour of
      mist and rain. Flat, not a gradient -- the same rule the sky follows. */
-  var nightAmt = nightAmount(dayFrac());
+  var nightAmt = nightAmount(dayFrac(), w);
   if (nightAmt > 0) {
     ctx.fillStyle = 'rgba(20,29,46,' + (nightAmt * 0.46).toFixed(3) + ')';
     ctx.fillRect(0, 0, W, H);
