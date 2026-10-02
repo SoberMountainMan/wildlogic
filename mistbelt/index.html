@@ -2535,20 +2535,24 @@ function riverImage(rec, cellFn, cols, rows, worldW, worldH, wx0, wy0) {
   cv.width = Math.round(worldW * S); cv.height = Math.round(worldH * S);
   var x = cv.getContext('2d');
   if ('imageSmoothingQuality' in x) x.imageSmoothingQuality = 'high';
-  var OVER = 1.02;
   var tr = rec['ter_water_v1'];
   if (tr && tr.img && tr.img.width) {
-    for (var rr = 0; rr < rows; rr++) {
-      for (var cc = 0; cc < cols; cc++) {
-        var t = cellFn(cc, rr);
-        if (!t || t.ter !== 'water') continue;
-        /* BAKE SPACE, not screen space. The bake parks the camera at the origin and uses its own
-           offset, so project() answers in a different coordinate system. Using the screen position
-           here put the whole river a camera-width from where it belongs -- the water simply
-           vanished and the bank showed through. bakePoint() exists for exactly this. */
-        var px = ((cc - rr) * (TW / 2) + wx0) * S;
-        var py = ((cc + rr) * (TH / 2) + wy0) * S;
-        x.drawImage(tr.img, px - w * OVER / 2, py - h * OVER / 2, w * OVER, h * OVER);
+    /* FROM THE TILE'S INTERIOR, AT 1:1, TILED -- NOT FROM THE WHOLE TILE.
+       The owner: "youre not looking at the river." He was right and I was not: I had been cropping
+       grass. When I finally framed it, the beads were fully there -- because laying whole tiles into
+       the river image reproduces the tiles, diamonds and all. The diamond edge is the last thing in
+       the tile and it survives every copy of it.
+
+       So the river image is built from a PLAIN RECTANGULAR PATCH of the tile's middle, well inside
+       the diamond, and that patch is TILED AT ITS OWN SIZE across the whole channel. Nothing is
+       scaled -- the earlier attempt stretched a patch 2x and came out blurry, which is a different
+       fault from this one -- and no tile edge is ever drawn into the river. */
+    var iw = tr.img.width, ih = tr.img.height;
+    var px = Math.round(iw * 0.22), py = Math.round(ih * 0.26);
+    var pw = Math.round(iw * 0.56), ph = Math.round(ih * 0.48);
+    for (var ty = -ph; ty < cv.height + ph; ty += ph) {
+      for (var tx = -pw; tx < cv.width + pw; tx += pw) {
+        x.drawImage(tr.img, px, py, pw, ph, tx, ty, pw, ph);
       }
     }
   }
