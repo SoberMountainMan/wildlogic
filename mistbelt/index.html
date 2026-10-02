@@ -602,6 +602,11 @@ var ALIEN_STAGE_SCALE = { 1: 0.30, 2: 0.60, 3: 1 };
 /* How many days a weed spends at each stage. One day small, one day medium, then full: a weed is
    fast, and the point is only that it is not INSTANT. */
 var ALIEN_STAGE_DAYS = 1;
+/* The smallest a sprout may be DRAWN, in world pixels. Below this the four weeds stop being tellable
+   apart, which is the thing the owner actually asked for -- not seedlings, but not suddenly full
+   size either. Measured: a pine is 102 px at full size and a bramble 20, so the floor bites hardest
+   on the smallest weed, which is correct. */
+var ALIEN_MIN_PX = 15;
 
 /* The Amathole forest is not a yellowwood plantation, it is an indigenous forest with layers in
    it, and the layers go in in an order. The pioneers take the open ground and make the shade; the
@@ -3913,8 +3918,7 @@ function drawTileProp(c, r) {
      three stages since the beginning (0.26 / 0.56 / 1); the weeds never got them.
      `astage` runs 1, 2, 3 and is treated as 3 when absent, so every save written before this change
      draws exactly as it did. */
-  var ascale = ALIEN_STAGE_SCALE[t.astage] || 1;
-  if (t.alien) drawAlien(t.alien, tx, tb, s * (ALIEN_SCALE[t.alien] || 1) * ascale);
+  if (t.alien) drawAlien(t.alien, tx, tb, s * (ALIEN_SCALE[t.alien] || 1), t.astage);
   else if (t.sp) {
     drawTree(t.sp, t.stage, tx, tb, s, t.hollow, c * 31 + r);
     /* A PARROT PERCHES ON A HOLLOW TREE, AND IT HAS NEVER BEEN ON SCREEN BEFORE.
@@ -5848,9 +5852,27 @@ var SPR = (function () {
   };
 
   var _alien = drawAlien;
-  drawAlien = function (kind, cx, base, s) {
+  /* A SPROUT MUST STILL BE TELLABLE APART.
+     Owner, 2026-10-03: "i dont want seedlings, they need to be big enough to identify when they come
+     up. just not suddenly big."
+     A flat percentage cannot do that, because the four weeds are wildly different sizes to begin
+     with. Measured at the drawn size: a pine is 102 world px full, a bramble 20. At 30% the pine is a
+     readable 31 px and the bramble is a 6 px speck.
+     So the stage scale has a FLOOR IN PIXELS as well as a percentage, and the floor is capped at the
+     species' own full size -- a bramble is small, so it simply has less room to grow and its stages
+     are closer together. The result: every sprout is at least ALIEN_MIN_PX tall and therefore
+     identifiable, and none of them is full grown. */
+  drawAlien = function (kind, cx, base, s, stage) {
+    var st = stage || 3;
+    var pct = ALIEN_STAGE_SCALE[st] || 1;
+    if (st < 3) {
+      var full = TW * (SIZE['alien_' + kind] || 1);      /* how tall this species draws at full size */
+      var floorPx = st === 1 ? ALIEN_MIN_PX : ALIEN_MIN_PX * 1.5;
+      var sc = Math.min(1, Math.max(pct, floorPx / full));
+      s = s * sc;
+    }
     if (prop('alien_' + kind, cx, base, s, 'weed')) return;
-    return _alien.apply(null, arguments);
+    return _alien.call(null, kind, cx, base, s);
   };
 
   var _crown = drawForestCanopy;
