@@ -5024,9 +5024,21 @@ function boot() {
          sitting here in the load path, so it was still being handed out -- one full 24 every time
          the date changed, on top of the hourly accrual. Removing it is what makes the two clocks
          agree, which is the whole point of this change. */
+      /* A LONG ABSENCE HAS CONSEQUENCES, UP TO A POINT.
+         Owner, 2026-10-02: "someone not playing should still have the consequences of aliens growing."
+         He is right, and the cap is measured rather than guessed. Simulated on the real rules, the
+         hillside saturates at about 97% weedy within THREE days of no play -- after that more days
+         change nothing, because there is nothing left to seed. So three is not an arbitrary mercy:
+         it is where the curve flattens. Beyond it a longer absence cannot cost the player more.
+         The elapsed time is consumed in full either way, so a month away does not queue up 27 more
+         ticks to land on the next visit. */
+      var MAX_CATCHUP = 3;
+      var ticks = Math.min(ticksDue, MAX_CATCHUP);
       state.lastTickAt += ticksDue * TICK_MS;
       state.lastDayKey = dayKey(new Date());
-      tickDay(w);
+      var k;
+      for (k = 0; k < ticks; k++) tickDay(w);
+      if (ticks > 1) note(ticks + ' days passed while you were away.', 'warn');
       saveLocal();
     } else {
       note('Day ' + state.day + '. ' + weatherWord(w) + ' over the ridge.', 'dim');
