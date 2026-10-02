@@ -703,6 +703,15 @@ var SP_BY_TIER = ['wildpeach', 'chestnut', 'stinkwood', 'whitepair', 'knobwood',
                   'yellowwood', 'outeniqua', 'ironwood'];
 
 var DECOR_KEYS = ['bench', 'birdbath', 'sign', 'hide', 'lantern'];
+/* THE BIRD HIDE IS NOT FOR SALE ANY MORE.
+   Owner, 2026-10-03: "maybe we should get rid of the bird hide decoration? people might think thats
+   what parrots need?"
+   He is right. The player is told a parrot needs a DEAD TREE, and a "bird hide" is exactly the thing
+   someone would buy expecting it to bring birds -- nothing in the code made it do anything for them.
+   It STAYS in DECOR_KEYS, because the save stores decor as a string indexed by POSITION in that list:
+   dropping it would shift every decoration after it and silently corrupt every existing save. It is
+   simply no longer offered for sale, and a hide already bought still stands. */
+var DECOR_SHOP = DECOR_KEYS.filter(function (k) { return k !== 'hide'; });
 var DECOR = {
   bench:    { name: 'Bench',     cost: 2, token: 'sun' },
   birdbath: { name: 'Bird bath', cost: 2, token: 'rain' },
@@ -4745,7 +4754,7 @@ function renderShop() {
   }
   /* Seeds are listed by layer, so the nursery shelf reads in the order the forest goes in. */
   fillShopRow(els.shopSeeds, SP_BY_TIER);
-  fillShopRow(els.shopDecor, DECOR_KEYS);
+  fillShopRow(els.shopDecor, DECOR_SHOP);
   var pick = state.pick;
   if (els.shopName) els.shopName.textContent = pick ? (SPECIES[pick] || DECOR[pick]).name : 'pick something';
   if (els.qty) els.qty.textContent = String(state.qty);
@@ -5741,6 +5750,7 @@ var API = {
   encodeTiles: encodeTiles, decodeTiles: decodeTiles,
   ALIENS: ALIENS, SPECIES: SPECIES, DECOR: DECOR, TOKENS: TOKENS,
   ALIEN_KEYS: ALIEN_KEYS, SP_KEYS: SP_KEYS, SP_BY_TIER: SP_BY_TIER, DECOR_KEYS: DECOR_KEYS,
+  DECOR_SHOP: DECOR_SHOP,
   SEASON: SEASON, SP_CODE: SP_CODE, SP_FROM: SP_FROM,
   TIER_NURSE: TIER_NURSE, TIER_MID: TIER_MID, TIER_OLDGROWTH: TIER_OLDGROWTH, TIER_NAME: TIER_NAME,
   tierPhrase: tierPhrase,
