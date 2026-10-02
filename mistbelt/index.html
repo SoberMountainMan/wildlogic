@@ -96,6 +96,16 @@
     background:rgba(255,255,255,.93);border-radius:14px;padding:5px 10px 5px 8px;
     box-shadow:0 2px 6px var(--shadow);color:#2f4a58}
   .appill svg{display:block;flex:0 0 auto}
+  /* THE SCORE PILL. Under the action points, same shape and weight so the HUD reads as one row of
+     instruments rather than two unrelated things. Dim until the first bird arrives, because a "0 of
+     0" in bright colours is a nag rather than a goal. */
+  .parrotpill{right:12px;top:64px;display:flex;align-items:center;gap:6px;line-height:1.15;
+    background:rgba(255,255,255,.93);border-radius:14px;padding:5px 10px 5px 8px;
+    box-shadow:0 2px 6px var(--shadow);color:#2f4a58;font-weight:600;font-size:13px;
+    opacity:.62;transition:opacity .3s}
+  .parrotpill.has{opacity:1}
+  .parrotpill svg{display:block;flex:0 0 auto}
+  .parrotpill .plab{opacity:.6;font-weight:400;margin:0 3px}
   .appill .apnum{display:flex;flex-direction:column;gap:1px}
   .appill b{font-size:13px;font-weight:800;line-height:1.1}
   .appill .aplab{font-size:9.5px;font-weight:700;color:#6b8390;white-space:nowrap}
@@ -291,6 +301,17 @@
       <span class="apnum"><b id="apNow">24</b><span class="aplab aphas" id="apHas">left</span><span class="aplab apdone" id="apDone">+1 in 60 min</span></span>
     </button>
     <div class="ov tokens" id="tokenBar"></div>
+    <!-- THE SCORE, AND IT WAS NOT ON SCREEN AT ALL.
+         Owner, 2026-10-03: "need a parrot counter if thats the goal of the game to see how many
+         parrots you can attract to your map".
+         He is right, and it was worse than missing: `state.parrots` was counted, incremented and
+         decremented on every tick and NEVER RENDERED ANYWHERE. The game's own code calls the parrot
+         count "the score", and the player could not see it. This is that number, under the action
+         points, with the capacity beside it so it reads as "4 of 6" rather than a bare figure. -->
+    <div class="ov parrotpill" id="parrotPill" title="Cape parrots resident in your forest">
+      <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.6 3.2c2.4 0 4.2 1.8 4.2 4.1 0 2.6-2 4.6-4.6 4.6h-2.4l-3.4 4.9H4.1l3-4.6C5.4 11.4 4.4 10 4.4 8.2c0-2.7 2.2-5 5-5h3.2Z" fill="#3f7a4a"/><circle cx="12.4" cy="6.6" r="1" fill="#e8f2e4"/></svg>
+      <span><b id="parrotNow">0</b><span class="plab">of</span><b id="parrotCap">0</b></span>
+    </div>
     <!-- THE DAY-1 GOAL, and the only tutorial element that is not a card. A first day with no goal is
          a sandbox, and the goal is what teaches the loop by REQUIRING it: "fill the bin and empty it
          once" cannot be done without learning the bin's capacity, the baboon, the weather token and
@@ -1097,7 +1118,16 @@ function matureAround(c, r) {
     for (dc = -1; dc <= 1; dc++) {
       if (!dc && !dr) continue;
       var t = cell(c + dc, r + dr);
-      if (t && t.sp && t.stage === 3) n++;
+      if (!t) continue;
+      /* THE OLD-GROWTH REMNANT SHADES, AND IT NEVER DID.
+         Owner, 2026-10-03: "does the forest remnant count toward shade? ive been planting next to it
+         thinking it did. it should."
+         He is right, and it did not. This counted only `t.sp && t.stage === 3` -- PLANTED trees --
+         and the remnant is TERRAIN (`ter === 'forest'`), so forty-nine tiles of standing old-growth
+         forest contributed nothing. A player who planted along its edge, which is the single most
+         sensible thing to do on this map, got no shade at all for it.
+         The remnant is the OLDEST forest in the game. If anything on this hillside is canopy, it is. */
+      if (t.ter === 'forest' || (t.sp && t.stage === 3)) n++;
     }
   }
   return n;
@@ -4578,6 +4608,17 @@ function renderHud() {
   renderTokens();
   /* The day's other budget, and the one thing on the HUD that changes what the player can DO. */
   if (els.apNow) els.apNow.textContent = String(state.ap);
+  /* THE SCORE, ON SCREEN. `state.parrots` was counted and never shown -- see the note on the pill. */
+  if (els.parrotNow) {
+    var _cap = parrotCapacity();
+    els.parrotNow.textContent = state.parrots || 0;
+    els.parrotCap.textContent = _cap;
+    if (els.parrotPill) els.parrotPill.className = 'ov parrotpill' + ((state.parrots || 0) > 0 ? ' has' : '');
+    if (els.parrotPill) els.parrotPill.title = (state.parrots || 0) > 0
+      ? (state.parrots + ' Cape parrot' + (state.parrots === 1 ? '' : 's') + ' resident. Room for ' + _cap +
+         '. A parrot nests in a hollow DEAD tree with a stand of mixed canopy around it.')
+      : 'No parrots yet. A Cape parrot cannot make its own hole — leave an old tree standing until it dies and goes hollow, with a mixed stand around it.';
+  }
   if (els.apPill) {
     els.apPill.className = 'ov appill' + (state.ap <= 0 ? ' empty' : '');
     /* THE WAIT IS THE NEW INFORMATION. With a lump at midnight the only honest thing to say was
@@ -5083,7 +5124,7 @@ function resize() {
 function boot() {
   var ids = ['cv', 'stage', 'packWarn', 'wxIcon', 'wxText', 'tokenBar', 'btnGear', 'btnBox', 'binBadge', 'dock',
              'notes', 'btnHome', 'btnNotes', 'mNotes', 'notesClose',
-             'apPill', 'apNow', 'goalChip',
+             'apPill', 'apNow', 'goalChip', 'parrotPill', 'parrotNow', 'parrotCap',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
              'mIntro', 'btnIntro', 'introClose', 'introAp', 'introLeft', 'introBin',
              'codeIn', 'btnSave', 'btnLoad', 'btnLink', 'btnFile', 'mBoard', 'boardDate', 'boardList', 'boardReward',
