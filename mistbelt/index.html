@@ -3690,30 +3690,12 @@ function drawTileProp(c, r) {
   else if (t.obj === 'jetty') drawJetty(cx, base, TW * 1.10);
   else if (DECOR[t.obj]) drawDecor(t.obj, cx, base, TW * 0.98);
 
-  /* THE SIGNPOST'S WORDS, DRAWN ON TOP OF WHATEVER DREW THE SIGN.
-     Owner, 2026-10-02: "on the signpost next to the house can we make one way say Hogsback and the
-     other way say Nerens."
-     The sign on this map is the PAINTED sprite `obj_sign`, not the code art -- so putting the words
-     inside drawSign() changed nothing, because that function is not what the player sees. Drawing
-     them here, after the landmark branch, lands them on the sprite whatever drew it, and it keeps
-     working if the sign ever goes back to code art. */
-  if (t.obj === 'sign') {
-    var sgn = TW * 0.96;
-    ctx.save();
-    ctx.font = 'bold ' + (sgn * 0.082).toFixed(1) + 'px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    /* A pale edge first, then the ink -- the planks are mid-brown and bare dark text on them
-       disappears at the size the sign is actually drawn. */
-    ctx.lineWidth = Math.max(1, sgn * 0.022);
-    ctx.strokeStyle = 'rgba(232,214,176,0.85)';
-    ctx.lineJoin = 'round';
-    ctx.strokeText('Hogsback', cx - sgn * 0.030, base - sgn * 0.475);
-    ctx.strokeText('Nerens',   cx + sgn * 0.030, base - sgn * 0.380);
-    ctx.fillStyle = '#33240e';
-    ctx.fillText('Hogsback', cx - sgn * 0.030, base - sgn * 0.475);
-    ctx.fillText('Nerens',   cx + sgn * 0.030, base - sgn * 0.380);
-    ctx.restore();
-  }
+  /* THE WORDS ON THE SIGNPOST ARE NOT DRAWN HERE ANY MORE.
+     Owner, 2026-10-02: "no, its not on the sign. mayb it needs art to redo." He is right: the sign
+     is the painted sprite obj_sign, and text laid over a painting reads as text laid over a
+     painting -- it sits at the wrong angle, it does not catch the wood's light, and it floats.
+     The words belong IN the wood. Brief sent to the graphics side:
+     `Assets-2026-10-30-signpost/NOTE-FROM-DEV-2026-10-02-signpost-words.md`. */
 
   /* The lip at the mouth, on the tile centre like the other landmarks so it lines up with the
      channel. Round 4 re-cut the cell to 1568x840 — same painting, 8x the area — because at the
