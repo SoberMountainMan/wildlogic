@@ -811,7 +811,20 @@ function cell(c, r) {
    is the only thing on this map that never grows. PLACES is derived from VILLAGE, so the whole
    cluster moves with it and the gate's "the village sits together" check still holds. */
 var VILLAGE = { c: 23, r: 25 };
-var REMNANT = 6;                                  /* the old forest is c <= 6, r <= 6 — 49 tiles */
+/* THE REMNANT IS SMALL ON PURPOSE, SO THE FIRST PARROT IS NOT FREE.
+   Owner, 2026-10-03: "we should make the teaching moment, first parrot isnt free, just easier than
+   the rest."
+   It was 49 tiles, and a snag beside it saw 16 of them in its patch -- over the 12 the patch asks
+   for, so the canopy requirement was satisfied before the player planted anything. That is the
+   opposite of a teaching moment: the first bird arrived for nothing and the player never learned
+   what a patch is. Measured at each size, with a snag at the remnant's corner:
+     REMNANT 6 -> 49 tiles -> snag sees 16 -> 0 trees to plant    FREE
+     REMNANT 3 -> 16 tiles -> snag sees 16 -> 0 trees to plant    still free
+     REMNANT 2 ->  9 tiles -> snag sees  9 -> 3 trees to plant    A HEAD START
+     REMNANT 1 ->  4 tiles -> snag sees  4 -> 8 trees to plant    barely anything
+   Two is the only size that is genuinely a head start rather than the answer. It is also the better
+   story: a small surviving patch of the old forest, not a plantation. */
+var REMNANT = 2;                                  /* the old forest is c <= 2, r <= 2 — 9 tiles */
 
 /* THE STREAM, WHICH REPLACES THE RECTANGULAR POND.
    Owner, 2026-09-21: "instead of one rectangular pond can we get a waterfall at one end that runs a
