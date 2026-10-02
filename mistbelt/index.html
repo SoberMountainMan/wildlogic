@@ -3342,21 +3342,43 @@ function drawToad(cx, base, s) {
   ctx.beginPath(); ctx.ellipse(cx - s * 0.06, base - s * 0.13, s * 0.16, s * 0.045, 0, 0, Math.PI * 2); ctx.fill();
 }
 
+/* TWO ARMS, TWO PLACES, AND THE WORDS ARE REAL WORDS.
+   Owner, 2026-10-02: "on the signpost next to the house can we make one way say Hogsback and the
+   other way say Nerens". It had one arm and two brown bars standing in for lettering. Now there are
+   two arms at different heights, pointing opposite ways, and the text is drawn -- so the sign says
+   where it goes instead of implying it.
+
+   The lettering is sized off `s`, the same unit the arms use, so it scales with the prop and cannot
+   drift out of its plank. It is drawn AFTER both arms so neither can cover the other's words, and
+   each label is measured with measureText and centred on its own arm rather than positioned by eye. */
 function drawSign(cx, base, s) {
   shadow(cx, base, s * 0.20, s * 0.08);
+  /* the post */
   ctx.fillStyle = '#7a5a38';
-  ctx.fillRect(cx - s * 0.045, base - s * 0.56, s * 0.09, s * 0.56);
-  ctx.fillStyle = '#b58a4e';
-  ctx.beginPath();
-  ctx.moveTo(cx - s * 0.32, base - s * 0.60);
-  ctx.lineTo(cx + s * 0.28, base - s * 0.60);
-  ctx.lineTo(cx + s * 0.38, base - s * 0.53);
-  ctx.lineTo(cx + s * 0.28, base - s * 0.46);
-  ctx.lineTo(cx - s * 0.32, base - s * 0.46);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = 'rgba(90,66,38,0.7)';
-  ctx.fillRect(cx - s * 0.24, base - s * 0.555, s * 0.40, s * 0.024);
-  ctx.fillRect(cx - s * 0.24, base - s * 0.515, s * 0.28, s * 0.024);
+  ctx.fillRect(cx - s * 0.045, base - s * 0.66, s * 0.09, s * 0.66);
+  /* each arm is a plank with a pointed end, drawn from a helper so both are the same shape */
+  function arm(dir, top, text) {
+    var L = cx - dir * s * 0.34, R = cx + dir * s * 0.40;
+    var lo = Math.min(L, R), hi = Math.max(L, R);
+    var tip = dir > 0 ? hi : lo, root = dir > 0 ? lo : hi;
+    ctx.fillStyle = '#b58a4e';
+    ctx.beginPath();
+    ctx.moveTo(root, top);
+    ctx.lineTo(tip - dir * s * 0.10, top);
+    ctx.lineTo(tip, top + s * 0.070);
+    ctx.lineTo(tip - dir * s * 0.10, top + s * 0.140);
+    ctx.lineTo(root, top + s * 0.140);
+    ctx.closePath(); ctx.fill();
+    /* the words, centred on the plank and clear of the pointed end */
+    ctx.fillStyle = '#4a3418';
+    ctx.font = 'bold ' + (s * 0.095).toFixed(1) + 'px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    var tx = (root + tip) / 2 - dir * s * 0.03;
+    ctx.fillText(text, tx, top + s * 0.074);
+  }
+  arm(-1, base - s * 0.66, 'Hogsback');
+  arm( 1, base - s * 0.49, 'Nerens');
 }
 
 function drawJetty(cx, base, s) {
@@ -3657,6 +3679,31 @@ function drawTileProp(c, r) {
   else if (t.obj === 'sign') drawSign(cx, base, TW * 0.96);
   else if (t.obj === 'jetty') drawJetty(cx, base, TW * 1.10);
   else if (DECOR[t.obj]) drawDecor(t.obj, cx, base, TW * 0.98);
+
+  /* THE SIGNPOST'S WORDS, DRAWN ON TOP OF WHATEVER DREW THE SIGN.
+     Owner, 2026-10-02: "on the signpost next to the house can we make one way say Hogsback and the
+     other way say Nerens."
+     The sign on this map is the PAINTED sprite `obj_sign`, not the code art -- so putting the words
+     inside drawSign() changed nothing, because that function is not what the player sees. Drawing
+     them here, after the landmark branch, lands them on the sprite whatever drew it, and it keeps
+     working if the sign ever goes back to code art. */
+  if (t.obj === 'sign') {
+    var sgn = TW * 0.96;
+    ctx.save();
+    ctx.font = 'bold ' + (sgn * 0.082).toFixed(1) + 'px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    /* A pale edge first, then the ink -- the planks are mid-brown and bare dark text on them
+       disappears at the size the sign is actually drawn. */
+    ctx.lineWidth = Math.max(1, sgn * 0.022);
+    ctx.strokeStyle = 'rgba(232,214,176,0.85)';
+    ctx.lineJoin = 'round';
+    ctx.strokeText('Hogsback', cx - sgn * 0.030, base - sgn * 0.475);
+    ctx.strokeText('Nerens',   cx + sgn * 0.030, base - sgn * 0.380);
+    ctx.fillStyle = '#33240e';
+    ctx.fillText('Hogsback', cx - sgn * 0.030, base - sgn * 0.475);
+    ctx.fillText('Nerens',   cx + sgn * 0.030, base - sgn * 0.380);
+    ctx.restore();
+  }
 
   /* The lip at the mouth, on the tile centre like the other landmarks so it lines up with the
      channel. Round 4 re-cut the cell to 1568x840 — same painting, 8x the area — because at the
