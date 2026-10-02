@@ -5465,9 +5465,17 @@ var SPR = (function () {
       var R = riverImage(rec, cell, COLS, ROWS, WORLD_W, WORLD_H, WX0, WY0);
       var b2 = bakePoint(c, r, z);
       if (R && R.width > 4 && R.height > 4) {
+        /* CLIP THE WATER TO ITS OWN CELL. Without it the blit spills the overscan onto the
+           neighbouring BANK cell and covers part of it -- which is the brown rectangle the owner
+           saw at the river's edge. Clipped at OVER so the anti-aliased edge still falls outside
+           the cell and the neighbour's water covers it. */
+        ctx.save();
+        tilePath(c, r, z, OVER, 0);
+        ctx.clip();
         ctx.drawImage(R,
           (b2[0] - TW * OVER / 2) * S, (b2[1] - TH * OVER / 2) * S, TW * OVER * S, TH * OVER * S,
           p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
+        ctx.restore();
         return true;
       }
     }
