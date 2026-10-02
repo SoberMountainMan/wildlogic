@@ -54,6 +54,16 @@
   .packwarn{left:10px;right:10px;bottom:10px;z-index:9;background:#5b2020;color:#ffe9e9;
     border:1px solid #a04a4a;border-radius:10px;padding:7px 10px;font-size:11.5px;line-height:1.35;
     font-weight:600;text-align:left}
+  /* THE BAR. The owner, 2026-10-02: "sprites load forever and then eventually loads". A count of
+     "37 of 94" tells you it is working but not how far along it is, and the pack is 7 MB now, which
+     on a phone is tens of seconds. A bar answers "how much longer" at a glance, which is the only
+     question the player actually has. */
+  .packwarn .pbar{height:5px;margin-top:6px;border-radius:3px;background:rgba(255,255,255,0.16);
+    overflow:hidden}
+  .packwarn .pbar i{display:block;height:100%;width:0;border-radius:3px;
+    background:linear-gradient(90deg,#6fb0d8,#a8dcc0);transition:width .25s linear}
+  .packwarn.loading{background:#22303a;color:#d8e6ee;border-color:#4a6b80}
+  .packwarn.loading .pbar i{background:linear-gradient(90deg,#5f93b0,#8fc7a8)}
   /* STILL ARRIVING IS NOT THE SAME AS BROKEN. The pack is about 16 MB and on a real connection it
      takes far longer than the three seconds the first version allowed, so the failure banner used to
      appear over a download that was going perfectly well. A warning that fires on a slow success
@@ -4679,10 +4689,19 @@ function boot() {
       if (ready) { el.hidden = true; return; }
       var pr = sp.progress ? sp.progress() : null;
       if (pr && pr.want > 0 && pr.got < pr.want) {
-        /* IN PROGRESS — say so quietly, and do not call it a failure. */
+        /* IN PROGRESS — say so quietly, do not call it a failure, and show HOW FAR. The count alone
+           answered "is it working" but not "how much longer", which is the only thing the player is
+           actually asking. */
+        var pct = Math.round(pr.got * 100 / pr.want);
         el.className = 'ov packwarn loading';
-        el.textContent = 'Loading the painted art \u2014 ' + pr.got + ' of ' + pr.want +
-          (pr.failed ? ' (' + pr.failed + ' failed)' : '') + '.';
+        el.textContent = 'Painting the forest \u2014 ' + pct + '%' +
+          (pr.failed ? ' (' + pr.failed + ' failed)' : '');
+        var bar = el.querySelector('.pbar i');
+        if (!bar) {
+          var wrap = document.createElement('div'); wrap.className = 'pbar';
+          bar = document.createElement('i'); wrap.appendChild(bar); el.appendChild(wrap);
+        }
+        bar.style.width = pct + '%';
         el.hidden = false;
         setTimeout(packWatch, 400);
         return;
