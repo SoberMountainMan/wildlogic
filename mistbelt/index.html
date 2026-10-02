@@ -6074,6 +6074,35 @@ var SPR = (function () {
     }
     var OVER = 1.02;
     ctx.drawImage(e._sc, p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
+    /* A SHADED TILE LOOKS SHADED, SO THE PLAYER CAN SEE WHEN THE REQUIREMENT IS MET.
+       Owner, 2026-10-03: "will planted trees that hit mature also change tile colour darker so people
+       can see the shade requirement is now met? it should as thats how you know when shade is
+       effective."
+       He is right, and the game was inconsistent about it: the old-growth remnant's ground is drawn
+       with the DARKER `forest` shades, so the remnant visibly shades -- and a player's own mature
+       stand did not, so the one thing they were working towards was the one thing they could not see.
+       TWO ATTEMPTS AT THIS WERE WRONG IN THE SAME WAY. The first tinted each tile at 0.26, and the
+       shot was a field of dark DIAMONDS -- the tile grid, which this project spent a day removing.
+       Halving the alpha to 0.13 made it fainter and did not help, because the problem was never the
+       strength: a tint whose boundary is the tile's boundary IS a diamond, however faint.
+       SO THE SHADE IS A SOFT POOL CENTRED ON THE TREE, not a tint on the cell. It spills across the
+       tile edge into the neighbours, which is both what real shade does and what makes the grid
+       impossible to see. Several mature trees together merge into one canopy shadow, which is the
+       succession the whole game is about, made visible.
+       A SNAG POOLS TOO, and should: it is still standing and still casts shade, which is exactly why
+       leaving one up costs the player nothing but the canopy count. */
+    if (t.sp && t.stage === 3) {
+      var _sy = p[1] + TH * 0.18;
+      var _g = ctx.createRadialGradient(p[0], _sy, 0, p[0], _sy, TW * 1.05);
+      /* MEASURED, NOT GUESSED: at 0.30 peak the shade changed a mean of 7 of 255 across the pixels
+         it touched, which is real but too quiet to answer the question it exists to answer -- the
+         player has to be able to SEE that the requirement is met. 0.46 peak measures about 12. */
+      _g.addColorStop(0, 'rgba(15,37,24,0.46)');
+      _g.addColorStop(0.55, 'rgba(15,37,24,0.24)');
+      _g.addColorStop(1, 'rgba(15,37,24,0)');
+      ctx.fillStyle = _g;
+      ctx.fillRect(p[0] - TW * 1.2, _sy - TW * 1.2, TW * 2.4, TW * 2.4);
+    }
     return true;
   }
 
