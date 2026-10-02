@@ -577,18 +577,18 @@ var ALIEN_KEYS = ['wattle', 'pine', 'bugweed', 'bramble'];
    2026-09-21: "we cant tell what alien is what." Each line below describes the drawing above it —
    if the art changes, this line is wrong, so they are kept together deliberately. */
 var ALIENS = {
-  wattle:  { name: 'Black wattle',     sci: 'Acacia mearnsii',     ap: 2, bank: 3, spread: 3, fruit: true,
+  wattle:  { name: 'Black wattle',     sci: 'Acacia mearnsii',     ap: 2, bank: 3, spread: 3, shape: 'water',   fruit: true,
              tell: 'Pale and feathery \u2014 many small yellow-green leaflets on grey stems. The ' +
                    'lightest of the four.',
              note: 'Its seed sits in the soil for decades, so a stump is not the end of it.' },
-  pine:    { name: 'Pine',             sci: 'Pinus patula',        ap: 2, bank: 3, spread: 2, fruit: false,
+  pine:    { name: 'Pine',             sci: 'Pinus patula',        ap: 2, bank: 3, spread: 2, shape: 'wind',    fruit: false,
              tell: 'The only conifer here \u2014 a stack of pale green triangles with no leaves at ' +
                    'all. Nothing else on the plateau is built like it.',
              note: 'Planted for timber. The cones hold their seed until the heat opens them.' },
-  bugweed: { name: 'Bugweed',          sci: 'Solanum mauritianum', ap: 1, bank: 2, spread: 4, fruit: true,
+  bugweed: { name: 'Bugweed',          sci: 'Solanum mauritianum', ap: 1, bank: 2, spread: 4, shape: 'bird',    fruit: true,
              tell: 'Big soft grey-green leaves on one stem, with yellow berries in the middle.',
              note: 'Birds carry the fruit uphill. It fruits the whole year round.' },
-  bramble: { name: 'American bramble', sci: 'Rubus cuneifolius',   ap: 1, bank: 2, spread: 3, fruit: true,
+  bramble: { name: 'American bramble', sci: 'Rubus cuneifolius',   ap: 1, bank: 2, spread: 3, shape: 'thicket', fruit: true,
              tell: 'Low and dark green, with long pale thorns and a single red berry.',
              note: 'Roots sucker back after cutting. It takes the light from everything under it.' }
 };
@@ -1253,10 +1253,45 @@ function tickDay(w) {
       if (matureAround(c, r) >= SHADE_CLOSES_SEED) continue;
       var def = ALIENS[t.alien];
       var tries = k.berg ? def.spread + 1 : def.spread;
+      /* EVERY WEED SPREADS ITS OWN WAY.
+         Owner, 2026-10-03: "would be cool if the aliens spread from their own kind better. A bramble
+         tends to spread like a virus infecting other tiles next to it."
+         He is right, and the code had ONE shape for all four: `def.spread` varied how MANY tries a
+         weed made, but every try was downhill-biased and every try reached one tile. So a bramble --
+         which in reality puts out runners and forms a thicket you cannot walk through -- spread
+         exactly like a wind-blown pine, just slightly more often.
+         The shape is now per species, because that is what actually separates them in the field:
+           thicket -- the bramble. Roots and runners: always the tile NEXT DOOR, and it succeeds
+                      often. This is the one that reads as an infection, which is what he described.
+           water   -- the wattle. Seed rides runoff downhill, the way it colonises a gully.
+           wind    -- the pine. Light seed, thrown a long way, in any direction, rarely landing.
+           bird    -- the bugweed. Berries carried by birds, so it turns up scattered and far.
+         `spread` still sets the number of tries, so the existing balance is preserved per species;
+         only WHERE the seed lands has changed. */
       for (i = 0; i < tries; i++) {
         if (Math.random() > 0.18) continue;
-        var dr = Math.random() < 0.7 ? 1 : (Math.random() < 0.5 ? 0 : -1);
-        var tc = c + Math.floor(Math.random() * 3) - 1, tr = r + dr;
+        var dr, tc, tr;
+        if (def.shape === 'thicket') {
+          dr = Math.floor(Math.random() * 3) - 1;
+          tc = c + (Math.random() < 0.5 ? -1 : 1);
+          if (Math.random() < 0.35) { tc = c; dr = Math.random() < 0.5 ? 1 : -1; }
+        } else if (def.shape === 'wind') {
+          dr = Math.floor(Math.random() * 5) - 2;
+          tc = c + Math.floor(Math.random() * 7) - 3;
+        } else if (def.shape === 'bird') {
+          dr = Math.floor(Math.random() * 7) - 3;
+          tc = c + Math.floor(Math.random() * 7) - 3;
+        } else {                                  /* water: downhill, and it CARRIES */
+          /* The wattle has to be told apart from the bramble, and on the first pass they were
+             identical -- both always landed one tile away. Water carries seed further than a
+             runner does, so the wattle goes one or two tiles down the slope and the bramble never
+             leaves its parent's side. That is the whole difference between a thicket and a gully
+             full of wattle, and it was invisible until it was measured. */
+          dr = Math.random() < 0.7 ? 1 : (Math.random() < 0.5 ? 0 : -1);
+          dr = dr === 1 && Math.random() < 0.45 ? 2 : dr;
+          tc = c + Math.floor(Math.random() * 3) - 1;
+        }
+        tr = r + dr;
         var t2 = cell(tc, tr);
         /* AND THE SEED DOES NOT ARRIVE WHERE THE CANOPY IS CLOSED EITHER. Closing the seed bank
            alone was not enough — measured, it moved the year-end alien count from 1,296 to 1,145
