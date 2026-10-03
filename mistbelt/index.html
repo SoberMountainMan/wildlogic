@@ -1047,7 +1047,23 @@ function newState() {
     }
   }
   var i;
-  for (i = 0; i < PLACES.length; i++) { var _t = t[idx(PLACES[i][0], PLACES[i][1])]; _t.obj = PLACES[i][2]; _t.lm = 1; }
+  /* A LANDMARK STANDS ON CLEAR GROUND, SO THE STAMP CLEARS THE WEED.
+     Owner, 2026-10-03: *"theres currently a alien growing behind the baboon bin that i cant clear."*
+     The aliens are rolled FIRST, above, and the landmarks are stamped on top afterwards — and the
+     stamp did not clear what was under it. A weed that landed on a landmark tile was therefore
+     PERMANENT: tickDay() skips any tile with an `obj` so it never grew or died, and clearAt() refuses
+     any tile with an `obj` so the player could never cut it. It sat under the building for the life
+     of the save. At the densities this map rolls — 28 to 35 per cent on open grass — roughly a third
+     of new games got one, on one of the five landmark tiles.
+     THE SEED BANK GOES WITH IT. A bank left under a building is state that can never express itself,
+     because the one tile that would sprout it is the one tile that cannot sprout.
+     `sp` is cleared too, though nothing can have planted one there yet — a fresh tile list has no
+     trees in it at all. */
+  for (i = 0; i < PLACES.length; i++) {
+    var _t = t[idx(PLACES[i][0], PLACES[i][1])];
+    _t.obj = PLACES[i][2]; _t.lm = 1;
+    _t.alien = null; _t.seeds = 0; _t.sp = null;
+  }
   return {
     v: VERSION, day: 1, ap: AP_MAX,
     /* WHEN THE CLOCK STARTED. A fresh save starts FULL, so `apAt` only matters once the first point
@@ -2491,7 +2507,15 @@ function decodeSave(code) {
   for (i = 1; i <= 5; i++) if (OBJ_FROM[i]) LM[OBJ_FROM[i]] = 1;
   for (i = 0; i < PLACES.length; i++) LM[PLACES[i][2]] = 1;
   for (i = 0; i < s.tiles.length; i++) if (LM[s.tiles[i].obj]) s.tiles[i].obj = null;
-  for (i = 0; i < PLACES.length; i++) { var _u = s.tiles[idx(PLACES[i][0], PLACES[i][1])]; _u.obj = PLACES[i][2]; _u.lm = 1; }
+  for (i = 0; i < PLACES.length; i++) {
+    var _u = s.tiles[idx(PLACES[i][0], PLACES[i][1])];
+    _u.obj = PLACES[i][2]; _u.lm = 1;
+    /* AND THE SAME CLEAR-ON-STAMP HERE, which is what rescues a save that already has one of these
+       stuck weeds on it — see the note in newState(). A player who reloads gets the weed removed;
+       `sp` is NOT cleared on this path, because a tree on a landmark tile is the player's and this is
+       a load, not a new game. */
+    _u.alien = null; _u.seeds = 0;
+  }
   /* The bin is module state, not tile state, so it has to be restored alongside the tiles —
      otherwise a player who cuts two aliens and comes back finds the bin empty and the cuttings
      gone. decodeSave is the only thing that knows what was in it. */
@@ -5337,6 +5361,53 @@ function drawShopIcon(canvasEl, key, size0, cx0, base0, unit0) {
 
 /* ============================================================ interaction */
 
+/* WOULD A TAP ON THIS TILE ACTUALLY DO SOMETHING?
+   Asked BEFORE a building box is allowed to take the tap — see the note in lift(). It mirrors act()'s
+   own early checks without performing them, so the two cannot drift into disagreeing about what is
+   actionable: anything act() would act on, this returns true for. */
+function tileWantsTap(c, r) {
+  var t = cell(c, r);
+  if (!t) return false;
+  if (t.obj) return true;                       /* an object's own tile, including the building's */
+  if (tool === 'cut') return !!t.alien;
+  if (SPECIES[tool]) return !t.sp && !t.alien && plantable(c, r);
+  if (DECOR[tool]) return true;
+  return false;
+}
+
+/* A TAP ON THE UPPER PART OF A WEED BELONGS TO THE WEED, NOT TO THE TILE BEHIND IT.
+   Owner, 2026-10-03: *"theres currently a alien growing behind the baboon bin that i cant clear."*
+   The weed was never the problem and neither was the bin. hitTest() inverse-projects the GROUND, and
+   a sprite stands UP from its tile — so a point above a weed's base resolves to a tile BEHIND it,
+   which has nothing on it, and the tap does nothing at all. Measured by tapping up a weed's own
+   sprite: dy +4 down to -12 cuts, and from -16 upward nothing happens, on every weed on the map.
+   So only the bottom twelve pixels of a tile were ever tappable. Behind the bin the bin's sprite
+   covers exactly that band, which is why that one weed could not be cleared by any tap, and why it
+   looked like the bin was stealing the touch.
+   THE WALK IS DOWN THE SCREEN, WHICH IS FORWARD THROUGH THE TILES. Stepping the sample point down
+   moves the inverse projection toward the camera, so the first tile that way whose sprite could
+   reach the point is the one the finger is actually on. It is capped at three tile-steps because a
+   weed is about two tiles tall; beyond that the point is on the ground and belongs to the ground. */
+function pickSprite(x, y, c, r) {
+  if (tileWantsTap(c, r)) return { c: c, r: r };
+  var i, h, t, seen = {};
+  for (i = 1; i <= 6; i++) {
+    h = hitTest(x, y + i * 8);
+    if (!h) continue;
+    var key = h.c + ',' + h.r;
+    if (seen[key] || (h.c === c && h.r === r)) continue;
+    seen[key] = 1;
+    /* A WEED ONLY, AND ONLY WITH THE CUT TOOL. An object must NOT be reachable this way: the first
+       version of this walk accepted anything tileWantsTap() liked, and the tile one step forward
+       from empty grass behind the bin IS the bin — so tapping bare ground behind it emptied the bin.
+       The walk exists for the one case the ground projection gets wrong: a sprite with height on a
+       tile the finger is not over. */
+    t = cell(h.c, h.r);
+    if (t && t.alien && !t.obj && tool === 'cut') return h;
+  }
+  return { c: c, r: r };
+}
+
 function act(c, r) {
   var t = cell(c, r);
   if (!t) return;
@@ -6130,9 +6201,24 @@ function boot() {
       if (moved <= 8) {
         /* The building box is tested at the point the finger came DOWN, not the tile the grid
            resolved, so a tree standing in front cannot steal the tap. */
+        /* ...AND THE TILE UNDER THE FINGER WINS WHEN THERE IS SOMETHING THERE TO ACT ON.
+           Owner, 2026-10-03: *"theres currently a alien growing behind the baboon bin that i cant
+           clear."* The building box is the SPRITE's screen footprint, and a tall sprite covers the
+           tiles BEHIND it — so a tap on a weed peeking out from behind the bin landed inside the
+           bin's box and recycled instead of cutting. The tile could not be cleared because the tap
+           never reached it, and nothing on screen said so.
+           THE ORIGINAL INTENT IS KEPT. That guard exists so "a tree standing in front cannot steal
+           the tap" — and a mature tree is not something the cut tool acts on, so tileWantsTap() is
+           false for it and the building still wins. What changes is that a tile with a WEED on it,
+           which the player is plainly pointing at and can plainly act on, is no longer overridden by
+           a building drawn over it. */
         var bhit = buildingAtScreen(downX, downY);
-        if (bhit) act(bhit.c, bhit.r);
-        else if (downC >= 0) act(downC, downR);
+        if (bhit && !tileWantsTap(downC, downR)) act(bhit.c, bhit.r);
+        else if (downC >= 0) {
+          /* AND THE SPRITE UNDER THE FINGER WINS OVER THE GROUND UNDER IT — see pickSprite(). */
+          var pk = pickSprite(downX, downY, downC, downR);
+          act(pk.c, pk.r);
+        }
       }
       if (holdT) { clearTimeout(holdT); holdT = 0; }
       downC = -1; downR = -1;
