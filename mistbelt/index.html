@@ -317,8 +317,13 @@
          count "the score", and the player could not see it. This is that number, under the action
          points, with the capacity beside it so it reads as "4 of 6" rather than a bare figure. -->
     <div class="ov parrotpill" id="parrotPill" title="Cape parrots resident in your forest">
-      <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.6 3.2c2.4 0 4.2 1.8 4.2 4.1 0 2.6-2 4.6-4.6 4.6h-2.4l-3.4 4.9H4.1l3-4.6C5.4 11.4 4.4 10 4.4 8.2c0-2.7 2.2-5 5-5h3.2Z" fill="#3f7a4a"/><circle cx="12.4" cy="6.6" r="1" fill="#e8f2e4"/></svg>
-      <span><b id="parrotNow">0</b><span class="plab">of</span><b id="parrotCap">0</b></span>
+      <!-- A CAPE PARROT, DRAWN SO IT READS AS ONE. Owner, 2026-10-03: *"parrot counter doesnt look
+           like a parrot"*. It was a single green blob with a dot in it — a leaf with an eye. This is
+           the bird from the side: a gold-brown head with the grey hooked beak up on the right, the
+           green body below it, and the long tail running down to the lower left, which is the shape
+           that says "parrot" rather than "small green bird". -->
+      <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M9.1 13.2 5.2 19.2l3.5-.5 2.3-4.7Z" fill="#2e6238"/><ellipse cx="10.6" cy="10.9" rx="4.1" ry="5.1" fill="#3f7a4a"/><circle cx="12.7" cy="5.4" r="3.1" fill="#c9a34c"/><path d="M15.3 4.6c1.5.3 2.2 1.2 1.8 2.5-.3 1.1-1.2 1.8-2.4 1.9Z" fill="#514a3c"/><circle cx="13.9" cy="4.7" r=".8" fill="#221e18"/></svg>
+      <span><span class="plab" id="parrotLab">Parrots</span><b id="parrotNow">0</b><span class="plab" id="parrotOf">of</span><b id="parrotCap">0</b></span>
     </div>
     <!-- THE DAY-1 GOAL, and the only tutorial element that is not a card. A first day with no goal is
          a sandbox, and the goal is what teaches the loop by REQUIRING it: "fill the bin and empty it
@@ -4263,7 +4268,15 @@ function drawStreamHead() {
      z comes from the HEAD tile, not from (c-2, r-2): that point is off the plateau and has no height
      of its own. The fall stands at the head's elevation; only its screen position moves. */
   var p = project(c, r, groundZ(c, r));
-  var cx = p[0], base = p[1] + TH * 0.46;
+  /* ONE TILE IN FROM THE EDGE.
+     Owner, 2026-10-03: *"waterfall sprite needs to move in by one tile to stop hanging over the edge
+     of map."* The head tile is (streamC(0), 0) — r = 0 IS the map's far rim — so anchoring the crag
+     on it and hanging the fall two tiles above put the whole assembly out over the void. In this
+     projection one tile-step down-screen is `TH` (see the note below: c and r moving together leaves
+     x alone and moves y by 2 * TH per two tiles), so `+ TH` moves the pair one tile INTO the map
+     while leaving the stream exactly where it is. The fall keeps its offset from the crag, so the two
+     move together and the lip stays against the rock face. */
+  var cx = p[0], base = p[1] + TH * 0.46 + TH;
   /* TWO DIFFERENT ANCHORS, because the two sprites are anchored differently and the maker flagged
      it: ter_waterfall_v1 is RIM-anchored at y = 40 of a 617 cell, so its anchor is the LIP and the
      whole fall hangs 85.6px below it; obj_crag is FOOT-anchored like every other sprite, so its base
@@ -4865,11 +4878,29 @@ function renderHud() {
     var _cap = parrotCapacity();
     els.parrotNow.textContent = state.parrots || 0;
     els.parrotCap.textContent = _cap;
+    /* "0 OF 0" IS NOT A SENTENCE, AND IT IS WHAT THE PILL SAID ALL DAY.
+       Owner, 2026-10-03: *"parrot counter doesnt look like a parrot or make sense saying 0 of 0.
+       'Parrots: 0' might be better or whats it actually supposed to say?"*
+       WHAT IT IS SUPPOSED TO SAY: how many Cape parrots are RESIDENT, out of how many your forest can
+       HOLD. The second number is real — parrotCapacity() counts the hollow dead trees with a mixed
+       stand around them — and it is the one that tells the player their forest is not yet big enough
+       for a parrot to move into. But on day one there are no hollows, so the cap is 0, and "0 of 0"
+       reads as a broken meter rather than as "there is nowhere for one to live yet".
+       SO THE CAP IS SHOWN ONLY WHEN THERE IS ONE TO FILL. Below that the pill reads "Parrots 0" and
+       the title carries the reason, which is the part that actually teaches. */
+    if (els.parrotOf) els.parrotOf.hidden = !(_cap > 0);
+    if (els.parrotCap) els.parrotCap.hidden = !(_cap > 0);
     if (els.parrotPill) els.parrotPill.className = 'ov parrotpill' + ((state.parrots || 0) > 0 ? ' has' : '');
     if (els.parrotPill) els.parrotPill.title = (state.parrots || 0) > 0
-      ? (state.parrots + ' Cape parrot' + (state.parrots === 1 ? '' : 's') + ' resident. Room for ' + _cap +
+      ? (state.parrots + ' Cape parrot' + (state.parrots === 1 ? '' : 's') + ' resident' +
+         (_cap > 0 ? ', with room for ' + _cap : '') +
          '. A parrot nests in a hollow DEAD tree with a stand of mixed canopy around it.')
-      : 'No parrots yet. A Cape parrot cannot make its own hole — leave an old tree standing until it dies and goes hollow, with a mixed stand around it.';
+      : (_cap > 0
+          ? 'No parrots yet, but your forest has room for ' + _cap + '. A Cape parrot cannot make its ' +
+            'own hole — leave an old tree standing until it dies and goes hollow, with a mixed stand ' +
+            'around it.'
+          : 'No parrots, and nowhere for one yet. A Cape parrot cannot make its own hole: an old tree ' +
+            'has to die and go hollow, with a mixed stand around it, before there is a nest to move into.');
   }
   if (els.apPill) {
     els.apPill.className = 'ov appill' + (state.ap <= 0 ? ' empty' : '');
@@ -5399,6 +5430,7 @@ function boot() {
                 page check caught it only because it compared the words and the words were wrong;
                 the gate now asserts every els.* name is bound (see BOUND_IDS). */
              'apPill', 'apNow', 'apHas', 'apDone', 'goalChip', 'parrotPill', 'parrotNow', 'parrotCap',
+             'parrotOf', 'parrotLab',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
              'mIntro', 'btnIntro', 'introClose', 'introAp', 'introLeft', 'introBin',
              'codeIn', 'btnSave', 'btnLoad', 'btnLink', 'btnFile', 'btnNew', 'mBoard', 'boardDate', 'boardList', 'boardReward',
@@ -5643,9 +5675,20 @@ function boot() {
        `recycle()` was written and wired to nothing: it trades BIN_LOAD cuttings for tokens of the
        CURRENT WEATHER — which is the loop the guide describes and the one the baboon card announces.
        The button just never called it. */
+    /* AND IT HAS TO RE-RENDER, WHICH IS THE HALF THAT WAS MISSING.
+       Owner, 2026-10-03: *"clicking the bin 6/6 doesnt change to 0/6."*
+       There are two ways to empty the bin — tapping the bin on the map, and this button — and only
+       the first one re-rendered. The tile path has always been `if (recycle()) { saveLocal();
+       renderHud(); renderBoard(); }`; this one called recycle() and stopped, so the badge, the token
+       counts and the dock all kept the numbers from before the trade. The work was done and nothing
+       said so, which from the outside is indistinguishable from a dead button.
+       THE SAME SHAPE AS THE RESTART BUTTON EARLIER TODAY: a state change with no render. It is worth
+       naming because it is a pattern here — the action is correct and the reporting is missing. */
     if (!recycle()) {
       note('The bin needs ' + BIN_LOAD + ' cuttings before the baboon will trade. ' +
         (binItems ? 'It has ' + binItems + '.' : 'It is empty.'), 'dim');
+    } else {
+      saveLocal(); renderHud(); renderBoard();
     }
   });
   /* Tapping the counter asks the question the owner asked. One place to find out what the number
