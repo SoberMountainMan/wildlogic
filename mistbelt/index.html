@@ -5010,11 +5010,18 @@ function renderDock() {
       btn.setAttribute('data-tool', k);
       btn.setAttribute('aria-pressed', k === tool ? 'true' : 'false');
       var stock = (state.bag && state.bag[k]) || 0;
+      /* THE STOCK LINE HAS TO BE SHORT, BECAUSE THE DOCK IS A ROW OF BUTTONS ON A PHONE.
+         Owner, 2026-10-03: *"your new dock buttons are too wide. (which means swiping across on
+         mobile) 'none - buy at nursery' makes them bigger than they need to be. 0 in stock would
+         work."* He is right, and it is worse than a wide button: a dock that overflows its row is one
+         the player has to SWIPE to reach the far end of, which is the one gesture a planting bar
+         cannot ask for. `0 in stock` is two characters shorter than `3 in stock` was ever going to
+         be longer, and it says the same thing — a count that happens to be zero.
+         The full sentence still exists where there is room for it: the tap says it, and the
+         button's own title says it. */
       btn.appendChild(mkLabel(isCut ? 'Cut' : (def.short || def.name),
                               isCut ? 'the aliens'
-                                    : (SPECIES[k] ? (stock > 0 ? stock + ' in stock'
-                                                               : 'none \u2014 buy at the nursery')
-                                                  : 'place it')));
+                                    : (SPECIES[k] ? stock + ' in stock' : 'place it')));
       btn.addEventListener('click', mkPicker(k));
       dock.appendChild(btn);
     }
