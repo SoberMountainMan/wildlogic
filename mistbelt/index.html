@@ -591,13 +591,30 @@ var TOKEN_ICON = {
 };
 
 /* Real Amathole / Hogsback species. */
-var ALIEN_KEYS = ['wattle', 'pine', 'bugweed', 'bramble'];
+var ALIEN_KEYS = ['wattle', 'pine', 'bugweed', 'bramble', 'blackwood'];
 /* `tell` is what a player can SEE from the tile they are standing on, and it exists because the art
    alone cannot finish this job: two weeds drawn from the same green palette in the same isometric
    cell will always overlap somewhat, so "which one is this?" needs words as well as pixels. Owner,
    2026-09-21: "we cant tell what alien is what." Each line below describes the drawing above it —
    if the art changes, this line is wrong, so they are kept together deliberately. */
 var ALIENS = {
+  /* THE ONE WEED THAT PUNISHES YOU FOR CUTTING IT.
+     Acacia melanoxylon, Australian blackwood. A real Eastern Cape invader -- there are provenance
+     trials in South Africa and it is a recognised weed in the Amathole.
+     Its line from the weed literature, and the reason it is in this game: "it also sprouts profusely
+     from ROOT SUCKERS, PARTICULARLY WHEN THE ROOTS ARE DAMAGED, and readily coppices from damaged
+     stems." Cutting it does not remove it. It multiplies it.
+     That is the one lesson this game teaches that no other species demonstrates directly: wattle
+     leaves seed behind, bugweed gets carried off by birds, bramble creeps -- blackwood FIGHTS BACK.
+     AND IT IS NOT A SHADE-BREAKER. It invades gaps and edges, so it needs light to establish. Shade
+     still kills it; the axe does not. If it could establish under canopy the whole succession rule
+     would come apart, so that constraint is deliberate. */
+  blackwood: { name: 'Australian blackwood', sci: 'Acacia melanoxylon', ap: 3, bank: 4, spread: 3,
+             shape: 'thicket', fruit: true, suckers: true,
+             tell: 'Darker and denser than the wattle \u2014 long leathery leaves, not feathery ones, ' +
+                   'and a trunk that is already a tree rather than a stem.',
+             note: 'Cutting it damages the roots, and damaged blackwood roots throw up suckers. ' +
+                   'The axe makes it worse \u2014 only shade stops it.' },
   wattle:  { name: 'Black wattle',     sci: 'Acacia mearnsii',     ap: 2, bank: 3, spread: 3, shape: 'water',   fruit: true,
              tell: 'Pale and feathery \u2014 many small yellow-green leaflets on grey stems. The ' +
                    'lightest of the four.',
@@ -614,7 +631,7 @@ var ALIENS = {
              note: 'Roots sucker back after cutting. It takes the light from everything under it.' }
 };
 /* Per-species size on the hillside. Only the bramble is bigger — see the call site in drawTileProp. */
-var ALIEN_SCALE = { bramble: 1.45 };
+var ALIEN_SCALE = { bramble: 1.45, blackwood: 1.30 };
 /* A WEED IS NOT FULL GROWN THE DAY IT COMES UP. Three stages, the same shape the planted trees use
    (0.26 / 0.56 / 1), sized so a fresh sprout reads as a seedling on the tile rather than as a tree
    that was not there a second ago. Index 0 is deliberately absent -- an alien is never stage 0 --
@@ -720,8 +737,8 @@ var DECOR = {
   lantern:  { name: 'Lantern',   cost: 3, token: 'sun' }
 };
 
-var ALIEN_CODE = { none: 0, wattle: 1, pine: 2, bugweed: 3, bramble: 4 };
-var ALIEN_FROM = [null, 'wattle', 'pine', 'bugweed', 'bramble'];
+var ALIEN_CODE = { none: 0, wattle: 1, pine: 2, bugweed: 3, bramble: 4, blackwood: 5 };
+var ALIEN_FROM = [null, 'wattle', 'pine', 'bugweed', 'bramble', 'blackwood'];
 /* Everything that can stand on a tile, so a save keeps the things the player built as well as
    the things that grow. The sign is both a fixed place and a decoration; one code covers both. */
 var OBJ_CODE = { house: 1, nursery: 2, bin: 3, sign: 4, jetty: 5,
@@ -1445,8 +1462,14 @@ function tickDay(w) {
 
 function pickAlien(t) {
   if (t.lastAlien) return t.lastAlien;
+  /* BLACKWOOD ARRIVES RARELY, AND THEN IT IS THE PLAYER'S PROBLEM.
+     It is not on the hillside at the start -- a new invader turning up is an event, and it should
+     be. Once it is here it is the only weed that ANSWERS the axe, because `t.lastAlien` means a cut
+     tile regrows the SAME species: cut a blackwood and a blackwood comes back, on top of the
+     suckers it just put in the eight tiles around it. */
   var roll = Math.random();
-  return roll < 0.4 ? 'wattle' : roll < 0.65 ? 'pine' : roll < 0.85 ? 'bugweed' : 'bramble';
+  if (roll < 0.08) return 'blackwood';
+  return roll < 0.45 ? 'wattle' : roll < 0.68 ? 'pine' : roll < 0.87 ? 'bugweed' : 'bramble';
 }
 
 function fruitingIndigenous() {
@@ -1807,10 +1830,36 @@ function clearAt(c, r) {
   var def = ALIENS[t.alien];
   if (state.ap < def.ap) return false;
   state.ap -= def.ap;
+  var _was = t.alien;
   t.lastAlien = t.alien;
   t.alien = null;
   t.seeds += def.bank;
   state.cleared++;
+
+  /* AND CUTTING A BLACKWOOD MAKES MORE BLACKWOOD.
+     Acacia melanoxylon "sprouts profusely from ROOT SUCKERS, PARTICULARLY WHEN THE ROOTS ARE
+     DAMAGED". So the axe does not remove it -- the axe multiplies it. This is the one species in
+     the game that punishes the player for the thing they have been doing all along, and it is the
+     clearest possible demonstration of why the game is about shade rather than about cutting.
+     THE SHADE WALL STILL HOLDS. Suckers only reach ground that is not already shaded, so three
+     mature trees around a blackwood still end it -- which is the lesson, not an exception to it.
+     If suckers ignored shade the whole succession rule would come apart, and the species would be
+     a punishment rather than a teacher. */
+  if (def.suckers) {
+    var _dc, _dr, _n = 0;
+    for (_dr = -1; _dr <= 1; _dr++) {
+      for (_dc = -1; _dc <= 1; _dc++) {
+        if (!_dc && !_dr) continue;
+        var _n2 = cell(c + _dc, r + _dr);
+        if (!_n2 || _n2.ter !== 'grass' || _n2.obj) continue;
+        if (matureAround(c + _dc, r + _dr) >= SHADE_CLOSES_SEED) continue;
+        if (_n2.alien) continue;
+        _n2.seeds = Math.min(9, (_n2.seeds || 0) + 2);
+        _n += 1;
+      }
+    }
+    if (_n) addFloat(c, r, 'suckers \u00d7' + _n, '#e0b46a');
+  }
 
   /* SAY WHAT THE CHOP DID, ON THE TILE, WHERE THE PLAYER IS LOOKING. `def.bank` lots of seed go into
      this tile every time it is cut and nothing said so — which is why the loop the whole game turns
@@ -2131,7 +2180,7 @@ function decodeTiles(str) {
     } else if (kind === 'a' || kind === 'A') {
       var ak = parseInt(occ.charAt(i), 10), as = parseInt(occ.charAt(i + 1), 10);
       i += 2;
-      if (!(ak >= 1 && ak <= 4) || !(as >= 0 && as <= 9)) return null;
+      if (!(ak >= 1 && ak <= 5) || !(as >= 0 && as <= 9)) return null;
       t.alien = ALIEN_FROM[ak];
       t.seeds = as;
       /* 'A' carries a third digit: the growth stage. 'a' has none, and means full grown. */
@@ -3353,6 +3402,24 @@ function drawAlien(kind, cx, base, s) {
       ctx.arc(cx + (jit(i, 1, 3) - 0.5) * s * 0.46, base - s * (0.68 + jit(i, 2, 4) * 0.18), s * 0.062, 0, Math.PI * 2);
       ctx.fill();
     }
+  } else if (kind === 'blackwood') {
+    /* AUSTRALIAN BLACKWOOD IS A TREE, NOT A WEED, AND IT HAS TO LOOK LIKE ONE.
+       It is the biggest thing on this hillside short of a mature yellowwood -- up to 40 m in the
+       field -- so it draws as a trunk with a real canopy over it, in the darkest green of the five.
+       The whole point of the species is that cutting it is a mistake, and a player only believes
+       that if it looks substantial enough to be worth cutting.
+       The leaves are long and leathery rather than feathery, which is the difference between it and
+       the wattle at a glance -- and the two are the same genus, so they have to be told apart. */
+    ctx.fillStyle = '#3b332a';
+    ctx.fillRect(cx - s * 0.055, base - s * 0.42, s * 0.11, s * 0.42);
+    ctx.fillStyle = '#24402c';
+    ctx.beginPath(); ctx.ellipse(cx - s * 0.15, base - s * 0.60, s * 0.26, s * 0.20, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2c4c34';
+    ctx.beginPath(); ctx.ellipse(cx + s * 0.16, base - s * 0.66, s * 0.25, s * 0.19, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1c3524';
+    ctx.beginPath(); ctx.ellipse(cx, base - s * 0.80, s * 0.22, s * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2c4c34';
+    ctx.beginPath(); ctx.ellipse(cx - s * 0.02, base - s * 0.52, s * 0.20, s * 0.13, 0, 0, Math.PI * 2); ctx.fill();
   } else {
     /* American bramble is a low, sprawling, thorny MAT — it does not stand up. The first version
        drew seven stems radiating from a single point, and seven radial strokes with a body in the
