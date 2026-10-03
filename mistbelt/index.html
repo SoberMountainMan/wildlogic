@@ -1757,6 +1757,32 @@ var TOAD_AT = 4;
    the first attempt at this had the toad arriving on day 1 without the player doing anything. */
 var TOAD_PATCH = 8;
 
+/* A SECOND PREREQUISITE, AND IT IS THE OWNER'S.
+   Owner, 2026-10-03: *"the toad needs more prerequisits. maybe near water only."*
+   **WATER, BECAUSE THE REAL ONE BREEDS IN IT.** The Amathole toad is not a dry-grassland animal — it
+   is tied to streams and pools, and the game was letting it settle anywhere on the plateau so long as
+   the patch around it happened to be clear. That made it a reward for clearing, with nothing in it
+   about WHERE. Now the tile it picks must be within TOAD_WATER tiles of the stream, so the animal
+   arrives along the water, which is both true and somewhere the player already looks. Measured: the
+   gate admits **400 of 1391 grass tiles (29%)** — a band along the stream, not a postage stamp.
+   **AND A THIRD WAS TRIED AND REMOVED, WITH THE MEASUREMENT THAT KILLED IT.**
+   "The patch has to be OPEN, not merely weed-free" is the obvious reading of the card's own words — a
+   patch under a closed canopy is not open ground however few weeds are in it. It was written, and
+   `_probe_toad_reach.js` says it cannot be satisfied:
+     - **Cutting alone does not win.** Perfect play, every action point on the patch, every day, for
+       400 days leaves it at ~190 weeds against a gate of 4 — the daily cut is about equal to the
+       daily regrowth, so the patch sits at an equilibrium and never comes down.
+     - **The only way to get a 17x17 patch to four weeds is to SHADE it**, because a tile with mature
+       neighbours stops sprouting. That is the mechanic and it is the lesson the game teaches.
+   So requiring the patch to be tree-free forbids the one strategy that works and makes the toad
+   unreachable — the exact failure this gate already had once, in the other direction. It is left out,
+   and the tension it was reaching for is real and UNSOLVED: as it stands the toad arrives on a patch
+   the player has FORESTED, which is the opposite of what an Amathole toad wants. That is a design
+   question for the owner, not a prerequisite to bolt on.
+   `matureNear()` is kept and exported because the probe reports the tree count — it is how anyone
+   re-opening this question sees the patch fill with trees as the weeds come down. */
+var TOAD_WATER = 6;
+
 /* Weeds within a square patch of radius `rad` around a tile. Chebyshev, because that is the shape
    the shade rules already use (matureAround is the 8 neighbours). */
 function aliensNear(c, r, rad) {
@@ -1765,6 +1791,19 @@ function aliensNear(c, r, rad) {
     for (dc = -rad; dc <= rad; dc++) {
       var t = cell(c + dc, r + dr);
       if (t && t.alien) n++;
+    }
+  }
+  return n;
+}
+
+/* Mature planted trees in the same patch — what "open" is measured against. Aliens are not counted
+   here: a weed is what the player is clearing, a tree is what they are choosing to keep. */
+function matureNear(c, r, rad) {
+  var n = 0, dc, dr;
+  for (dr = -rad; dr <= rad; dr++) {
+    for (dc = -rad; dc <= rad; dc++) {
+      var t = cell(c + dc, r + dr);
+      if (t && t.sp && t.stage === 3) n++;
     }
   }
   return n;
@@ -1782,6 +1821,9 @@ function toadCheck() {
     c = i % COLS; r = Math.floor(i / COLS);
     t = state.tiles[i];
     if (t.ter !== 'grass' || t.alien || t.sp || t.obj) continue;
+    /* NEAR THE WATER. `streamDist` is the distance to the stream's centre line, so this is
+       TOAD_WATER tiles out from the water's EDGE rather than from its middle. */
+    if (streamDist(c, r) > STREAM.half + TOAD_WATER) continue;
     if (aliensNear(c, r, TOAD_PATCH) > TOAD_AT) continue;
     dc = c - VILLAGE.c; dr = r - VILLAGE.r;
     d = dc * dc + dr * dr;
@@ -5991,7 +6033,7 @@ var API = {
   /* The AP clock. Exported because the catch-up is a difference between two timestamps and a
      screenshot cannot see it — the check has to drive the clock rather than look at the HUD. */
   apAccrue: apAccrue, msToNextAp: msToNextAp, apWaitText: apWaitText, PLACES: PLACES, TILE_ART: TILE_ART, TOAD_AT: TOAD_AT,
-  TOAD_PATCH: TOAD_PATCH, aliensNear: aliensNear,
+  TOAD_PATCH: TOAD_PATCH, TOAD_WATER: TOAD_WATER, aliensNear: aliensNear, matureNear: matureNear,
   /* The snag-and-stand rule. Exported because the parrot's requirements are now LOCAL -- a patch
      around a dead tree -- and a check that cannot count the patch cannot tell a real stand from a
      lone tree. SNAG_DAYS is exported so a fixture can age a snag without running the tick. */
