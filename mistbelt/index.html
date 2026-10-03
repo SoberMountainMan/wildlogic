@@ -2945,9 +2945,9 @@ var TILE_ART = {
      closed canopy, so the player could not tell the difference between "shade has started" and "the
      wall is up". These two families are the grass shades blended 34% and 67% toward the forest's,
      so the ramp is one continuous colour and the steps read as depth rather than as three palettes. */
-  shade1: { shades: ['#2c4c37', '#2f503a', '#294934', '#31533c'], edge: '#264130',
+  shade1: { shades: ['#2a4934', '#2c4d38', '#274631', '#2f503a'], edge: '#243f2d',
             blob: 'rgba(214,240,208,0.12)', n: 12, r0: 0.060, r1: 0.110 },
-  shade2: { shades: ['#25442f', '#274833', '#23402c', '#2a4b35'], edge: '#203b29',
+  shade2: { shades: ['#23422e', '#264631', '#213e2a', '#284933'], edge: '#1e3928',
             blob: 'rgba(210,238,206,0.115)', n: 12, r0: 0.060, r1: 0.110 },
   forest: { shades: ['#1e3b28', '#20402b', '#1c3725', '#22432d'],
             edge: '#1a3423',
@@ -5327,6 +5327,11 @@ function boot() {
     }
   }
   if (!state) state = loadLocal() || newState();
+  /* A LOADED SAVE HAS A DIFFERENT FOREST, SO THE BAKED GROUND IS STALE.
+     The ground cache carries the shade, and the shade is a function of where the mature trees are --
+     so a cache built before the save was applied would draw the shade of an empty hillside and keep
+     it. Dropping it here costs one re-bake on boot and cannot go wrong. */
+  GROUND = null;
   /* THE CATCH-UP, and it is the whole reason the hourly rate needed a stored timestamp: the game
      only runs while the tab is open, so the points earned overnight exist nowhere until something
      measures the gap. This is that measurement, and it is the same apAccrue() the live timer calls —
