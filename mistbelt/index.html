@@ -1048,6 +1048,21 @@ function newState() {
   };
 }
 
+/* THE FIELDS A FRESH STATE CANNOT KNOW FOR ITSELF, IN ONE PLACE.
+   newState() builds the tiles and the bag; it cannot know today's weather or roll the board, because
+   both depend on the date. Boot did this inline and the RESTART BUTTON DID NOT, so a restarted game
+   ran with `weather: null` and `board: null` until the next day tick — and the null weather is what
+   made renderHud() bail and leave the whole HUD showing the old hillside.
+   IT TAKES NO ARGUMENT, DELIBERATELY. `rollBoard()` writes the MODULE-LEVEL `state`, not a
+   parameter, and it reads `state.day` to stamp the board. So a version that took a state object and
+   primed THAT would have set the wrong one — which is exactly what the first draft of this did, and
+   it left the new state's board null while the old state's board was rolled. The caller assigns
+   `state` first and then calls this; there is no object to get wrong. */
+function primeState() {
+  state.weather = fallbackFor(new Date().getMonth());
+  if (!state.board) rollBoard(state.weather);
+}
+
 function dayKey(d) {
   var m = d.getMonth() + 1, dd = d.getDate();
   return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (dd < 10 ? '0' + dd : dd);
@@ -1975,9 +1990,22 @@ function plantAt(c, r, spKey) {
      tree into open ground. */
   if (shadeShort(c, r, spKey)) return false;
   var have = (state.bag && state.bag[spKey]) || 0;
-  if (have > 0) state.bag[spKey] = have - 1;
-  else if (state.tokens[def.token] >= def.cost) state.tokens[def.token] -= def.cost;
-  else return false;
+  if (have > 0) {
+    state.bag[spKey] = have - 1;
+  } else {
+    /* THE BAG IS EMPTY, SO THIS IS A PURCHASE — AND IT HAS TO COUNT AS ONE.
+       Owner, 2026-10-03: *"using the buttons at bottom of screen to purchase trees isnt counting
+       toward the buy from nursery tasks for the day."*
+       This branch used to spend the tokens itself:
+           else if (state.tokens[def.token] >= def.cost) state.tokens[def.token] -= def.cost;
+       which is a purchase in every way the player can see — the token leaves the purse — but it
+       never told `state.bought` or `boardProgress('buys')`, so the day's "Buy one thing at the
+       nursery" task sat at zero while the player was plainly buying things. buy() does the whole
+       job; the only difference is that it puts the tree in the BAG, and this tree is going straight
+       into the ground, so the bag entry is spent immediately. One purchase, one code path. */
+    if (!buy(spKey, 1)) return false;
+    state.bag[spKey] = Math.max(0, (state.bag[spKey] || 0) - 1);
+  }
   state.ap = Math.max(0, state.ap - 1);
   /* THE TILE TAKES THE TREE, AND THE BANK GOES WITH IT.
      A tile that has just been cleared still holds the seed bank the cut left behind. Planting on it
@@ -4767,8 +4795,17 @@ function renderGoal() {
 }
 
 function renderHud() {
-  var w = state.weather;
-  if (!w) return;
+  /* THE WEATHER IS NOT A PRECONDITION FOR THE REST OF THE HUD.
+     This was `var w = state.weather; if (!w) return;` — an early return written for the weather pill
+     that threw away EVERYTHING below it: the action points, the parrots, the goal, the bin badge and
+     the whole dock. Owner, 2026-10-03: *"the restart game button doesnt reset the hud unless you
+     reload."* That is exactly this line. The restart handler builds a fresh state with `weather:
+     null` and calls renderHud() straight away, so the HUD kept the OLD hillside's numbers until a
+     reload brought a save that already had weather in it.
+     The fallback is what the rest of the file already does when there is no live forecast yet — see
+     drawTileProp and the season-average sites — so the pill shows the season rather than nothing, and
+     everything below renders unconditionally because none of it depends on the weather at all. */
+  var w = state.weather || fallbackFor(new Date().getMonth());
   if (els.wxIcon) els.wxIcon.innerHTML = TOKEN_ICON[tokenOf(w)];
   if (els.wxText) {
     els.wxText.textContent = Math.round(w.temp) + '\u00b0C \u00b7 ' +
@@ -5466,8 +5503,7 @@ function boot() {
   }
 
   var month = new Date().getMonth();
-  state.weather = fallbackFor(month);
-  if (!state.board) rollBoard(state.weather);
+  primeState();
 
   /* THE WORLD ROLLS ON A ROLLING CLOCK, NOT ON MIDNIGHT.
      Owner, 2026-10-02: "game should roll with the per hour AP."
@@ -5681,7 +5717,10 @@ function boot() {
     newArmed = 0;
     if (els.btnNew) els.btnNew.textContent = 'Start a new game';
     try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+    /* PRIMED, NOT JUST NEW. A bare newState() has no weather and no board, and the HUD reads both —
+       see the note on primeState() for why this was the restart button's whole bug. */
     state = newState();
+    primeState();
     GROUND = null;                      /* the baked ground belongs to the old hillside */
     if (els.notes) els.notes.textContent = '';
     if (els.codeIn) els.codeIn.value = '';
