@@ -173,6 +173,15 @@
   .bar i{display:block;height:100%;background:#8fc98f;border-radius:99px;transition:width .2s}
   .reward{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:5px;
     font-size:16px;font-weight:800}
+  /* THE THREE STATES HAVE TO LOOK DIFFERENT, because the whole bug was that "done" and "paid" looked
+     the same. Waiting is grey, ready is the one thing on the sheet you can press, and collected is
+     grey again with a tick. */
+  .rewardbtn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;
+    margin-top:8px;padding:11px 10px;border:1.5px solid #c8bda4;border-radius:11px;
+    background:#fff;font:inherit;font-size:16px;font-weight:800;color:#8b8271;cursor:default}
+  .rewardbtn.ready{border-color:#3f7a4a;background:#eaf4ea;color:#2f6339;cursor:pointer;
+    box-shadow:0 0 0 3px rgba(63,122,74,.14)}
+  .rewardbtn.got{border-color:#cfd8cd;background:#f3f5f2;color:#7d8b7c}
   /* A grid, not a row of three: with a fixed row of three the fourth species (knobwood) and the
      last two decorations could never be bought at all. They just wrap now. Four columns, because
      the palette grew from four species to eight and at three columns the nursery ran past the
@@ -466,7 +475,14 @@
     <div class="card-in">
       <h2 id="boardDate" style="font-size:15px;margin-bottom:12px"></h2>
       <div id="boardList"></div>
-      <div class="reward">Reward: <span id="boardReward"></span></div>
+      <!-- THE REWARD IS A BUTTON, BECAUSE UNTIL TODAY IT WAS A LABEL AND NOTHING PAID IT.
+           Tester, 2026-10-03: *"Rewards for task completed does nothing, you don't receive them once
+           all ticked."* claimBoard() existed, was correct, and was exported -- and the only reference
+           to it anywhere in the game was that export. There was no control to press. This is the
+           third time today a thing was written and wired to nothing (recycle() had the same history,
+           and the restart button's primeState()), so the reward is a control now rather than a
+           sentence, and it says which of the three states it is in. -->
+      <button class="rewardbtn" id="boardClaim" disabled></button>
     </div>
     <button class="close" id="boardClose">Close</button>
   </div>
@@ -1070,6 +1086,39 @@ function newState() {
 function primeState() {
   state.weather = fallbackFor(new Date().getMonth());
   if (!state.board) rollBoard(state.weather);
+}
+
+/* HOW LONG A WORLD DAY IS, IN REAL TIME, AND THE ONE PLACE IT IS DECIDED.
+   The world rolls on a ROLLING CLOCK, not on midnight — the note in boot() has the reasoning — and
+   until 2026-10-03 that clock was only ever read at boot. A tab left open, or a phone that went to
+   sleep and came back on the same page, sat on yesterday for ever.
+   Tester, 2026-10-03: *"you have to refresh to update to the next day/current weather (which might
+   only be the case for people who connect & disconnected from internet)."* Exactly right, and the
+   fix is not a second clock — it is the SAME one, called from a second place. */
+var TICK_MS = 24 * 60 * 60 * 1000;
+/* Beyond three days more absence changes nothing: the hillside saturates at about 97% weedy within
+   three days of no play, so three is where the curve flattens, not an arbitrary mercy. */
+var MAX_CATCHUP_DAYS = 3;
+
+/* HOW MANY WHOLE DAYS ARE OWED RIGHT NOW. It does NOT consume them, because the caller has to fetch
+   the weather for the NEW day before the days are actually ticked — ticking against the old day's
+   weather and swapping it in afterwards is the bug the boot note describes. */
+function dueDays() {
+  if (state.lastTickAt == null) state.lastTickAt = Date.now();
+  return Math.floor((Date.now() - state.lastTickAt) / TICK_MS);
+}
+
+/* ROLL THE DAYS THAT ARE OWED. Boot and the open-tab timer both call this, so there is one clock. */
+function rollDueDays(w) {
+  var due = dueDays();
+  if (due < 1) return 0;
+  var ticks = Math.min(due, MAX_CATCHUP_DAYS);
+  /* THE ELAPSED TIME IS CONSUMED IN FULL even when the ticks are capped, so a month away does not
+     queue up 27 more days to land on the next visit. */
+  state.lastTickAt += due * TICK_MS;
+  state.lastDayKey = dayKey(new Date());
+  for (var k = 0; k < ticks; k++) tickDay(w);
+  return ticks;
 }
 
 function dayKey(d) {
@@ -2041,22 +2090,16 @@ function plantAt(c, r, spKey) {
      tree into open ground. */
   if (shadeShort(c, r, spKey)) return false;
   var have = (state.bag && state.bag[spKey]) || 0;
-  if (have > 0) {
-    state.bag[spKey] = have - 1;
-  } else {
-    /* THE BAG IS EMPTY, SO THIS IS A PURCHASE — AND IT HAS TO COUNT AS ONE.
-       Owner, 2026-10-03: *"using the buttons at bottom of screen to purchase trees isnt counting
-       toward the buy from nursery tasks for the day."*
-       This branch used to spend the tokens itself:
-           else if (state.tokens[def.token] >= def.cost) state.tokens[def.token] -= def.cost;
-       which is a purchase in every way the player can see — the token leaves the purse — but it
-       never told `state.bought` or `boardProgress('buys')`, so the day's "Buy one thing at the
-       nursery" task sat at zero while the player was plainly buying things. buy() does the whole
-       job; the only difference is that it puts the tree in the BAG, and this tree is going straight
-       into the ground, so the bag entry is spent immediately. One purchase, one code path. */
-    if (!buy(spKey, 1)) return false;
-    state.bag[spKey] = Math.max(0, (state.bag[spKey] || 0) - 1);
-  }
+  /* THE DOCK PLANTS WHAT YOU OWN; THE NURSERY IS THE ONLY PLACE YOU BUY.
+     Owner, 2026-10-03: *"yes buy from nursery only. but then what is the dock for? maybe what you
+     have in stock from buying?"* — and that is exactly it. Until now this branch fell back to
+     spending tokens directly, so planting from the dock was a second, silent shop: the same
+     purchase reachable two ways, and (before today's fix) only one of the two counted toward the
+     day's nursery task. One shop, one planting bar, and the bar shows you your stock.
+     THE REFUSAL IS THE CALLER'S TO EXPLAIN — act() says why, because a plant that does nothing and
+     says nothing is the failure mode this file has already been bitten by twice today. */
+  if (have <= 0) return false;
+  state.bag[spKey] = have - 1;
   state.ap = Math.max(0, state.ap - 1);
   /* THE TILE TAKES THE TREE, AND THE BANK GOES WITH IT.
      A tile that has just been cleared still holds the seed bank the cut left behind. Planting on it
@@ -2386,6 +2429,15 @@ function encodeSave(s) {
                      accruing from the moment they load, rather than being handed a full tank for
                      having been away. */
                   at: Math.floor((s.apAt || Date.now()) / 60000),
+                  /* THE DAY'S BOARD, WHICH WAS NOT SAVED AT ALL.
+                     Tester, 2026-10-03: *"Refreshing page: loses tasks progress, last tokens
+                     received."* Every tick of a task lived only in memory, so a refresh put the
+                     player back to three unticked tasks — and if they had already collected, back to
+                     an uncollected board that could be collected twice. `rollBoard()` replaces this
+                     wholesale on a day roll, so restoring it is safe: a board from an older day is
+                     overwritten the moment the day turns, and `bd` absent (an old save code) simply
+                     comes back with no board, which primeState() then rolls fresh. */
+                  bd: s.board || null,
                   tk: s.tokens.sun + '.' + s.tokens.mist + '.' + s.tokens.rain + '.' + s.tokens.snow };
   var body = b64encode(JSON.stringify(payload));
   return 'MB2-' + body + '-' + checksum(body);
@@ -2445,6 +2497,10 @@ function decodeSave(code) {
      gone. decodeSave is the only thing that knows what was in it. */
   binItems = clamp(p.n || 0, 0, 99);
   s.parrots = clamp(p.pr || 0, 0, 99);
+  /* THE BOARD COMES BACK WITH THE SAVE. See the note on `bd` in encodeSave: without this the day's
+     three tasks reset on every refresh, which is what the tester reported. `p.bd` absent means an
+     old save code, and primeState() rolls a fresh board for it. */
+  s.board = (p.bd && p.bd.tasks && p.bd.tasks.length) ? p.bd : null;
   /* ABSENT MEANS NOW, NOT ZERO. An old save code has no `at`, and zero would measure the accrual
      from 1970 — which caps at AP_MAX and hands a returning player a full tank for having been away,
      the opposite of what the field is for. "Now" keeps the points they had and starts the clock
@@ -4934,7 +4990,15 @@ function renderDock() {
   var wanted = ['cut'].concat(SP_BY_TIER);
   var i;
   for (i = 0; i < DECOR_KEYS.length; i++) if (state.decor[DECOR_KEYS[i]] > 0) wanted.push(DECOR_KEYS[i]);
-  var sig = wanted.join(',');
+  /* THE STOCK IS PART OF THE SIGNATURE, AND IT HAS TO BE.
+     `dock._sig` is what stops this rebuilding its buttons on every frame — but the buttons now SHOW
+     the stock, so a cache keyed only on which species are listed would keep printing the count the
+     player had when the dock was last built. A cache whose key does not include everything the
+     cached thing displays is a label that goes quietly out of date, which is the exact family of bug
+     this whole afternoon has been. */
+  var sig = wanted.join(',') + '|' + wanted.map(function (k) {
+    return (state.bag && state.bag[k]) || 0;
+  }).join(',');
   if (dock._sig !== sig) {
     dock.textContent = '';
     for (i = 0; i < wanted.length; i++) {
@@ -4945,8 +5009,12 @@ function renderDock() {
       btn.className = 'dock' + (isCut ? ' cut' : '');
       btn.setAttribute('data-tool', k);
       btn.setAttribute('aria-pressed', k === tool ? 'true' : 'false');
+      var stock = (state.bag && state.bag[k]) || 0;
       btn.appendChild(mkLabel(isCut ? 'Cut' : (def.short || def.name),
-                              isCut ? 'the aliens' : (SPECIES[k] ? def.cost + ' ' + def.token : 'place it')));
+                              isCut ? 'the aliens'
+                                    : (SPECIES[k] ? (stock > 0 ? stock + ' in stock'
+                                                               : 'none \u2014 buy at the nursery')
+                                                  : 'place it')));
       btn.addEventListener('click', mkPicker(k));
       dock.appendChild(btn);
     }
@@ -4959,7 +5027,11 @@ function renderDock() {
     var tk = el.getAttribute('data-tool');
     el.setAttribute('aria-pressed', tk === tool ? 'true' : 'false');
     var sp = SPECIES[tk];
-    if (sp) el.disabled = !(state.bag[tk] > 0) && state.tokens[sp.token] < sp.cost;
+    /* YOU CANNOT PLANT WHAT YOU DO NOT HAVE. This used to stay enabled if you could AFFORD the tree,
+       because planting bought it for you; now the nursery is the only shop, so stock is the only
+       question. A dimmed button is the honest state — and the tap says why as well, for the times it
+       is pressed anyway. */
+    if (sp) el.disabled = !((state.bag && state.bag[tk]) > 0);
   }
 }
 
@@ -5001,9 +5073,21 @@ function renderBoard() {
     els.boardDate.textContent = new Date().toLocaleDateString('en-ZA',
       { weekday: 'long', day: 'numeric', month: 'long' });
   }
-  if (els.boardReward) {
+  /* THE REWARD BUTTON, IN ITS THREE STATES. Waiting is grey and says what is left; ready is the one
+     thing on the sheet you can press; collected says so. The old label was identical in all three,
+     which is why "all ticked and nothing happened" looked like a bug in the tasks rather than a
+     missing control. */
+  if (els.boardClaim) {
     var tk = tokenOf(state.weather || fallbackFor(new Date().getMonth()));
-    els.boardReward.innerHTML = TOKEN_ICON[tk] + ' ' + (state.board ? state.board.reward : 10);
+    var amt = state.board ? state.board.reward : 10;
+    var paid = !!(state.board && state.board.claimed);
+    var ready = !paid && boardDone();
+    els.boardClaim.className = 'rewardbtn' + (paid ? ' got' : ready ? ' ready' : '');
+    els.boardClaim.disabled = !ready;
+    els.boardClaim.innerHTML = paid
+      ? 'Collected \u2713 \u00b7 ' + TOKEN_ICON[tk] + ' ' + amt
+      : (ready ? 'Collect ' : 'Reward: ') + TOKEN_ICON[tk] + ' ' + amt +
+        (ready ? ' \u2014 all three done' : ' \u2014 finish all three to collect');
   }
 }
 
@@ -5329,6 +5413,16 @@ function act(c, r) {
     return;
   }
   if (SPECIES[tool] && shadeShort(c, r, tool)) { explainShade(tool, c, r); return; }
+  /* NOTHING IN STOCK IS A REFUSAL THAT HAS TO SPEAK.
+     The dock no longer buys — see plantAt — so this is the new way for a tap to do nothing, and a
+     tap that does nothing and says nothing is indistinguishable from a broken game. The nursery is
+     named, because that is the thing the player has to go and do. */
+  if (SPECIES[tool] && !((state.bag && state.bag[tool]) > 0)) {
+    var _sd = SPECIES[tool];
+    note('No ' + (_sd.short || _sd.name) + ' in stock. Buy them at the nursery \u2014 tap the ' +
+         'nursery in the village.', 'warn');
+    return;
+  }
   if (plantAt(c, r, tool)) {
     boardProgress('plants', 1);
     if (matureAround(c, r) >= SHADE_FOR_OLDGROWTH && !state.seen.shade) {
@@ -5433,8 +5527,8 @@ function boot() {
              'parrotOf', 'parrotLab',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
              'mIntro', 'btnIntro', 'introClose', 'introAp', 'introLeft', 'introBin',
-             'codeIn', 'btnSave', 'btnLoad', 'btnLink', 'btnFile', 'btnNew', 'mBoard', 'boardDate', 'boardList', 'boardReward',
-             'boardClose', 'mShop', 'shopDate', 'shopSeeds', 'shopDecor', 'shopName', 'qty',
+             'codeIn', 'btnSave', 'btnLoad', 'btnLink', 'btnFile', 'btnNew', 'mBoard', 'boardDate', 'boardList', 'boardClaim',
+             'boardClose', 'boardClaim', 'mShop', 'shopDate', 'shopSeeds', 'shopDecor', 'shopName', 'qty',
              'qMinus', 'qPlus', 'btnBuy', 'tradeRow', 'shopClose', 'mCard', 'cardTitle', 'cardBody',
              'cardLink', 'cardOk'];
   var i;
@@ -5528,6 +5622,23 @@ function boot() {
       if (!state) return;
       if (apAccrue() > 0) { saveLocal(); }
       if (state.ap < AP_MAX) renderHud();
+      /* AND THE DAY ROLLS WHILE THE TAB IS OPEN, ON THE SAME CLOCK.
+         Tester, 2026-10-03: *"you have to refresh to update to the next day/current weather (which
+         might only be the case for people who connect & disconnected from internet)."* The world
+         clock was only ever read in boot(), so a tab left open — or a phone that slept and came back
+         on the same page — sat on yesterday indefinitely. This is the SAME dueDays()/rollDueDays()
+         boot uses; there is no second clock and no second catch-up routine, because two routines
+         that both advance the world is two routines that can disagree.
+         The forecast is fetched FIRST, for the same reason boot does: the new day has to be ticked
+         against the weather it will actually be shown with. */
+      if (dueDays() >= 1) {
+        fetchForecast(new Date().getMonth()).then(function (w) {
+          state.weather = w;
+          var n = rollDueDays(w);
+          if (n > 1) note(n + ' days passed while you were away.', 'warn');
+          saveLocal(); renderHud(); renderBoard(); renderShop();
+        });
+      }
     }, 30000);
   }
   resize();
@@ -5611,11 +5722,10 @@ function boot() {
      Now the world is due a tick when 24 real hours have passed since the last one, and the phase is
      kept by advancing the stamp by whole days rather than resetting it to now, so a player who
      visits every 23 hours still gets their tick. */
-  var TICK_MS = 24 * 60 * 60 * 1000;
-  var nowMs = Date.now();
-  if (state.lastTickAt == null) state.lastTickAt = nowMs;
-  var ticksDue = Math.floor((nowMs - state.lastTickAt) / TICK_MS);
-  var newDay = ticksDue >= 1;
+  /* ONE CLOCK, DEFINED ONCE. dueDays() and rollDueDays() are module-level because the open-tab timer
+     has to ask the same question — see the note on TICK_MS. Boot only decides whether anything is
+     owed; the actual roll happens after the forecast lands, below. */
+  var newDay = dueDays() >= 1;
 
   /* Wait for the real forecast before rolling the day. Ticking against the season average and
      then swapping the live weather in afterwards meant the field note described a different day
@@ -5638,12 +5748,7 @@ function boot() {
          it is where the curve flattens. Beyond it a longer absence cannot cost the player more.
          The elapsed time is consumed in full either way, so a month away does not queue up 27 more
          ticks to land on the next visit. */
-      var MAX_CATCHUP = 3;
-      var ticks = Math.min(ticksDue, MAX_CATCHUP);
-      state.lastTickAt += ticksDue * TICK_MS;
-      state.lastDayKey = dayKey(new Date());
-      var k;
-      for (k = 0; k < ticks; k++) tickDay(w);
+      var ticks = rollDueDays(w);
       if (ticks > 1) note(ticks + ' days passed while you were away.', 'warn');
       saveLocal();
     } else {
@@ -5663,6 +5768,12 @@ function boot() {
     }
   });
 
+  /* COLLECT THE DAY'S REWARD. claimBoard() has existed since the board was written and was never
+     called from anywhere -- see the note on the button in the markup. */
+  if (els.boardClaim) els.boardClaim.addEventListener('click', function () {
+    if (!claimBoard()) return;
+    saveLocal(); renderBoard(); renderHud();
+  });
   if (els.boardClose) els.boardClose.addEventListener('click', function () { hideModal(els.mBoard); });
   if (els.shopClose) els.shopClose.addEventListener('click', function () { hideModal(els.mShop); });
   if (els.cardOk) els.cardOk.addEventListener('click', function () { hideModal(els.mCard); });
@@ -6118,6 +6229,10 @@ var API = {
   buy: buy, trade: trade, recycle: recycle,
   getBin: function () { return binItems; }, setBin: function (n) { binItems = n; },
   encodeSave: encodeSave, decodeSave: decodeSave, checksum: checksum,
+  /* Exported so the gate can drive the world clock without waiting a day: the roll is now called
+     from boot AND from the open-tab timer, and a clock reachable from two places is one that needs
+     a test rather than an assumption. */
+  dueDays: dueDays, rollDueDays: rollDueDays, TICK_MS: TICK_MS, MAX_CATCHUP_DAYS: MAX_CATCHUP_DAYS,
   weatherFrom: weatherFrom, fallbackFor: fallbackFor, classify: classify,
   weatherWord: weatherWord, tokenOf: tokenOf, skyKey: skyKey,
   baboonPass: baboonPass, parrotCheck: parrotCheck, toadCheck: toadCheck,
