@@ -203,6 +203,10 @@
   .qty .sp div{min-width:26px;text-align:center;font-weight:800}
   .trade{display:flex;align-items:center;justify-content:center;gap:5px;margin-top:10px;
     font-size:11.5px;color:#4b6169;flex-wrap:wrap}
+  /* THE SENTENCE GETS ITS OWN LINE. Four buttons plus a label on one wrapping flex row put the
+     label and the buttons on the same line until they ran out of room, so the row broke wherever it
+     happened to and read as a jumble rather than as a sentence followed by a choice. */
+  .trade .tlab{flex:1 0 100%;text-align:center;margin-bottom:2px}
   .trade button{border:1.5px solid #9dc2ca;background:#fff;border-radius:9px;padding:4px 7px;
     font:inherit;font-size:11.5px;font-weight:800;cursor:pointer;color:#3a4b52}
   .close{width:100%;margin-top:10px;border:none;background:transparent;font:inherit;font-size:13px;
@@ -5004,19 +5008,35 @@ function renderShop() {
     }
   }
   if (els.tradeRow) {
-    /* THE LABEL SAYS WHAT THE TRADE NEEDS, BEFORE YOU CLICK IT.
-       It read "short? trade 3 of one for 1:" with no mention that a tree has to be picked first, and
-       the token you are trading toward is the token THAT tree costs. So the row looked like it would
-       just work, and did nothing. */
-    var html = state.pick
-      ? 'short? trade 3 of one for 1 ' + ((SPECIES[state.pick] || DECOR[state.pick] || {}).token || '') + ':'
-      : 'short? pick a tree first, then trade 3 of one for 1:';
-    var i;
-    for (i = 0; i < TOKENS.length; i++) {
-      var off = state.pick ? (TOKENS[i] === (SPECIES[state.pick] || DECOR[state.pick] || {}).token) : false;
-      var short = (state.tokens[TOKENS[i]] || 0) < 3;
-      html += ' <button data-trade="' + TOKENS[i] + '"' + ((off || short) ? ' class="dim"' : '') + '>' +
-              TOKENS[i] + ' ' + (state.tokens[TOKENS[i]] || 0) + '</button>';
+    /* THE ROW HAS TO SAY WHAT EACH BUTTON DOES, AND IT HAS TO STOP OFFERING THE ONE THAT CANNOT WORK.
+       Owner, 2026-10-03: *"the swap system for 3 for one tokens still doesnt make clear ui sense."*
+       It read "short? trade 3 of one for 1 sun:" and then drew a button for EVERY token, including
+       sun — the one token that can never be given, because it is the one being traded toward. So the
+       row offered four choices, one permanently dead for a reason nothing on screen explained, and
+       "one" was left for the player to map onto them. It also wrapped wherever it ran out of room,
+       so the label and the buttons shared a line until they did not.
+       NOW: the target is NAMED in the sentence, the token being traded toward is NOT offered, and
+       every button names the token you would give with the count you hold. A button that cannot work
+       is dimmed AND says why on hover, because the rule in this house is that a thing that does not
+       happen has to say so — the click handler already refuses in words, and a dimmed button that
+       explains itself is better than one you have to poke to find out. */
+    var tdef = state.pick ? (SPECIES[state.pick] || DECOR[state.pick] || {}) : null;
+    var want = tdef ? tdef.token : null;
+    var html = want
+      ? '<span class="tlab">Short of ' + TOKEN_ICON[want] + ' ' + want +
+        '? Trade 3 of another token for 1:</span>'
+      : '<span class="tlab">Pick a tree above first \u2014 a trade gives you the token THAT tree costs.</span>';
+    if (want) {
+      var i;
+      for (i = 0; i < TOKENS.length; i++) {
+        if (TOKENS[i] === want) continue;        /* you cannot give the token you are buying */
+        var have = state.tokens[TOKENS[i]] || 0;
+        var can = have >= 3;
+        html += '<button data-trade="' + TOKENS[i] + '"' + (can ? '' : ' class="dim"') +
+                ' title="' + (can ? 'Give 3 ' + TOKENS[i] + ', get 1 ' + want
+                                 : 'Needs 3 ' + TOKENS[i] + ' and you have ' + have) + '">' +
+                TOKEN_ICON[TOKENS[i]] + ' ' + TOKENS[i] + ' <b>' + have + '</b></button>';
+      }
     }
     els.tradeRow.innerHTML = html;
   }
@@ -5661,8 +5681,11 @@ function boot() {
     if (buy(state.pick, state.qty)) { saveLocal(); renderShop(); renderHud(); renderBoard(); }
   });
   if (els.tradeRow) els.tradeRow.addEventListener('click', function (ev) {
-    var to = ev.target && ev.target.getAttribute ? ev.target.getAttribute('data-trade') : null;
-    if (!to) return;
+    /* `give`, NOT `to`. It was called `to` and it is the token you HAND OVER — the one you are
+       trading toward is the picked tree's own token, which is the other argument of trade(). A
+       variable named for the wrong end of the swap is how a reader talks themselves into a bug. */
+    var give = ev.target && ev.target.getAttribute ? ev.target.getAttribute('data-trade') : null;
+    if (!give) return;
     /* A SWAP THAT SILENTLY DOES NOTHING IS A BUG REPORT WAITING TO HAPPEN.
        Owner, 2026-10-02: "i think the swap mechanics is broken. ie swap 3 tokens for 1 in nursery.
        nothing happens?"
@@ -5671,24 +5694,26 @@ function boot() {
          1. no tree is picked, and the trade needs one, because the token you are trading TOWARD is
             the token the picked tree costs;
          2. you clicked the token you are already holding enough of, i.e. from === to.
-       Both now say why. The rule in this house is that a thing that does not happen has to say so. */
+       Both now say why. The rule in this house is that a thing that does not happen has to say so.
+       (The row no longer OFFERS case 2 -- see renderShop -- but the handler still refuses it in
+       words, because a button is not the only way to reach this code.) */
     if (!state.pick) {
       note('Pick the tree you want first \u2014 the trade gives you the token THAT tree costs.', 'warn');
       return;
     }
     var def = SPECIES[state.pick] || DECOR[state.pick];
     if (!def) return;
-    if (to === def.token) {
-      note('You already have ' + state.tokens[to] + ' ' + to + ', and that is what this tree costs.', 'warn');
+    if (give === def.token) {
+      note('You already have ' + state.tokens[give] + ' ' + give + ', and that is what this tree costs.', 'warn');
       return;
     }
-    if ((state.tokens[to] || 0) < 3) {
-      note('A trade needs 3 ' + to + ' and you have ' + (state.tokens[to] || 0) + '.', 'warn');
+    if ((state.tokens[give] || 0) < 3) {
+      note('A trade needs 3 ' + give + ' and you have ' + (state.tokens[give] || 0) + '.', 'warn');
       return;
     }
-    if (trade(to, def.token)) {
+    if (trade(give, def.token)) {
       saveLocal(); renderShop(); renderHud();
-      note('Traded 3 ' + to + ' for 1 ' + def.token + '.', 'good');
+      note('Traded 3 ' + give + ' for 1 ' + def.token + '.', 'good');
     }
   });
   if (els.btnSave) els.btnSave.addEventListener('click', function () {
