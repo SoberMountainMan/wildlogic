@@ -230,6 +230,10 @@
     border:1px solid #2c4436;background:#0f1a14;color:#cfe0d4}
   .coderow button{flex:0 1 auto;font:inherit;font-size:11.5px;font-weight:800;padding:8px 10px;border-radius:9px;
     border:1px solid #2c4436;background:#22362b;color:#dbe8de;cursor:pointer;white-space:nowrap}
+  /* START A NEW GAME IS THE ONLY DESTRUCTIVE CONTROL IN THE GAME, so it is the only one that is
+     coloured like a warning. Not red-red -- it is a legitimate thing to want to do -- but clearly not
+     the same kind of button as "Copy code". */
+  .coderow button.danger{background:#f3e2e0;border-color:#c8a09a;color:#7a3a33}
   /* ---- THE FIELD GUIDE. Owner, 2026-09-21: "we cant tell what alien is what." The guide existed
      only as a PNG in `_shots` — a file on the build machine, not a thing a player can open — so a
      cut naming its weed was the only identification the game gave. This puts it in the game, and it
@@ -364,6 +368,17 @@
       <div class="coderow">
         <button id="btnLink">Copy a share link</button>
         <button id="btnFile">Save to a file</button>
+      </div>
+      <!-- START AGAIN, BECAUSE OTHERWISE THERE IS NO WAY TO.
+           Owner, 2026-10-03: "is there a way to reset a game? testers need a way to see the new things
+           like the shade or blackwood and cant do it if they saved a game?"
+           There was none -- the sheet had copy, load, share and save-to-file, and a player with a save
+           was stuck with it for ever. That is a real gap for anyone testing a change, and it is a gap
+           for a player too: a hillside you have ruined should be recoverable.
+           TWO TAPS, NOT ONE. The first tap puts the current save code in the box and asks; the second
+           does it. A single button that wipes a game on a mis-tap is not a feature. -->
+      <div class="coderow">
+        <button id="btnNew" class="danger">Start a new game</button>
       </div>
     </div>
     <footer>
@@ -5249,7 +5264,7 @@ function boot() {
              'apPill', 'apNow', 'goalChip', 'parrotPill', 'parrotNow', 'parrotCap',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
              'mIntro', 'btnIntro', 'introClose', 'introAp', 'introLeft', 'introBin',
-             'codeIn', 'btnSave', 'btnLoad', 'btnLink', 'btnFile', 'mBoard', 'boardDate', 'boardList', 'boardReward',
+             'codeIn', 'btnSave', 'btnLoad', 'btnLink', 'btnFile', 'btnNew', 'mBoard', 'boardDate', 'boardList', 'boardReward',
              'boardClose', 'mShop', 'shopDate', 'shopSeeds', 'shopDecor', 'shopName', 'qty',
              'qMinus', 'qPlus', 'btnBuy', 'tradeRow', 'shopClose', 'mCard', 'cardTitle', 'cardBody',
              'cardLink', 'cardOk'];
@@ -5606,6 +5621,37 @@ function boot() {
       note('This browser would not let me write a file \u2014 use Copy code instead.', 'warn');
     }
   });
+  /* ---------------------------------------------------------------- starting again
+     Two taps. The first hands the player their save code -- so the game they are about to lose is in
+     their hands before it goes -- and arms the button. The second starts a fresh hillside. */
+  var newArmed = 0;
+  if (els.btnNew) els.btnNew.addEventListener('click', function () {
+    if (!newArmed) {
+      newArmed = 1;
+      var code = encodeSave(state);
+      if (els.codeIn) { els.codeIn.value = code; els.codeIn.select && els.codeIn.select(); }
+      els.btnNew.textContent = 'Tap again to start over';
+      note('Your save code is in the box above \u2014 copy it first if you want this hillside back. ' +
+           'Tap the button again to start a new game.', 'warn');
+      setTimeout(function () {
+        if (!newArmed) return;
+        newArmed = 0;
+        if (els.btnNew) els.btnNew.textContent = 'Start a new game';
+      }, 12000);
+      return;
+    }
+    newArmed = 0;
+    if (els.btnNew) els.btnNew.textContent = 'Start a new game';
+    try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+    state = newState();
+    GROUND = null;                      /* the baked ground belongs to the old hillside */
+    if (els.notes) els.notes.textContent = '';
+    if (els.codeIn) els.codeIn.value = '';
+    saveLocal(); renderHud(); renderBoard(); renderShop();
+    note('A new hillside. Day 1.', 'good');
+    modalEls.forEach(function (m) { m.hidden = true; });
+  });
+
   if (els.btnLoad) els.btnLoad.addEventListener('click', function () {
     var s = decodeSave(els.codeIn ? els.codeIn.value : '');
     if (!s) { note('That code did not read. Check for a missing character.', 'warn'); return; }
