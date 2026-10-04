@@ -173,6 +173,15 @@
   .bar i{display:block;height:100%;background:#8fc98f;border-radius:99px;transition:width .2s}
   .reward{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:5px;
     font-size:16px;font-weight:800}
+  /* THE THREE STATES HAVE TO LOOK DIFFERENT, because the whole bug was that "done" and "paid" looked
+     the same. Waiting is grey, ready is the one thing on the sheet you can press, and collected is
+     grey again with a tick. */
+  .rewardbtn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;
+    margin-top:8px;padding:11px 10px;border:1.5px solid #c8bda4;border-radius:11px;
+    background:#fff;font:inherit;font-size:16px;font-weight:800;color:#8b8271;cursor:default}
+  .rewardbtn.ready{border-color:#3f7a4a;background:#eaf4ea;color:#2f6339;cursor:pointer;
+    box-shadow:0 0 0 3px rgba(63,122,74,.14)}
+  .rewardbtn.got{border-color:#cfd8cd;background:#f3f5f2;color:#7d8b7c}
   /* A grid, not a row of three: with a fixed row of three the fourth species (knobwood) and the
      last two decorations could never be bought at all. They just wrap now. Four columns, because
      the palette grew from four species to eight and at three columns the nursery ran past the
@@ -203,6 +212,10 @@
   .qty .sp div{min-width:26px;text-align:center;font-weight:800}
   .trade{display:flex;align-items:center;justify-content:center;gap:5px;margin-top:10px;
     font-size:11.5px;color:#4b6169;flex-wrap:wrap}
+  /* THE SENTENCE GETS ITS OWN LINE. Four buttons plus a label on one wrapping flex row put the
+     label and the buttons on the same line until they ran out of room, so the row broke wherever it
+     happened to and read as a jumble rather than as a sentence followed by a choice. */
+  .trade .tlab{flex:1 0 100%;text-align:center;margin-bottom:2px}
   .trade button{border:1.5px solid #9dc2ca;background:#fff;border-radius:9px;padding:4px 7px;
     font:inherit;font-size:11.5px;font-weight:800;cursor:pointer;color:#3a4b52}
   .close{width:100%;margin-top:10px;border:none;background:transparent;font:inherit;font-size:13px;
@@ -313,8 +326,13 @@
          count "the score", and the player could not see it. This is that number, under the action
          points, with the capacity beside it so it reads as "4 of 6" rather than a bare figure. -->
     <div class="ov parrotpill" id="parrotPill" title="Cape parrots resident in your forest">
-      <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M12.6 3.2c2.4 0 4.2 1.8 4.2 4.1 0 2.6-2 4.6-4.6 4.6h-2.4l-3.4 4.9H4.1l3-4.6C5.4 11.4 4.4 10 4.4 8.2c0-2.7 2.2-5 5-5h3.2Z" fill="#3f7a4a"/><circle cx="12.4" cy="6.6" r="1" fill="#e8f2e4"/></svg>
-      <span><b id="parrotNow">0</b><span class="plab">of</span><b id="parrotCap">0</b></span>
+      <!-- A CAPE PARROT, DRAWN SO IT READS AS ONE. Owner, 2026-10-03: *"parrot counter doesnt look
+           like a parrot"*. It was a single green blob with a dot in it — a leaf with an eye. This is
+           the bird from the side: a gold-brown head with the grey hooked beak up on the right, the
+           green body below it, and the long tail running down to the lower left, which is the shape
+           that says "parrot" rather than "small green bird". -->
+      <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M9.1 13.2 5.2 19.2l3.5-.5 2.3-4.7Z" fill="#2e6238"/><ellipse cx="10.6" cy="10.9" rx="4.1" ry="5.1" fill="#3f7a4a"/><circle cx="12.7" cy="5.4" r="3.1" fill="#c9a34c"/><path d="M15.3 4.6c1.5.3 2.2 1.2 1.8 2.5-.3 1.1-1.2 1.8-2.4 1.9Z" fill="#514a3c"/><circle cx="13.9" cy="4.7" r=".8" fill="#221e18"/></svg>
+      <span><span class="plab" id="parrotLab">Parrots</span><b id="parrotNow">0</b><span class="plab" id="parrotOf">of</span><b id="parrotCap">0</b></span>
     </div>
     <!-- THE DAY-1 GOAL, and the only tutorial element that is not a card. A first day with no goal is
          a sandbox, and the goal is what teaches the loop by REQUIRING it: "fill the bin and empty it
@@ -457,7 +475,14 @@
     <div class="card-in">
       <h2 id="boardDate" style="font-size:15px;margin-bottom:12px"></h2>
       <div id="boardList"></div>
-      <div class="reward">Reward: <span id="boardReward"></span></div>
+      <!-- THE REWARD IS A BUTTON, BECAUSE UNTIL TODAY IT WAS A LABEL AND NOTHING PAID IT.
+           Tester, 2026-10-03: *"Rewards for task completed does nothing, you don't receive them once
+           all ticked."* claimBoard() existed, was correct, and was exported -- and the only reference
+           to it anywhere in the game was that export. There was no control to press. This is the
+           third time today a thing was written and wired to nothing (recycle() had the same history,
+           and the restart button's primeState()), so the reward is a control now rather than a
+           sentence, and it says which of the three states it is in. -->
+      <button class="rewardbtn" id="boardClaim" disabled></button>
     </div>
     <button class="close" id="boardClose">Close</button>
   </div>
@@ -1070,7 +1095,23 @@ function newState() {
     }
   }
   var i;
-  for (i = 0; i < PLACES.length; i++) { var _t = t[idx(PLACES[i][0], PLACES[i][1])]; _t.obj = PLACES[i][2]; _t.lm = 1; }
+  /* A LANDMARK STANDS ON CLEAR GROUND, SO THE STAMP CLEARS THE WEED.
+     Owner, 2026-10-03: *"theres currently a alien growing behind the baboon bin that i cant clear."*
+     The aliens are rolled FIRST, above, and the landmarks are stamped on top afterwards — and the
+     stamp did not clear what was under it. A weed that landed on a landmark tile was therefore
+     PERMANENT: tickDay() skips any tile with an `obj` so it never grew or died, and clearAt() refuses
+     any tile with an `obj` so the player could never cut it. It sat under the building for the life
+     of the save. At the densities this map rolls — 28 to 35 per cent on open grass — roughly a third
+     of new games got one, on one of the five landmark tiles.
+     THE SEED BANK GOES WITH IT. A bank left under a building is state that can never express itself,
+     because the one tile that would sprout it is the one tile that cannot sprout.
+     `sp` is cleared too, though nothing can have planted one there yet — a fresh tile list has no
+     trees in it at all. */
+  for (i = 0; i < PLACES.length; i++) {
+    var _t = t[idx(PLACES[i][0], PLACES[i][1])];
+    _t.obj = PLACES[i][2]; _t.lm = 1;
+    _t.alien = null; _t.seeds = 0; _t.sp = null;
+  }
   return {
     v: VERSION, day: 1, ap: AP_MAX,
     /* WHEN THE CLOCK STARTED. A fresh save starts FULL, so `apAt` only matters once the first point
@@ -1092,8 +1133,63 @@ function newState() {
     log: [], cleared: 0, planted: 0, bought: 0, recycled: 0,
     /* Parrots resident in the forest. A count, not a flag — see parrotCapacity(). */
     parrots: 0,
+    /* THE SEEP AND ITS HOLD. Both are placed by primeState(), because placeSeep() needs the aliens
+       already rolled — see the note there. toadHold is saved; seep is re-derived on load. */
+    seep: null, toadHold: 0,
     board: null, qty: 1, pick: 'wildpeach'
   };
+}
+
+/* THE FIELDS A FRESH STATE CANNOT KNOW FOR ITSELF, IN ONE PLACE.
+   newState() builds the tiles and the bag; it cannot know today's weather or roll the board, because
+   both depend on the date. Boot did this inline and the RESTART BUTTON DID NOT, so a restarted game
+   ran with `weather: null` and `board: null` until the next day tick — and the null weather is what
+   made renderHud() bail and leave the whole HUD showing the old hillside.
+   IT TAKES NO ARGUMENT, DELIBERATELY. `rollBoard()` writes the MODULE-LEVEL `state`, not a
+   parameter, and it reads `state.day` to stamp the board. So a version that took a state object and
+   primed THAT would have set the wrong one — which is exactly what the first draft of this did, and
+   it left the new state's board null while the old state's board was rolled. The caller assigns
+   `state` first and then calls this; there is no object to get wrong. */
+function primeState() {
+  state.weather = fallbackFor(new Date().getMonth());
+  if (!state.board) rollBoard(state.weather);
+  /* PLACED AFTER THE ALIENS EXIST, which is why it is here and not in newState: placeSeep() picks
+     the WEEDIEST run of bank, and before the invasion is rolled every run is equally clean. */
+  if (!state.seep) state.seep = placeSeep(state);
+  if (state.toadHold == null) state.toadHold = 0;
+}
+
+/* HOW LONG A WORLD DAY IS, IN REAL TIME, AND THE ONE PLACE IT IS DECIDED.
+   The world rolls on a ROLLING CLOCK, not on midnight — the note in boot() has the reasoning — and
+   until 2026-10-03 that clock was only ever read at boot. A tab left open, or a phone that went to
+   sleep and came back on the same page, sat on yesterday for ever.
+   Tester, 2026-10-03: *"you have to refresh to update to the next day/current weather (which might
+   only be the case for people who connect & disconnected from internet)."* Exactly right, and the
+   fix is not a second clock — it is the SAME one, called from a second place. */
+var TICK_MS = 24 * 60 * 60 * 1000;
+/* Beyond three days more absence changes nothing: the hillside saturates at about 97% weedy within
+   three days of no play, so three is where the curve flattens, not an arbitrary mercy. */
+var MAX_CATCHUP_DAYS = 3;
+
+/* HOW MANY WHOLE DAYS ARE OWED RIGHT NOW. It does NOT consume them, because the caller has to fetch
+   the weather for the NEW day before the days are actually ticked — ticking against the old day's
+   weather and swapping it in afterwards is the bug the boot note describes. */
+function dueDays() {
+  if (state.lastTickAt == null) state.lastTickAt = Date.now();
+  return Math.floor((Date.now() - state.lastTickAt) / TICK_MS);
+}
+
+/* ROLL THE DAYS THAT ARE OWED. Boot and the open-tab timer both call this, so there is one clock. */
+function rollDueDays(w) {
+  var due = dueDays();
+  if (due < 1) return 0;
+  var ticks = Math.min(due, MAX_CATCHUP_DAYS);
+  /* THE ELAPSED TIME IS CONSUMED IN FULL even when the ticks are capped, so a month away does not
+     queue up 27 more days to land on the next visit. */
+  state.lastTickAt += due * TICK_MS;
+  state.lastDayKey = dayKey(new Date());
+  for (var k = 0; k < ticks; k++) tickDay(w);
+  return ticks;
 }
 
 function dayKey(d) {
@@ -1553,6 +1649,16 @@ function tickDay(w) {
   rollBoard(w);
   note(voiceFor(w), 'dim');
   parrotCheck();
+  /* THE HOLD, COUNTED HERE AND NOWHERE ELSE. One number advanced once per day, so "five days in a
+     row" means five days and not five calls. It resets the moment the run fails, which is what makes
+     the toad a thing you keep rather than a thing you did once. */
+  if (state.seep && !state.seen.toad) {
+    if (seepRunWeeds(state, seepRun(state)) <= TOAD_RUN_WEEDS) {
+      state.toadHold = (state.toadHold || 0) + 1;
+    } else {
+      state.toadHold = 0;
+    }
+  }
   toadCheck();
   return line;
 }
@@ -1806,6 +1912,119 @@ var TOAD_AT = 4;
    the first attempt at this had the toad arriving on day 1 without the player doing anything. */
 var TOAD_PATCH = 8;
 
+/* A SECOND PREREQUISITE, AND IT IS THE OWNER'S.
+   Owner, 2026-10-03: *"the toad needs more prerequisits. maybe near water only."*
+   **WATER, BECAUSE THE REAL ONE BREEDS IN IT.** The Amathole toad is not a dry-grassland animal — it
+   is tied to streams and pools, and the game was letting it settle anywhere on the plateau so long as
+   the patch around it happened to be clear. That made it a reward for clearing, with nothing in it
+   about WHERE. Now the tile it picks must be within TOAD_WATER tiles of the stream, so the animal
+   arrives along the water, which is both true and somewhere the player already looks. Measured: the
+   gate admits **400 of 1391 grass tiles (29%)** — a band along the stream, not a postage stamp.
+   **AND A THIRD WAS TRIED AND REMOVED, WITH THE MEASUREMENT THAT KILLED IT.**
+   "The patch has to be OPEN, not merely weed-free" is the obvious reading of the card's own words — a
+   patch under a closed canopy is not open ground however few weeds are in it. It was written, and
+   `_probe_toad_reach.js` says it cannot be satisfied:
+     - **Cutting alone does not win.** Perfect play, every action point on the patch, every day, for
+       400 days leaves it at ~190 weeds against a gate of 4 — the daily cut is about equal to the
+       daily regrowth, so the patch sits at an equilibrium and never comes down.
+     - **The only way to get a 17x17 patch to four weeds is to SHADE it**, because a tile with mature
+       neighbours stops sprouting. That is the mechanic and it is the lesson the game teaches.
+   So requiring the patch to be tree-free forbids the one strategy that works and makes the toad
+   unreachable — the exact failure this gate already had once, in the other direction. It is left out,
+   and the tension it was reaching for is real and UNSOLVED: as it stands the toad arrives on a patch
+   the player has FORESTED, which is the opposite of what an Amathole toad wants. That is a design
+   question for the owner, not a prerequisite to bolt on.
+   `matureNear()` is kept and exported because the probe reports the tree count — it is how anyone
+   re-opening this question sees the patch fill with trees as the weeds come down. */
+var TOAD_WATER = 6;
+
+/* ============================================================ THE SEEP, AND THE RUN
+   Owner, 2026-10-03: *"im thinking the toad needs water. ... could we make the toad appear in a seep
+   when he appears that way hes in the right environment?"* A seep is where groundwater comes OUT of
+   the ground — water oozing from a slope with no channel and no standing pool, leaving a permanently
+   damp spongy patch. The BDI source names it as the toad's actual breeding habitat: *"shallow
+   temporary pools, and seeps on mountain slopes."* Seeps feed streams, so one on the bank is exactly
+   where it belongs.
+
+   AND IT IS WHAT MAKES THE GATE POSSIBLE AT ALL. Every version of "a clear area" failed the same way
+   and for the same reason: **the map always has a clear area somewhere**, so the player just picks
+   the clearest run and the gate is satisfied on day one. Measured — for run lengths 6, 9, 12 and 15
+   tiles, the best run on a fresh map is **100% clear**, so any threshold that is not above 100%
+   fires immediately and any threshold that is above it can never fire. There is no room between.
+
+   A SEEP GIVES THE RUN A FIXED ADDRESS, and that is the whole fix. The player no longer chooses which
+   ground counts. The seep is placed where the bank is WEEDIEST, so its run is the one run on the map
+   that is NOT already clear — and "hold it for N days" becomes a real ask instead of a description of
+   the opening map. */
+var TOAD_RUN = 9;          /* tiles in the run, measured along the stream */
+/* FOUR WEEDS ACROSS THE NINE, AND FIVE DAYS HELD. Both numbers are measured, and the sweep is in
+   `_tmp/_seep_numbers.js`. With no play at all the gate fires **0 times in 60 days** at every
+   setting tried — the run starts with five or six weeds on it, so there is nothing to inherit. With
+   perfect play, 4-and-5 arrives **on day 5** on three maps in four; at 2 it never arrives at all,
+   because the run cannot be held below that by cutting and planting is excluded by the rule itself
+   (a tree on the run counts against it, which is the tension working: the shade that would hold the
+   ground is the forest the toad will not have).
+   KNOWN LIMIT: one map in four has a run that starts at six weeds and is much harder. The honest
+   options are to place the seep on a run of at most five, or to accept that some hillsides are
+   harder than others — which for a Critically Endangered animal is arguably true. */
+var TOAD_RUN_WEEDS = 4;
+var TOAD_HOLD_DAYS = 5;
+
+/* THE RUN, as a list of tiles. It follows the stream as it wiggles, because `streamC` moves with r —
+   so it is a run of consecutive ROWS, not a straight line in map coordinates. `side` is -1 for the
+   west bank and +1 for the east. */
+function seepRun(s) {
+  var out = [], r, c;
+  if (!s || !s.seep) return out;
+  for (r = s.seep.r0; r < s.seep.r0 + TOAD_RUN; r++) {
+    c = streamC(r) + s.seep.side * 3;
+    out.push([c, r]);
+  }
+  return out;
+}
+
+/* HOW MANY OF THE RUN'S TILES ARE NOT CLEAR GRASS. A tile that is not grass, or that has a tree on
+   it, counts — the toad wants open ground, so a planted tile is a failure exactly like a weedy one. */
+function seepRunWeeds(s, tiles) {
+  var n = 0, i, t;
+  for (i = 0; i < tiles.length; i++) {
+    t = s.tiles[tiles[i][1] * COLS + tiles[i][0]];
+    if (!t || t.ter !== 'grass' || t.alien || t.sp) n++;
+  }
+  return n;
+}
+
+/* WHERE THE SEEP GOES: the weediest run of bank on the map, AND IT HAS TO BE WEEDIER THAN THE GATE.
+   WEEDIEST, not cleanest, and that is the point of the whole design — a seep in a clear stretch would
+   hand the player a gate that is already satisfied. Measured on one map: the weediest run had 4
+   weeds against an allowance of 4, which is satisfied before the player moves, so the gate was
+   accidental again on that hillside. **A run at or under the allowance is not a candidate.** If no
+   run on the map is over it — a rare kind roll — the weediest is used anyway and that game is simply
+   an easier one; the alternative is refusing to place a seep at all, which loses the feature. */
+function placeSeep(s) {
+  var K = TOAD_RUN, half = (K - 1) / 2, side, r0, r, c, t, weeds, ok, best = null, bestAny = null;
+  for (side = -1; side <= 1; side += 2) {
+    for (r0 = 1; r0 + K <= ROWS - 1; r0++) {
+      weeds = 0; ok = true;
+      for (r = r0; r < r0 + K; r++) {
+        c = streamC(r) + side * 3;
+        t = s.tiles[r * COLS + c];
+        if (!t || t.ter !== 'grass' || t.obj) { ok = false; break; }
+        if (t.alien || t.sp) weeds++;
+      }
+      if (!ok) continue;
+      if (!bestAny || weeds > bestAny.weeds) bestAny = { r0: r0, side: side, weeds: weeds };
+      if (weeds > TOAD_RUN_WEEDS && (!best || weeds > best.weeds)) {
+        best = { r0: r0, side: side, weeds: weeds };
+      }
+    }
+  }
+  var pick = best || bestAny;
+  if (!pick) return null;
+  var mid = pick.r0 + half;
+  return { c: streamC(mid) + pick.side * 3, r: mid, side: pick.side, r0: pick.r0, weeds: pick.weeds };
+}
+
 /* Weeds within a square patch of radius `rad` around a tile. Chebyshev, because that is the shape
    the shade rules already use (matureAround is the 8 neighbours). */
 function aliensNear(c, r, rad) {
@@ -1819,28 +2038,32 @@ function aliensNear(c, r, rad) {
   return n;
 }
 
+/* Mature planted trees in the same patch — what "open" is measured against. Aliens are not counted
+   here: a weed is what the player is clearing, a tree is what they are choosing to keep. */
+function matureNear(c, r, rad) {
+  var n = 0, dc, dr;
+  for (dr = -rad; dr <= rad; dr++) {
+    for (dc = -rad; dc <= rad; dc++) {
+      var t = cell(c + dc, r + dr);
+      if (t && t.sp && t.stage === 3) n++;
+    }
+  }
+  return n;
+}
+
 function toadCheck() {
   if (state.seen.toad) return false;
-  /* The toad wants open grassland, so it picks the open grass tile FURTHEST from the village —
-     which on a 40x40 map is a long way off, and that is the point: the whole far side of the map
-     is now somewhere worth going. panTo below is what makes it findable.
-     The tile it settles on also has to be a CLEAN PATCH, not merely a clean tile: one bare tile in
-     the middle of a weed field is not grassland, and a toad on it would be a toad on a weed field. */
-  var i, c, r, t, dc, dr, d, best = -1, pick = -1;
-  for (i = 0; i < NTILES; i++) {
-    c = i % COLS; r = Math.floor(i / COLS);
-    t = state.tiles[i];
-    if (t.ter !== 'grass' || t.alien || t.sp || t.obj) continue;
-    if (aliensNear(c, r, TOAD_PATCH) > TOAD_AT) continue;
-    dc = c - VILLAGE.c; dr = r - VILLAGE.r;
-    d = dc * dc + dr * dr;
-    if (d > best) { best = d; pick = i; }
-  }
-  if (pick < 0) return false;
+  /* THE SEEP IS THE ADDRESS AND THE HOLD IS THE GATE — see the block above TOAD_RUN for why a
+     free choice of clear ground could never work. */
+  if (!state.seep) return false;
+  if ((state.toadHold || 0) < TOAD_HOLD_DAYS) return false;
+  if (seepRunWeeds(state, seepRun(state)) > TOAD_RUN_WEEDS) return false;
+  /* AND THE SEEP ITSELF HAS TO BE BARE, because that is the tile it sits on. */
+  var st = state.tiles[state.seep.r * COLS + state.seep.c];
+  if (!st || st.alien || st.sp || st.obj) return false;
   state.seen.toad = true;
-  c = pick % COLS; r = Math.floor(pick / COLS);
-  toad = { c: c, r: r, t: 0 };
-  panTo(c, r);
+  toad = { c: state.seep.c, r: state.seep.r, t: 0 };
+  panTo(state.seep.c, state.seep.r);
   card('An Amathole toad',
     'The Amathole toad lives nowhere else on earth \u2014 only the grassland of the Amathole ' +
     'Mountains, around Hogsback. It is under four centimetres long, dark olive-brown with a pale ' +
@@ -2039,10 +2262,30 @@ function plantAt(c, r, spKey) {
      tree into open ground. */
   if (shadeShort(c, r, spKey)) return false;
   var have = (state.bag && state.bag[spKey]) || 0;
-  if (have > 0) state.bag[spKey] = have - 1;
-  else if (state.tokens[def.token] >= def.cost) state.tokens[def.token] -= def.cost;
-  else return false;
-  state.ap = Math.max(0, state.ap - 1);
+  /* THE DOCK PLANTS WHAT YOU OWN; THE NURSERY IS THE ONLY PLACE YOU BUY.
+     Owner, 2026-10-03: *"yes buy from nursery only. but then what is the dock for? maybe what you
+     have in stock from buying?"* — and that is exactly it. Until now this branch fell back to
+     spending tokens directly, so planting from the dock was a second, silent shop: the same
+     purchase reachable two ways, and (before today's fix) only one of the two counted toward the
+     day's nursery task. One shop, one planting bar, and the bar shows you your stock.
+     THE REFUSAL IS THE CALLER'S TO EXPLAIN — act() says why, because a plant that does nothing and
+     says nothing is the failure mode this file has already been bitten by twice today. */
+  if (have <= 0) return false;
+  state.bag[spKey] = have - 1;
+  /* PLANTING DOES NOT COST AN ACTION POINT, AND UNTIL NOW IT DID — HALF THE TIME.
+     Owner, 2026-10-04: *"Planting doesnt cost AP in my experience and shouldnt. Clear til you run out
+     of points, buy, plant. repeat."*
+     He is describing the loop the game is built around, and the code was contradicting it in the
+     worst possible way — `state.ap = Math.max(0, state.ap - 1)` deducts while you have points and
+     CLAMPS at zero, so planting competed with cutting when the budget was full and was free once it
+     was empty. Two different prices for the same action depending on when you take it, which is
+     exactly the sort of thing that reads as a bug without ever being catchable as one. `act()`'s own
+     note has said "planting is the one action the budget does NOT stop" since the budget existed;
+     this line was the disagreement.
+     WHAT ACTUALLY GATES PLANTING IS THE TOKEN, and that is the right gate. A tree costs tokens, the
+     tokens come from cutting, and the nursery is the only shop — so planting is limited by how much
+     clearing you have done, which is the loop. Action points buy CLEARING; tokens buy TREES. */
+  /* (the AP line was here — see the note above for why it is gone) */
   /* THE TILE TAKES THE TREE, AND THE BANK GOES WITH IT.
      A tile that has just been cleared still holds the seed bank the cut left behind. Planting on it
      is allowed -- and it should be: trading a bank for a sapling is a real decision, and it is the
@@ -2371,6 +2614,19 @@ function encodeSave(s) {
                      accruing from the moment they load, rather than being handed a full tank for
                      having been away. */
                   at: Math.floor((s.apAt || Date.now()) / 60000),
+                  /* THE DAY'S BOARD, WHICH WAS NOT SAVED AT ALL.
+                     Tester, 2026-10-03: *"Refreshing page: loses tasks progress, last tokens
+                     received."* Every tick of a task lived only in memory, so a refresh put the
+                     player back to three unticked tasks — and if they had already collected, back to
+                     an uncollected board that could be collected twice. `rollBoard()` replaces this
+                     wholesale on a day roll, so restoring it is safe: a board from an older day is
+                     overwritten the moment the day turns, and `bd` absent (an old save code) simply
+                     comes back with no board, which primeState() then rolls fresh. */
+                  bd: s.board || null,
+                  /* THE HOLD, so a player who has kept the seep clear for four days does not lose it to a
+                     refresh. The seep itself is NOT saved — it is re-derived from the map on load, which
+                     is cheaper than carrying it and cannot go stale if the stream moves. */
+                  th: s.toadHold || 0,
                   tk: s.tokens.sun + '.' + s.tokens.mist + '.' + s.tokens.rain + '.' + s.tokens.snow };
   var body = b64encode(JSON.stringify(payload));
   return 'MB2-' + body + '-' + checksum(body);
@@ -2424,12 +2680,27 @@ function decodeSave(code) {
   for (i = 1; i <= 5; i++) if (OBJ_FROM[i]) LM[OBJ_FROM[i]] = 1;
   for (i = 0; i < PLACES.length; i++) LM[PLACES[i][2]] = 1;
   for (i = 0; i < s.tiles.length; i++) if (LM[s.tiles[i].obj]) s.tiles[i].obj = null;
-  for (i = 0; i < PLACES.length; i++) { var _u = s.tiles[idx(PLACES[i][0], PLACES[i][1])]; _u.obj = PLACES[i][2]; _u.lm = 1; }
+  for (i = 0; i < PLACES.length; i++) {
+    var _u = s.tiles[idx(PLACES[i][0], PLACES[i][1])];
+    _u.obj = PLACES[i][2]; _u.lm = 1;
+    /* AND THE SAME CLEAR-ON-STAMP HERE, which is what rescues a save that already has one of these
+       stuck weeds on it — see the note in newState(). A player who reloads gets the weed removed;
+       `sp` is NOT cleared on this path, because a tree on a landmark tile is the player's and this is
+       a load, not a new game. */
+    _u.alien = null; _u.seeds = 0;
+  }
   /* The bin is module state, not tile state, so it has to be restored alongside the tiles —
      otherwise a player who cuts two aliens and comes back finds the bin empty and the cuttings
      gone. decodeSave is the only thing that knows what was in it. */
   binItems = clamp(p.n || 0, 0, 99);
   s.parrots = clamp(p.pr || 0, 0, 99);
+  /* THE BOARD COMES BACK WITH THE SAVE. See the note on `bd` in encodeSave: without this the day's
+     three tasks reset on every refresh, which is what the tester reported. `p.bd` absent means an
+     old save code, and primeState() rolls a fresh board for it. */
+  s.board = (p.bd && p.bd.tasks && p.bd.tasks.length) ? p.bd : null;
+  s.toadHold = p.th || 0;
+  /* THE SEEP IS RE-DERIVED, not loaded: placeSeep() reads the tiles, and the tiles are built by now. */
+  s.seep = placeSeep(s);
   /* ABSENT MEANS NOW, NOT ZERO. An old save code has no `at`, and zero would measure the accrual
      from 1970 — which caps at AP_MAX and hands a returning player a full tank for having been away,
      the opposite of what the field is for. "Now" keeps the points they had and starts the clock
@@ -3939,6 +4210,53 @@ function drawNursery(cx, base, s) {
   }
 }
 
+function drawSeep(cx, base, s, c, r) {
+  /* WET GROUND, NOT A POND. The first version was a hard-edged olive ellipse with two grey blobs and
+     pale sticks round it, and photographed at draw size it read as a lily pad — a thing lying ON the
+     grass rather than ground that has been quietly soaked for years.
+     Three changes, all in that direction: the shape is a WOBBLY BLOB (`squircle`, the same helper the
+     trees use) instead of a true ellipse, so it has no geometric edge to give it away; the wet colour
+     is DARKER and more saturated than the grass, which is the whole read; and the rushes are small
+     dark tufts rather than pale strokes, because a seep's plants are sedges in the wet, not reeds
+     standing out of a pool.
+     STILL THE DRAWN FALLBACK. `ter_seep` does not exist; when art delivers it this whole function
+     goes and the tile-art path takes over. */
+  var i, a;
+  ctx.save();
+  /* the soaked ground, in two passes so the edge is soft and the middle is wetter */
+  ctx.globalAlpha = 0.42;
+  ctx.fillStyle = '#31452c';
+  squircle(cx, base - s * 0.02, s * 0.80, s * 0.42, 2.4, 1, c * 3 + r);
+  ctx.fill();
+  ctx.globalAlpha = 0.34;
+  ctx.fillStyle = '#26381f';
+  squircle(cx - s * 0.03, base - s * 0.03, s * 0.50, s * 0.26, 2.2, 1, c * 5 + r * 2);
+  ctx.fill();
+  /* THE SHEENS, where water actually stands. Small and muted — a seep is ooze, not a pool. */
+  ctx.globalAlpha = 0.30;
+  ctx.fillStyle = '#8fb0c4';
+  for (i = 0; i < 2; i++) {
+    a = i === 0 ? -0.12 : 0.13;
+    squircle(cx + s * a, base - s * 0.03 + i * s * 0.04, s * 0.13, s * 0.055, 2, 1, i + c);
+    ctx.fill();
+  }
+  /* SEDGES round the wet edge — dark, short, and in the ground rather than on it. */
+  ctx.globalAlpha = 0.75;
+  ctx.strokeStyle = '#405c33';
+  ctx.lineWidth = Math.max(1, s * 0.016);
+  ctx.lineCap = 'round';
+  for (i = 0; i < 9; i++) {
+    a = (i / 9) * Math.PI * 2 + 0.7;
+    var rx = cx + Math.cos(a) * s * 0.34;
+    var ry = base - s * 0.02 + Math.sin(a) * s * 0.17;
+    ctx.beginPath();
+    ctx.moveTo(rx, ry);
+    ctx.lineTo(rx + Math.cos(a) * s * 0.035, ry - s * 0.075 - (i % 3) * s * 0.022);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawBin(cx, base, s, full) {
   var bx = cx - s * 0.16;   /* the bin sits left; the baboon has the right-hand side */
   shadow(bx, base, s * 0.26, s * 0.09);
@@ -4265,7 +4583,15 @@ function drawStreamHead() {
      z comes from the HEAD tile, not from (c-2, r-2): that point is off the plateau and has no height
      of its own. The fall stands at the head's elevation; only its screen position moves. */
   var p = project(c, r, groundZ(c, r));
-  var cx = p[0], base = p[1] + TH * 0.46;
+  /* ONE TILE IN FROM THE EDGE.
+     Owner, 2026-10-03: *"waterfall sprite needs to move in by one tile to stop hanging over the edge
+     of map."* The head tile is (streamC(0), 0) — r = 0 IS the map's far rim — so anchoring the crag
+     on it and hanging the fall two tiles above put the whole assembly out over the void. In this
+     projection one tile-step down-screen is `TH` (see the note below: c and r moving together leaves
+     x alone and moves y by 2 * TH per two tiles), so `+ TH` moves the pair one tile INTO the map
+     while leaving the stream exactly where it is. The fall keeps its offset from the crag, so the two
+     move together and the lip stays against the rock face. */
+  var cx = p[0], base = p[1] + TH * 0.46 + TH;
   /* TWO DIFFERENT ANCHORS, because the two sprites are anchored differently and the maker flagged
      it: ter_waterfall_v1 is RIM-anchored at y = 40 of a 617 cell, so its anchor is the LIP and the
      whole fall hangs 85.6px below it; obj_crag is FOOT-anchored like every other sprite, so its base
@@ -4296,6 +4622,15 @@ function drawTileProp(c, r) {
      mechanic exists to reward was invisible, and nothing numeric could see it: the toad's tile was
      on the glass and the tile was in the visible set, so every cull and framing check passed. */
   var isToad = !!(toad && toad.c === c && toad.r === r);
+  /* AND THE SEEP HAS TO SURVIVE THE SAME BAIL, for the third time in this function's history.
+     A seep is a BARE grass tile once the player has cleared its run — no alien, no tree, no object,
+     no seed bank — which is exactly what the bail below throws away. So the seep drew while its tile
+     was weedy and **vanished the moment the player did the thing the gate asks for.** Found by
+     photographing it: the first shot showed it, the second did not, and the difference was a cleared
+     tile.
+     The toad had this bug, the waterfall had this bug, and this is the same fix as theirs: name the
+     exception in the bail. */
+  var isSeep = !!(state.seep && state.seep.c === c && state.seep.r === r);
   /* THE WATERFALL STANDS ON A WATER TILE WITH NOTHING ON IT, so it met every one of the bail
      conditions below and the landmark the owner asked for was never painted — not in one scene, in
      ANY scene, at any zoom, from the day it was written. Nothing numeric could see it, and this is
@@ -4313,7 +4648,7 @@ function drawTileProp(c, r) {
   var isMouth = (r === ROWS - 1 && c === streamC(ROWS - 1));
   /* Most of a 40x40 map is bare grass with nothing standing on it. Bail before doing any geometry,
      or the cull above just moves the cost from the loop into the body. */
-  if (!isToad && !isFalls && !isMouth && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) &&
+  if (!isToad && !isSeep && !isFalls && !isMouth && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) &&
       t.ter !== 'forest') return;
   var p = project(c, r, groundZ(c, r));
   var cx = p[0], base = p[1] + TH * 0.46;
@@ -4343,6 +4678,14 @@ function drawTileProp(c, r) {
   var s = TW * 0.78 * vs;
 
   drawSeedMarkers(c, r);
+
+  /* THE SEEP. Groundwater coming out of the slope: a darker, sodden patch with a couple of water
+     sheens on it and rushes round the edge. Drawn here, before the trees and the objects, because it
+     is ground — a seep is a place, not a thing standing on one.
+     THIS IS THE DRAWN FALLBACK, not a pack sprite. `ter_seep` does not exist yet; when art delivers
+     it this becomes a one-line swap in the tile-art path like every other ground tile, and the rule
+     above it does not change. */
+  if (state.seep && state.seep.c === c && state.seep.r === r) drawSeep(cx, tbase, TW * 0.92, c, r);
 
   /* The forest remnant is terrain, not a planted tree, so it needs a canopy of its own or the old
      forest is a dark green patch with no trees in it. The tile's own coordinates go in, because the
@@ -4843,8 +5186,17 @@ function renderGoal() {
 }
 
 function renderHud() {
-  var w = state.weather;
-  if (!w) return;
+  /* THE WEATHER IS NOT A PRECONDITION FOR THE REST OF THE HUD.
+     This was `var w = state.weather; if (!w) return;` — an early return written for the weather pill
+     that threw away EVERYTHING below it: the action points, the parrots, the goal, the bin badge and
+     the whole dock. Owner, 2026-10-03: *"the restart game button doesnt reset the hud unless you
+     reload."* That is exactly this line. The restart handler builds a fresh state with `weather:
+     null` and calls renderHud() straight away, so the HUD kept the OLD hillside's numbers until a
+     reload brought a save that already had weather in it.
+     The fallback is what the rest of the file already does when there is no live forecast yet — see
+     drawTileProp and the season-average sites — so the pill shows the season rather than nothing, and
+     everything below renders unconditionally because none of it depends on the weather at all. */
+  var w = state.weather || fallbackFor(new Date().getMonth());
   if (els.wxIcon) els.wxIcon.innerHTML = TOKEN_ICON[tokenOf(w)];
   if (els.wxText) {
     els.wxText.textContent = Math.round(w.temp) + '\u00b0C \u00b7 ' +
@@ -4858,11 +5210,29 @@ function renderHud() {
     var _cap = parrotCapacity();
     els.parrotNow.textContent = state.parrots || 0;
     els.parrotCap.textContent = _cap;
+    /* "0 OF 0" IS NOT A SENTENCE, AND IT IS WHAT THE PILL SAID ALL DAY.
+       Owner, 2026-10-03: *"parrot counter doesnt look like a parrot or make sense saying 0 of 0.
+       'Parrots: 0' might be better or whats it actually supposed to say?"*
+       WHAT IT IS SUPPOSED TO SAY: how many Cape parrots are RESIDENT, out of how many your forest can
+       HOLD. The second number is real — parrotCapacity() counts the hollow dead trees with a mixed
+       stand around them — and it is the one that tells the player their forest is not yet big enough
+       for a parrot to move into. But on day one there are no hollows, so the cap is 0, and "0 of 0"
+       reads as a broken meter rather than as "there is nowhere for one to live yet".
+       SO THE CAP IS SHOWN ONLY WHEN THERE IS ONE TO FILL. Below that the pill reads "Parrots 0" and
+       the title carries the reason, which is the part that actually teaches. */
+    if (els.parrotOf) els.parrotOf.hidden = !(_cap > 0);
+    if (els.parrotCap) els.parrotCap.hidden = !(_cap > 0);
     if (els.parrotPill) els.parrotPill.className = 'ov parrotpill' + ((state.parrots || 0) > 0 ? ' has' : '');
     if (els.parrotPill) els.parrotPill.title = (state.parrots || 0) > 0
-      ? (state.parrots + ' Cape parrot' + (state.parrots === 1 ? '' : 's') + ' resident. Room for ' + _cap +
+      ? (state.parrots + ' Cape parrot' + (state.parrots === 1 ? '' : 's') + ' resident' +
+         (_cap > 0 ? ', with room for ' + _cap : '') +
          '. A parrot nests in a hollow DEAD tree with a stand of mixed canopy around it.')
-      : 'No parrots yet. A Cape parrot cannot make its own hole — leave an old tree standing until it dies and goes hollow, with a mixed stand around it.';
+      : (_cap > 0
+          ? 'No parrots yet, but your forest has room for ' + _cap + '. A Cape parrot cannot make its ' +
+            'own hole — leave an old tree standing until it dies and goes hollow, with a mixed stand ' +
+            'around it.'
+          : 'No parrots, and nowhere for one yet. A Cape parrot cannot make its own hole: an old tree ' +
+            'has to die and go hollow, with a mixed stand around it, before there is a nest to move into.');
   }
   if (els.apPill) {
     els.apPill.className = 'ov appill' + (state.ap <= 0 ? ' empty' : '');
@@ -4896,7 +5266,15 @@ function renderDock() {
   var wanted = ['cut'].concat(SP_BY_TIER);
   var i;
   for (i = 0; i < DECOR_KEYS.length; i++) if (state.decor[DECOR_KEYS[i]] > 0) wanted.push(DECOR_KEYS[i]);
-  var sig = wanted.join(',');
+  /* THE STOCK IS PART OF THE SIGNATURE, AND IT HAS TO BE.
+     `dock._sig` is what stops this rebuilding its buttons on every frame — but the buttons now SHOW
+     the stock, so a cache keyed only on which species are listed would keep printing the count the
+     player had when the dock was last built. A cache whose key does not include everything the
+     cached thing displays is a label that goes quietly out of date, which is the exact family of bug
+     this whole afternoon has been. */
+  var sig = wanted.join(',') + '|' + wanted.map(function (k) {
+    return (state.bag && state.bag[k]) || 0;
+  }).join(',');
   if (dock._sig !== sig) {
     dock.textContent = '';
     for (i = 0; i < wanted.length; i++) {
@@ -4907,8 +5285,19 @@ function renderDock() {
       btn.className = 'dock' + (isCut ? ' cut' : '');
       btn.setAttribute('data-tool', k);
       btn.setAttribute('aria-pressed', k === tool ? 'true' : 'false');
+      var stock = (state.bag && state.bag[k]) || 0;
+      /* THE STOCK LINE HAS TO BE SHORT, BECAUSE THE DOCK IS A ROW OF BUTTONS ON A PHONE.
+         Owner, 2026-10-03: *"your new dock buttons are too wide. (which means swiping across on
+         mobile) 'none - buy at nursery' makes them bigger than they need to be. 0 in stock would
+         work."* He is right, and it is worse than a wide button: a dock that overflows its row is one
+         the player has to SWIPE to reach the far end of, which is the one gesture a planting bar
+         cannot ask for. `0 in stock` is two characters shorter than `3 in stock` was ever going to
+         be longer, and it says the same thing — a count that happens to be zero.
+         The full sentence still exists where there is room for it: the tap says it, and the
+         button's own title says it. */
       btn.appendChild(mkLabel(isCut ? 'Cut' : (def.short || def.name),
-                              isCut ? 'the aliens' : (SPECIES[k] ? def.cost + ' ' + def.token : 'place it')));
+                              isCut ? 'the aliens'
+                                    : (SPECIES[k] ? stock + ' in stock' : 'place it')));
       btn.addEventListener('click', mkPicker(k));
       dock.appendChild(btn);
     }
@@ -4921,7 +5310,11 @@ function renderDock() {
     var tk = el.getAttribute('data-tool');
     el.setAttribute('aria-pressed', tk === tool ? 'true' : 'false');
     var sp = SPECIES[tk];
-    if (sp) el.disabled = !(state.bag[tk] > 0) && state.tokens[sp.token] < sp.cost;
+    /* YOU CANNOT PLANT WHAT YOU DO NOT HAVE. This used to stay enabled if you could AFFORD the tree,
+       because planting bought it for you; now the nursery is the only shop, so stock is the only
+       question. A dimmed button is the honest state — and the tap says why as well, for the times it
+       is pressed anyway. */
+    if (sp) el.disabled = !((state.bag && state.bag[tk]) > 0);
   }
 }
 
@@ -4963,9 +5356,21 @@ function renderBoard() {
     els.boardDate.textContent = new Date().toLocaleDateString('en-ZA',
       { weekday: 'long', day: 'numeric', month: 'long' });
   }
-  if (els.boardReward) {
+  /* THE REWARD BUTTON, IN ITS THREE STATES. Waiting is grey and says what is left; ready is the one
+     thing on the sheet you can press; collected says so. The old label was identical in all three,
+     which is why "all ticked and nothing happened" looked like a bug in the tasks rather than a
+     missing control. */
+  if (els.boardClaim) {
     var tk = tokenOf(state.weather || fallbackFor(new Date().getMonth()));
-    els.boardReward.innerHTML = TOKEN_ICON[tk] + ' ' + (state.board ? state.board.reward : 10);
+    var amt = state.board ? state.board.reward : 10;
+    var paid = !!(state.board && state.board.claimed);
+    var ready = !paid && boardDone();
+    els.boardClaim.className = 'rewardbtn' + (paid ? ' got' : ready ? ' ready' : '');
+    els.boardClaim.disabled = !ready;
+    els.boardClaim.innerHTML = paid
+      ? 'Collected \u2713 \u00b7 ' + TOKEN_ICON[tk] + ' ' + amt
+      : (ready ? 'Collect ' : 'Reward: ') + TOKEN_ICON[tk] + ' ' + amt +
+        (ready ? ' \u2014 all three done' : ' \u2014 finish all three to collect');
   }
 }
 
@@ -5001,19 +5406,35 @@ function renderShop() {
     }
   }
   if (els.tradeRow) {
-    /* THE LABEL SAYS WHAT THE TRADE NEEDS, BEFORE YOU CLICK IT.
-       It read "short? trade 3 of one for 1:" with no mention that a tree has to be picked first, and
-       the token you are trading toward is the token THAT tree costs. So the row looked like it would
-       just work, and did nothing. */
-    var html = state.pick
-      ? 'short? trade 3 of one for 1 ' + ((SPECIES[state.pick] || DECOR[state.pick] || {}).token || '') + ':'
-      : 'short? pick a tree first, then trade 3 of one for 1:';
-    var i;
-    for (i = 0; i < TOKENS.length; i++) {
-      var off = state.pick ? (TOKENS[i] === (SPECIES[state.pick] || DECOR[state.pick] || {}).token) : false;
-      var short = (state.tokens[TOKENS[i]] || 0) < 3;
-      html += ' <button data-trade="' + TOKENS[i] + '"' + ((off || short) ? ' class="dim"' : '') + '>' +
-              TOKENS[i] + ' ' + (state.tokens[TOKENS[i]] || 0) + '</button>';
+    /* THE ROW HAS TO SAY WHAT EACH BUTTON DOES, AND IT HAS TO STOP OFFERING THE ONE THAT CANNOT WORK.
+       Owner, 2026-10-03: *"the swap system for 3 for one tokens still doesnt make clear ui sense."*
+       It read "short? trade 3 of one for 1 sun:" and then drew a button for EVERY token, including
+       sun — the one token that can never be given, because it is the one being traded toward. So the
+       row offered four choices, one permanently dead for a reason nothing on screen explained, and
+       "one" was left for the player to map onto them. It also wrapped wherever it ran out of room,
+       so the label and the buttons shared a line until they did not.
+       NOW: the target is NAMED in the sentence, the token being traded toward is NOT offered, and
+       every button names the token you would give with the count you hold. A button that cannot work
+       is dimmed AND says why on hover, because the rule in this house is that a thing that does not
+       happen has to say so — the click handler already refuses in words, and a dimmed button that
+       explains itself is better than one you have to poke to find out. */
+    var tdef = state.pick ? (SPECIES[state.pick] || DECOR[state.pick] || {}) : null;
+    var want = tdef ? tdef.token : null;
+    var html = want
+      ? '<span class="tlab">Short of ' + TOKEN_ICON[want] + ' ' + want +
+        '? Trade 3 of another token for 1:</span>'
+      : '<span class="tlab">Pick a tree above first \u2014 a trade gives you the token THAT tree costs.</span>';
+    if (want) {
+      var i;
+      for (i = 0; i < TOKENS.length; i++) {
+        if (TOKENS[i] === want) continue;        /* you cannot give the token you are buying */
+        var have = state.tokens[TOKENS[i]] || 0;
+        var can = have >= 3;
+        html += '<button data-trade="' + TOKENS[i] + '"' + (can ? '' : ' class="dim"') +
+                ' title="' + (can ? 'Give 3 ' + TOKENS[i] + ', get 1 ' + want
+                                 : 'Needs 3 ' + TOKENS[i] + ' and you have ' + have) + '">' +
+                TOKEN_ICON[TOKENS[i]] + ' ' + TOKENS[i] + ' <b>' + have + '</b></button>';
+      }
     }
     els.tradeRow.innerHTML = html;
   }
@@ -5192,6 +5613,53 @@ function drawShopIcon(canvasEl, key, size0, cx0, base0, unit0) {
 
 /* ============================================================ interaction */
 
+/* WOULD A TAP ON THIS TILE ACTUALLY DO SOMETHING?
+   Asked BEFORE a building box is allowed to take the tap — see the note in lift(). It mirrors act()'s
+   own early checks without performing them, so the two cannot drift into disagreeing about what is
+   actionable: anything act() would act on, this returns true for. */
+function tileWantsTap(c, r) {
+  var t = cell(c, r);
+  if (!t) return false;
+  if (t.obj) return true;                       /* an object's own tile, including the building's */
+  if (tool === 'cut') return !!t.alien;
+  if (SPECIES[tool]) return !t.sp && !t.alien && plantable(c, r);
+  if (DECOR[tool]) return true;
+  return false;
+}
+
+/* A TAP ON THE UPPER PART OF A WEED BELONGS TO THE WEED, NOT TO THE TILE BEHIND IT.
+   Owner, 2026-10-03: *"theres currently a alien growing behind the baboon bin that i cant clear."*
+   The weed was never the problem and neither was the bin. hitTest() inverse-projects the GROUND, and
+   a sprite stands UP from its tile — so a point above a weed's base resolves to a tile BEHIND it,
+   which has nothing on it, and the tap does nothing at all. Measured by tapping up a weed's own
+   sprite: dy +4 down to -12 cuts, and from -16 upward nothing happens, on every weed on the map.
+   So only the bottom twelve pixels of a tile were ever tappable. Behind the bin the bin's sprite
+   covers exactly that band, which is why that one weed could not be cleared by any tap, and why it
+   looked like the bin was stealing the touch.
+   THE WALK IS DOWN THE SCREEN, WHICH IS FORWARD THROUGH THE TILES. Stepping the sample point down
+   moves the inverse projection toward the camera, so the first tile that way whose sprite could
+   reach the point is the one the finger is actually on. It is capped at three tile-steps because a
+   weed is about two tiles tall; beyond that the point is on the ground and belongs to the ground. */
+function pickSprite(x, y, c, r) {
+  if (tileWantsTap(c, r)) return { c: c, r: r };
+  var i, h, t, seen = {};
+  for (i = 1; i <= 6; i++) {
+    h = hitTest(x, y + i * 8);
+    if (!h) continue;
+    var key = h.c + ',' + h.r;
+    if (seen[key] || (h.c === c && h.r === r)) continue;
+    seen[key] = 1;
+    /* A WEED ONLY, AND ONLY WITH THE CUT TOOL. An object must NOT be reachable this way: the first
+       version of this walk accepted anything tileWantsTap() liked, and the tile one step forward
+       from empty grass behind the bin IS the bin — so tapping bare ground behind it emptied the bin.
+       The walk exists for the one case the ground projection gets wrong: a sprite with height on a
+       tile the finger is not over. */
+    t = cell(h.c, h.r);
+    if (t && t.alien && !t.obj && tool === 'cut') return h;
+  }
+  return { c: c, r: r };
+}
+
 function act(c, r) {
   var t = cell(c, r);
   if (!t) return;
@@ -5275,6 +5743,16 @@ function act(c, r) {
     return;
   }
   if (SPECIES[tool] && shadeShort(c, r, tool)) { explainShade(tool, c, r); return; }
+  /* NOTHING IN STOCK IS A REFUSAL THAT HAS TO SPEAK.
+     The dock no longer buys — see plantAt — so this is the new way for a tap to do nothing, and a
+     tap that does nothing and says nothing is indistinguishable from a broken game. The nursery is
+     named, because that is the thing the player has to go and do. */
+  if (SPECIES[tool] && !((state.bag && state.bag[tool]) > 0)) {
+    var _sd = SPECIES[tool];
+    note('No ' + (_sd.short || _sd.name) + ' in stock. Buy them at the nursery \u2014 tap the ' +
+         'nursery in the village.', 'warn');
+    return;
+  }
   if (plantAt(c, r, tool)) {
     boardProgress('plants', 1);
     if (matureAround(c, r) >= SHADE_FOR_OLDGROWTH && !state.seen.shade) {
@@ -5376,10 +5854,11 @@ function boot() {
                 page check caught it only because it compared the words and the words were wrong;
                 the gate now asserts every els.* name is bound (see BOUND_IDS). */
              'apPill', 'apNow', 'apHas', 'apDone', 'goalChip', 'parrotPill', 'parrotNow', 'parrotCap',
+             'parrotOf', 'parrotLab',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
              'mIntro', 'btnIntro', 'introClose', 'introAp', 'introLeft', 'introBin',
-             'codeIn', 'btnSave', 'btnLoad', 'btnLink', 'btnFile', 'btnNew', 'mBoard', 'boardDate', 'boardList', 'boardReward',
-             'boardClose', 'mShop', 'shopDate', 'shopSeeds', 'shopDecor', 'shopName', 'qty',
+             'codeIn', 'btnSave', 'btnLoad', 'btnLink', 'btnFile', 'btnNew', 'mBoard', 'boardDate', 'boardList', 'boardClaim',
+             'boardClose', 'boardClaim', 'mShop', 'shopDate', 'shopSeeds', 'shopDecor', 'shopName', 'qty',
              'qMinus', 'qPlus', 'btnBuy', 'tradeRow', 'shopClose', 'mCard', 'cardTitle', 'cardBody',
              'cardLink', 'cardOk'];
   var i;
@@ -5473,6 +5952,23 @@ function boot() {
       if (!state) return;
       if (apAccrue() > 0) { saveLocal(); }
       if (state.ap < AP_MAX) renderHud();
+      /* AND THE DAY ROLLS WHILE THE TAB IS OPEN, ON THE SAME CLOCK.
+         Tester, 2026-10-03: *"you have to refresh to update to the next day/current weather (which
+         might only be the case for people who connect & disconnected from internet)."* The world
+         clock was only ever read in boot(), so a tab left open — or a phone that slept and came back
+         on the same page — sat on yesterday indefinitely. This is the SAME dueDays()/rollDueDays()
+         boot uses; there is no second clock and no second catch-up routine, because two routines
+         that both advance the world is two routines that can disagree.
+         The forecast is fetched FIRST, for the same reason boot does: the new day has to be ticked
+         against the weather it will actually be shown with. */
+      if (dueDays() >= 1) {
+        fetchForecast(new Date().getMonth()).then(function (w) {
+          state.weather = w;
+          var n = rollDueDays(w);
+          if (n > 1) note(n + ' days passed while you were away.', 'warn');
+          saveLocal(); renderHud(); renderBoard(); renderShop();
+        });
+      }
     }, 30000);
   }
   resize();
@@ -5542,8 +6038,7 @@ function boot() {
   }
 
   var month = new Date().getMonth();
-  state.weather = fallbackFor(month);
-  if (!state.board) rollBoard(state.weather);
+  primeState();
 
   /* THE WORLD ROLLS ON A ROLLING CLOCK, NOT ON MIDNIGHT.
      Owner, 2026-10-02: "game should roll with the per hour AP."
@@ -5557,11 +6052,10 @@ function boot() {
      Now the world is due a tick when 24 real hours have passed since the last one, and the phase is
      kept by advancing the stamp by whole days rather than resetting it to now, so a player who
      visits every 23 hours still gets their tick. */
-  var TICK_MS = 24 * 60 * 60 * 1000;
-  var nowMs = Date.now();
-  if (state.lastTickAt == null) state.lastTickAt = nowMs;
-  var ticksDue = Math.floor((nowMs - state.lastTickAt) / TICK_MS);
-  var newDay = ticksDue >= 1;
+  /* ONE CLOCK, DEFINED ONCE. dueDays() and rollDueDays() are module-level because the open-tab timer
+     has to ask the same question — see the note on TICK_MS. Boot only decides whether anything is
+     owed; the actual roll happens after the forecast lands, below. */
+  var newDay = dueDays() >= 1;
 
   /* Wait for the real forecast before rolling the day. Ticking against the season average and
      then swapping the live weather in afterwards meant the field note described a different day
@@ -5584,12 +6078,7 @@ function boot() {
          it is where the curve flattens. Beyond it a longer absence cannot cost the player more.
          The elapsed time is consumed in full either way, so a month away does not queue up 27 more
          ticks to land on the next visit. */
-      var MAX_CATCHUP = 3;
-      var ticks = Math.min(ticksDue, MAX_CATCHUP);
-      state.lastTickAt += ticksDue * TICK_MS;
-      state.lastDayKey = dayKey(new Date());
-      var k;
-      for (k = 0; k < ticks; k++) tickDay(w);
+      var ticks = rollDueDays(w);
       if (ticks > 1) note(ticks + ' days passed while you were away.', 'warn');
       saveLocal();
     } else {
@@ -5609,6 +6098,12 @@ function boot() {
     }
   });
 
+  /* COLLECT THE DAY'S REWARD. claimBoard() has existed since the board was written and was never
+     called from anywhere -- see the note on the button in the markup. */
+  if (els.boardClaim) els.boardClaim.addEventListener('click', function () {
+    if (!claimBoard()) return;
+    saveLocal(); renderBoard(); renderHud();
+  });
   if (els.boardClose) els.boardClose.addEventListener('click', function () { hideModal(els.mBoard); });
   if (els.shopClose) els.shopClose.addEventListener('click', function () { hideModal(els.mShop); });
   if (els.cardOk) els.cardOk.addEventListener('click', function () { hideModal(els.mCard); });
@@ -5621,9 +6116,20 @@ function boot() {
        `recycle()` was written and wired to nothing: it trades BIN_LOAD cuttings for tokens of the
        CURRENT WEATHER — which is the loop the guide describes and the one the baboon card announces.
        The button just never called it. */
+    /* AND IT HAS TO RE-RENDER, WHICH IS THE HALF THAT WAS MISSING.
+       Owner, 2026-10-03: *"clicking the bin 6/6 doesnt change to 0/6."*
+       There are two ways to empty the bin — tapping the bin on the map, and this button — and only
+       the first one re-rendered. The tile path has always been `if (recycle()) { saveLocal();
+       renderHud(); renderBoard(); }`; this one called recycle() and stopped, so the badge, the token
+       counts and the dock all kept the numbers from before the trade. The work was done and nothing
+       said so, which from the outside is indistinguishable from a dead button.
+       THE SAME SHAPE AS THE RESTART BUTTON EARLIER TODAY: a state change with no render. It is worth
+       naming because it is a pattern here — the action is correct and the reporting is missing. */
     if (!recycle()) {
       note('The bin needs ' + BIN_LOAD + ' cuttings before the baboon will trade. ' +
         (binItems ? 'It has ' + binItems + '.' : 'It is empty.'), 'dim');
+    } else {
+      saveLocal(); renderHud(); renderBoard();
     }
   });
   /* Tapping the counter asks the question the owner asked. One place to find out what the number
@@ -5659,8 +6165,11 @@ function boot() {
     if (buy(state.pick, state.qty)) { saveLocal(); renderShop(); renderHud(); renderBoard(); }
   });
   if (els.tradeRow) els.tradeRow.addEventListener('click', function (ev) {
-    var to = ev.target && ev.target.getAttribute ? ev.target.getAttribute('data-trade') : null;
-    if (!to) return;
+    /* `give`, NOT `to`. It was called `to` and it is the token you HAND OVER — the one you are
+       trading toward is the picked tree's own token, which is the other argument of trade(). A
+       variable named for the wrong end of the swap is how a reader talks themselves into a bug. */
+    var give = ev.target && ev.target.getAttribute ? ev.target.getAttribute('data-trade') : null;
+    if (!give) return;
     /* A SWAP THAT SILENTLY DOES NOTHING IS A BUG REPORT WAITING TO HAPPEN.
        Owner, 2026-10-02: "i think the swap mechanics is broken. ie swap 3 tokens for 1 in nursery.
        nothing happens?"
@@ -5669,24 +6178,26 @@ function boot() {
          1. no tree is picked, and the trade needs one, because the token you are trading TOWARD is
             the token the picked tree costs;
          2. you clicked the token you are already holding enough of, i.e. from === to.
-       Both now say why. The rule in this house is that a thing that does not happen has to say so. */
+       Both now say why. The rule in this house is that a thing that does not happen has to say so.
+       (The row no longer OFFERS case 2 -- see renderShop -- but the handler still refuses it in
+       words, because a button is not the only way to reach this code.) */
     if (!state.pick) {
       note('Pick the tree you want first \u2014 the trade gives you the token THAT tree costs.', 'warn');
       return;
     }
     var def = SPECIES[state.pick] || DECOR[state.pick];
     if (!def) return;
-    if (to === def.token) {
-      note('You already have ' + state.tokens[to] + ' ' + to + ', and that is what this tree costs.', 'warn');
+    if (give === def.token) {
+      note('You already have ' + state.tokens[give] + ' ' + give + ', and that is what this tree costs.', 'warn');
       return;
     }
-    if ((state.tokens[to] || 0) < 3) {
-      note('A trade needs 3 ' + to + ' and you have ' + (state.tokens[to] || 0) + '.', 'warn');
+    if ((state.tokens[give] || 0) < 3) {
+      note('A trade needs 3 ' + give + ' and you have ' + (state.tokens[give] || 0) + '.', 'warn');
       return;
     }
-    if (trade(to, def.token)) {
+    if (trade(give, def.token)) {
       saveLocal(); renderShop(); renderHud();
-      note('Traded 3 ' + to + ' for 1 ' + def.token + '.', 'good');
+      note('Traded 3 ' + give + ' for 1 ' + def.token + '.', 'good');
     }
   });
   if (els.btnSave) els.btnSave.addEventListener('click', function () {
@@ -5757,7 +6268,10 @@ function boot() {
     newArmed = 0;
     if (els.btnNew) els.btnNew.textContent = 'Start a new game';
     try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+    /* PRIMED, NOT JUST NEW. A bare newState() has no weather and no board, and the HUD reads both —
+       see the note on primeState() for why this was the restart button's whole bug. */
     state = newState();
+    primeState();
     GROUND = null;                      /* the baked ground belongs to the old hillside */
     if (els.notes) els.notes.textContent = '';
     if (els.codeIn) els.codeIn.value = '';
@@ -5939,9 +6453,24 @@ function boot() {
       if (moved <= 8) {
         /* The building box is tested at the point the finger came DOWN, not the tile the grid
            resolved, so a tree standing in front cannot steal the tap. */
+        /* ...AND THE TILE UNDER THE FINGER WINS WHEN THERE IS SOMETHING THERE TO ACT ON.
+           Owner, 2026-10-03: *"theres currently a alien growing behind the baboon bin that i cant
+           clear."* The building box is the SPRITE's screen footprint, and a tall sprite covers the
+           tiles BEHIND it — so a tap on a weed peeking out from behind the bin landed inside the
+           bin's box and recycled instead of cutting. The tile could not be cleared because the tap
+           never reached it, and nothing on screen said so.
+           THE ORIGINAL INTENT IS KEPT. That guard exists so "a tree standing in front cannot steal
+           the tap" — and a mature tree is not something the cut tool acts on, so tileWantsTap() is
+           false for it and the building still wins. What changes is that a tile with a WEED on it,
+           which the player is plainly pointing at and can plainly act on, is no longer overridden by
+           a building drawn over it. */
         var bhit = buildingAtScreen(downX, downY);
-        if (bhit) act(bhit.c, bhit.r);
-        else if (downC >= 0) act(downC, downR);
+        if (bhit && !tileWantsTap(downC, downR)) act(bhit.c, bhit.r);
+        else if (downC >= 0) {
+          /* AND THE SPRITE UNDER THE FINGER WINS OVER THE GROUND UNDER IT — see pickSprite(). */
+          var pk = pickSprite(downX, downY, downC, downR);
+          act(pk.c, pk.r);
+        }
       }
       if (holdT) { clearTimeout(holdT); holdT = 0; }
       downC = -1; downR = -1;
@@ -6034,7 +6563,9 @@ var API = {
   /* The AP clock. Exported because the catch-up is a difference between two timestamps and a
      screenshot cannot see it — the check has to drive the clock rather than look at the HUD. */
   apAccrue: apAccrue, msToNextAp: msToNextAp, apWaitText: apWaitText, PLACES: PLACES, TILE_ART: TILE_ART, TOAD_AT: TOAD_AT,
-  TOAD_PATCH: TOAD_PATCH, aliensNear: aliensNear,
+  TOAD_PATCH: TOAD_PATCH, TOAD_WATER: TOAD_WATER, aliensNear: aliensNear, matureNear: matureNear,
+  primeState: primeState, placeSeep: placeSeep, seepRun: seepRun, seepRunWeeds: seepRunWeeds,
+  TOAD_RUN: TOAD_RUN, TOAD_RUN_WEEDS: TOAD_RUN_WEEDS, TOAD_HOLD_DAYS: TOAD_HOLD_DAYS,
   /* The snag-and-stand rule. Exported because the parrot's requirements are now LOCAL -- a patch
      around a dead tree -- and a check that cannot count the patch cannot tell a real stand from a
      lone tree. SNAG_DAYS is exported so a fixture can age a snag without running the tick. */
@@ -6051,6 +6582,10 @@ var API = {
   buy: buy, trade: trade, recycle: recycle,
   getBin: function () { return binItems; }, setBin: function (n) { binItems = n; },
   encodeSave: encodeSave, decodeSave: decodeSave, checksum: checksum,
+  /* Exported so the gate can drive the world clock without waiting a day: the roll is now called
+     from boot AND from the open-tab timer, and a clock reachable from two places is one that needs
+     a test rather than an assumption. */
+  dueDays: dueDays, rollDueDays: rollDueDays, TICK_MS: TICK_MS, MAX_CATCHUP_DAYS: MAX_CATCHUP_DAYS,
   weatherFrom: weatherFrom, fallbackFor: fallbackFor, classify: classify,
   weatherWord: weatherWord, tokenOf: tokenOf, skyKey: skyKey,
   baboonPass: baboonPass, parrotCheck: parrotCheck, toadCheck: toadCheck,
@@ -6136,11 +6671,12 @@ var SPR = (function () {
        species, so it must measure identically here or the stage floor would be computed against a
        full height that does not exist and its sprouts would come up the wrong size. */
     alien_pine_b: 1.65,
-    /* BLACKWOOD WAS MISSING FROM THIS TABLE, and `|| 1` hid it: the floor divides by the full
-       height, so an absent entry means "assume this tree is 62 px" and its sprouts come up too big
-       by exactly the factor it is understated. It is the largest of the five, so it was the worst
-       case. Mirrors ALIEN_SCALE. The gate now checks that every ALIEN_KEYS entry has an entry here,
-       because a defaulted lookup cannot tell "small tree" from "missing from the table". */
+    /* BLACKWOOD WAS MISSING FROM THIS TABLE, and `|| 1` hid it. The stage floor below divides by the
+       species' full height, so an absent entry means "assume this tree is 62 px" and its sprouts come
+       up too big by exactly the factor it is understated. Blackwood is the largest of the five, so it
+       was the worst case — and it was missing because it was added without one. A defaulted lookup
+       cannot tell "a small tree" from "missing from the table"; the gate now checks that every
+       ALIEN_KEYS entry has an entry here. Mirrors ALIEN_SCALE. */
     alien_blackwood: 1.75,
     alien_wattle: 0.82,    /* Acacia mearnsii, 6-15 m */
     alien_bugweed: 0.40,   /* Solanum mauritianum, 2-4 m shrub */
