@@ -4934,10 +4934,19 @@ function drawTileProp(c, r) {
      pine so it would pass the bail today, but the fence is not the pine's business and it should not
      depend on one. */
   if (t.ter === 'plantation') {
-    if (terrainAt(c - 1, r) !== 'plantation') drawFenceEdge(c, r, 'e1');
-    if (terrainAt(c, r - 1) !== 'plantation') drawFenceEdge(c, r, 'e2');
-    if (terrainAt(c + 1, r) !== 'plantation') drawFenceEdge(c, r, 'e3');
-    if (terrainAt(c, r + 1) !== 'plantation') drawFenceEdge(c, r, 'e4');
+    /* TWO SIDES, NOT FOUR, AND NOT THE MAP EDGE.
+       Owner, 2026-10-04: *"the fence should only be on 2 sides. not the edges, we want to imply that
+       the plantation is encroaching on our map, not that the plantation is only 9 tiles big, its huge
+       but you cant see the rest of it."*
+       The block sits in the map's corner, so two of its sides are the EDGE OF THE WORLD — there is no
+       tile beyond them to fence against. Fencing those two would say "this stand ends here", which
+       is exactly the thing the owner does not want said: **a fence with no fence on two sides reads as
+       a corner of something much larger, and that is the whole point of the block.**
+       So an edge is fenced only when there is a real on-map tile beyond it. */
+    if (c - 1 >= 0 && terrainAt(c - 1, r) !== 'plantation') drawFenceEdge(c, r, 'e1');
+    if (r - 1 >= 0 && terrainAt(c, r - 1) !== 'plantation') drawFenceEdge(c, r, 'e2');
+    if (c + 1 < COLS && terrainAt(c + 1, r) !== 'plantation') drawFenceEdge(c, r, 'e3');
+    if (r + 1 < ROWS && terrainAt(c, r + 1) !== 'plantation') drawFenceEdge(c, r, 'e4');
   }
   /* THE WATERFALL STANDS ON A WATER TILE WITH NOTHING ON IT, so it met every one of the bail
      conditions below and the landmark the owner asked for was never painted — not in one scene, in
@@ -7223,11 +7232,14 @@ var SPR = (function () {
        The function is kept because the gate still reads it, and because a second plantation elsewhere
        on a bigger map would want the old convention back; it is simply not the one in the world.
        Leaving it wired here would draw the rail TWICE, once on the floor and once on the road. */
-    /* AND THE FENCE IS BACK ON THE PLANTATION TILE, which is where it was before the road round.
-       Owner: *"the fence needs to still be around the plantation 9 tiles".* With no road there is no
-       far side to hang it on, so it returns to the convention the eight fence tiles were built to:/n       the PLANTATION-side tile draws the rail, from the edges where the neighbour is not plantation. */
+    /* ALL NINE PLANTATION TILES PICK THE SAME FLOOR, AND NONE OF THEM PICKS A FENCE TILE.
+       Owner, 2026-10-04: *"all 9 plantation brown tiles should be the same plantation floor under the
+       trees."* The eight fence tiles carry their own DIRT ground, so picking one made the rim of the
+       block a different brown from the middle of it — nine tiles that are supposed to read as one
+       stand of pine came out as two materials. **The fence is drawn in the render pass now** (see
+       drawFenceEdge), so it does not need a ground tile to live on at all. */
     if (t.ter === 'plantation') {
-      var fsuf = plantationFenceId(c, r);
+      var fsuf = null;   /* never picked — the rail is drawn, not baked */
       if (fsuf && has('ter_fence_' + fsuf)) return 'ter_fence_' + fsuf;
     }
     /* HASH the variant per tile, never cycle it. `(c * 5 + r * 3) % 3` is `(2c) % 3` — the row term
