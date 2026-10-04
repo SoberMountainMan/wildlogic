@@ -942,11 +942,53 @@ function streamDist(c, r) { return Math.abs(c - streamC(r)); }
    running off the edge of the map" half of the ask. */
 function isWaterfall(c, r) { return r === 0 && c === streamC(0); }
 
+/* THE FORESTRY PLANTATION — THE ONE PLACE ON THE MAP THAT IS NOT WILD.
+   Owner, 2026-10-03: *"a way to identify the forestry pine plantation as a separate thing to rest
+   of map."* Until now there was no plantation: pines were one of four weeds scattered by the same
+   dice as everything else, so the block that a real Hogsback hillside is full of — even-aged pines
+   in rows, on a hard rectangular boundary, with a fence — simply was not on the map. What the
+   player met instead was a hillside where the pine happened to be common, which is a different
+   thing and teaches nothing.
+   WHAT MAKES IT SEPARATE IS THE SHAPE, NOT THE DENSITY. Everything else on this map is organic:
+   the remnant is a square only because a surviving patch has an edge, the stream meanders, the
+   weeds scatter. So the plantation is a RECTANGLE with a straight fence on its boundary, and its
+   trees stand on a lattice at fixed spacing with zero jitter. That regularity is the whole tell —
+   it is what a planted block looks like from the air next to a natural one.
+   WHERE IT SITS, AND WHY IT MOVED TWICE. First the far bank of the stream (c 32..39, r 5..19, 120
+   tiles) — that strip is the only part of the plateau with nothing on it, which was true and was not
+   the question. Then the upper-left rim (c 0..5, r 4..12, 54 tiles). Now here, and this is the one:
+   Owner, 2026-10-03: *"make it left corner, only 3 tiles deep ... same size as the remnant, but left
+   corner and then fence around it."*
+   **THE LEFT CORNER, AND THE SAME SIZE AS THE REMNANT — 3 x 3, nine tiles.** The remnant is the top
+   corner (c <= 2, r <= 2); this is the left corner (c 0..2, r 37..39). On the diamond those are the
+   two far corners, so the map opens with the old forest at one end and the planted block at the
+   other, and the pairing is the point: the same footprint, one grown and one planted, which is the
+   whole argument of the game stated as a shape.
+   `PLANTATION_PITCH` IS 1 — A PINE ON EVERY TILE. Owner: *"each with a pine."* At 1 the lattice is
+   every cell, so the block is a solid stand rather than a grid with floor showing between the trees.
+   The `% PITCH` in onPlantationLattice() is left in place rather than special-cased away, so the
+   spacing is still one number and still means what it says. */
+var PLANTATION = { c0: 0, r0: 37, c1: 2, r1: 39 };
+var PLANTATION_PITCH = 1;
+function inPlantation(c, r) {
+  return c >= PLANTATION.c0 && c <= PLANTATION.c1 && r >= PLANTATION.r0 && r <= PLANTATION.r1;
+}
+/* THE LATTICE, AND IT IS DELIBERATELY NOT A HASH. Every other placement in this game hashes the
+   cell (see jit) so that nothing lines up. Here the lining-up IS the subject: `(c - c0) % pitch`
+   and `(r - r0) % pitch` are measured from the block's own corner, so the rows are straight and
+   parallel and stay that way wherever the block is moved to. */
+function onPlantationLattice(c, r) {
+  return inPlantation(c, r) &&
+         ((c - PLANTATION.c0) % PLANTATION_PITCH === 0) &&
+         ((r - PLANTATION.r0) % PLANTATION_PITCH === 0);
+}
+
 function terrainAt(c, r) {
   var d = streamDist(c, r);
   if (d <= STREAM.half) return 'water';
   if (d === STREAM.half + 1) return 'bank';
   if (c <= REMNANT && r <= REMNANT) return 'forest';
+  if (inPlantation(c, r)) return 'plantation';
   return 'grass';
 }
 
@@ -1041,6 +1083,12 @@ function newState() {
                 : roll < dens * 0.90 ? 'bugweed' : 'bramble';
           seeds = ALIENS[alien].bank;
         }
+      } else if (ter === 'plantation') {
+        /* THE BLOCK IS PLANTED, NOT SCATTERED. Every other weed on this map is a die roll; these are
+           on the lattice, so the block opens as even-aged pines in straight rows. `alien_pine_b` is
+           the colder, bluer pine art painted for exactly this place — it is the same silhouette as
+           the hillside pine on purpose, so the tell is the ORDER and not the tree. */
+        if (onPlantationLattice(c, r)) { alien = 'pine'; seeds = ALIENS.pine.bank; }
       }
       t.push({ ter: ter, alien: alien, seeds: seeds, sp: null, stage: 0, age: 0,
                hollow: false, obj: null });
@@ -1355,7 +1403,13 @@ function plantable(c, r) {
      convenient one, and it has the consequence the toad needs: **the one tile it lands on is the one
      tile the player's own forest cannot take.** */
   if (state.seep && state.seep.c === c && state.seep.r === r) return false;
-  return !!t && t.ter === 'grass' && !t.obj;
+  /* PLANTATION GROUND IS PLANTABLE, AND IT HAS TO BE. The block is eight tiles wide, and a mature
+     tree only shades the eight tiles that touch it, so a ring planted round the OUTSIDE of a block
+     this size reaches the rim and not the middle — the player would be able to clear the pines and
+     never be able to end them. Letting them plant inside is what makes the block a problem with a
+     solution rather than a permanent brown rectangle. The floor keeps its plantation colour, which
+     is the honest record of what the ground was. */
+  return !!t && (t.ter === 'grass' || t.ter === 'plantation') && !t.obj;
 }
 
 function stats() {
@@ -1431,7 +1485,12 @@ function tickDay(w) {
          needs: **the tile the toad lands on is always ready, and the player's work is judged on the
          run rather than on a coin flip.** Same reasoning as `plantable()` refusing the seep — wet
          ground is wet ground whether you are planting or sprouting. */
-      if (t.ter !== 'grass' || t.obj || t.sp) continue;
+      /* THE PLANTATION GROUND SPROUTS LIKE ANY OTHER GROUND, because a planted block that could be
+         cleared once and stayed clear would not be a plantation — it would be a one-off gift. The
+         block reseeds pine (see pickAlien), so the only thing that ends it is the same thing that
+         ends everything else on this map: shade. That is the lesson, and the block is the largest
+         and most obvious place to learn it. */
+      if ((t.ter !== 'grass' && t.ter !== 'plantation') || t.obj || t.sp) continue;
       if (state.seep && state.seep.c === c && state.seep.r === r) continue;
       if (!t.alien && t.seeds > 0 && k.wet) {
         /* THE SEED BANK CLOSES UNDER A CLOSED CANOPY.
@@ -1629,6 +1688,11 @@ function tickDay(w) {
 
 function pickAlien(t) {
   if (t.lastAlien) return t.lastAlien;
+  /* THE PLANTATION RESEEDS ITSELF WITH PINE, AND ONLY PINE.
+     A block of forestry pine is a seed source; that is the whole reason it is hard to be rid of. A
+     cleared plantation tile that came back as bramble would make the block a normal piece of the
+     hillside with a brown floor, and the player would stop believing the floor means anything. */
+  if (t.ter === 'plantation') return 'pine';
   /* BLACKWOOD ARRIVES RARELY, AND THEN IT IS THE PLAYER'S PROBLEM.
      It is not on the hillside at the start -- a new invader turning up is an event, and it should
      be. Once it is here it is the only weed that ANSWERS the axe, because `t.lastAlien` means a cut
@@ -2536,7 +2600,7 @@ function decodeTiles(str) {
      up in the middle of the stream. `obj` is NOT touched here — it holds the player's decor as well
      as the landmarks, and decodeSave re-places the landmarks itself. */
   for (i = 0; i < NTILES; i++) {
-    if (out[i].ter !== 'grass' && out[i].ter !== 'forest') {
+    if (out[i].ter !== 'grass' && out[i].ter !== 'forest' && out[i].ter !== 'plantation') {
       out[i].alien = null; out[i].seeds = 0; out[i].sp = null;
       out[i].stage = 0; out[i].age = 0; out[i].hollow = false;
     }
@@ -3342,6 +3406,18 @@ var TILE_ART = {
   forest: { shades: ['#1e3b28', '#20402b', '#1c3725', '#22432d'],
             edge: '#1a3423',
             blob: 'rgba(200,235,200,0.11)', n: 12, r0: 0.060, r1: 0.110 },
+  /* THE PLANTATION FLOOR IS THE ONE GROUND THAT IS NOT GREEN — and it is the GRASS, recoloured.
+     This is the code-art fallback, and it is matched to the painted sheet's measured median,
+     rgb(149,120,87). Owner, 2026-10-03: *"i dont like the brown floor colour. lets make it like the
+     grass but brown"*, then *"light brown floor"*. Art's own sheet was a dark, saturated brown with a
+     strong diagonal plank texture that read as tilled earth; the replacement is the grass tile with
+     its hue moved to brown and its value lifted, so the block has the same texture and the same
+     three-variant variation as the field around it and differs only in colour. R-G is +29 where every
+     native ground is green-dominant (grass -25, forest -18, bank -5) — that inversion is what says
+     "not wild" before the player has read a single tree. */
+  plantation: { shades: ['#957857', '#987b5a', '#927554', '#9b7e5d'],
+            edge: '#7a6247',
+            blob: 'rgba(226,206,178,0.10)', n: 10, r0: 0.055, r1: 0.100 },
   water:  { shades: ['#5c8fa8', '#5f92ab', '#598ca5', '#6295ae'],
             edge: '#527e93',
             blob: 'rgba(255,255,255,0.20)', n: 3, r0: 0.220, r1: 0.140 },
@@ -4657,7 +4733,7 @@ function drawTileProp(c, r) {
      three stages since the beginning (0.26 / 0.56 / 1); the weeds never got them.
      `astage` runs 1, 2, 3 and is treated as 3 when absent, so every save written before this change
      draws exactly as it did. */
-  if (t.alien) drawAlien(t.alien, tx, tb, s * (ALIEN_SCALE[t.alien] || 1), t.astage);
+  if (t.alien) drawAlien(t.alien, tx, tb, s * (ALIEN_SCALE[t.alien] || 1), t.astage, t.ter);
   else if (t.sp) {
     /* A DEAD TREE IS DRAWN AS A BARE STANDING TRUNK, and that is the whole point of the mechanic:
        the player has to be able to SEE the thing a parrot nests in. There is no painted snag in the
@@ -6470,6 +6546,12 @@ var API = {
   WORLD_W: WORLD_W, WORLD_H: WORLD_H, WX0: WX0, WY0: WY0, GCX: GCX, GCY: GCY,
   WORLD_X0: WX_MIN, WORLD_Y0: WY_MIN,
   VILLAGE: VILLAGE, REMNANT: REMNANT,
+  /* The plantation, exported so the gate can check the block against the real map: that it does not
+     touch the stream, the remnant or a place, that its lattice is regular, and that its fence ring
+     closes. A layout rule that is only checked by looking at a screenshot is a layout rule that
+     drifts the first time someone moves a number. */
+  PLANTATION: PLANTATION, PLANTATION_PITCH: PLANTATION_PITCH,
+  inPlantation: inPlantation, onPlantationLattice: onPlantationLattice,
   project: project, bakePoint: bakePoint, groundZ: groundZ, buildGround: buildGround, blitGround: blitGround,
   tilePath: tilePath, extrude: extrude, onRim: onRim, eachVisible: eachVisible,
   drawCliff: drawCliff, cliffTone: cliffTone,
@@ -6608,6 +6690,10 @@ var SPR = (function () {
      shares a cell and must not share a size. */
   var SIZE = {
     alien_pine: 1.65,      /* Pinus patula, 20-30 m — a plantation pine is TALLER than the natives */
+    /* THE BLOCK'S PINE IS THE SAME TREE AT THE SAME SIZE. `alien_pine_b` is a repaint, not a second
+       species, so it must measure identically here or the stage floor would be computed against a
+       full height that does not exist and its sprouts would come up the wrong size. */
+    alien_pine_b: 1.65,
     /* BLACKWOOD WAS MISSING FROM THIS TABLE, and `|| 1` hid it. The stage floor below divides by the
        species' full height, so an absent entry means "assume this tree is 62 px" and its sprouts come
        up too big by exactly the factor it is understated. Blackwood is the largest of the five, so it
@@ -6620,6 +6706,7 @@ var SPR = (function () {
     alien_bramble: 0.32    /* Rubus, 1-3 m scrambler */
   };
   var rec = {}, nWant = 0, nGot = 0, failed = [], ready = false, on = true, started = false;
+  var tally = {};
   var status = 'idle';
 
   function sRef(f) { return REF[f] || TW * 0.78; }
@@ -6726,6 +6813,56 @@ var SPR = (function () {
     return null;
   }
 
+  /* THE FENCE READS THE SAME EDGE BITS AS THE RIVER, BECAUSE IT IS THE SAME EDGE GEOMETRY.
+     Art composed the eight fence tiles with `river.edge_geometry` so the rail lands on the diamond
+     edge the tile mates on, and verified the locus slope against the edge slope on all four
+     orientations (within 2%), so `e1..e4` and `c12..c41` mean here exactly what they mean above:
+     e1 upper-left, e2 upper-right, e3 lower-right, e4 lower-left, and c12/c23/c34/c41 the corners
+     between each adjacent pair.
+     ONE DIFFERENCE FROM THE RIVER, AND IT IS THE WHOLE POINT: the river's bank tiles are named by
+     the WATER side and the water tiles by the LAND side, because a shoreline is a boundary between
+     two grounds and either tile may draw it. A fence is drawn by the PLANTATION tile only — art
+     tested both sides drawing it and kept the doubled rail as evidence — so this asks a single
+     question, "where does my neighbour stop being plantation", and answers it from this tile.
+     Three or four differing edges has no tile (it does not occur on a rectangle) and returns null,
+     which falls through to the plain floor rather than drawing nothing at all. */
+  function plantationFenceId(c, r) {
+    var n = ter2(c - 1, r) !== 'plantation', e = ter2(c, r - 1) !== 'plantation',
+        s = ter2(c + 1, r) !== 'plantation', w = ter2(c, r + 1) !== 'plantation';
+    var k = (n ? 1 : 0) + (e ? 1 : 0) + (s ? 1 : 0) + (w ? 1 : 0);
+    if (k === 1) return n ? 'e1' : e ? 'e2' : s ? 'e3' : 'e4';
+    if (k === 2) {
+      if (n && e) return 'c12';
+      if (e && s) return 'c23';
+      if (s && w) return 'c34';
+      if (w && n) return 'c41';
+      return null;
+    }
+    return null;
+  }
+
+  /* THE ROAD AROUND THE BLOCK, AND THE FENCE NOW RIDES ON IT.
+     Owner moved the fence to the FAR side of the road — reading outward: **plantation, road, fence** —
+     which reverses the convention the fence tiles were built on. Art re-cut the set: the rails are
+     part of the ROAD tiles now, and `ter_road_e1`/`e4` are deleted, because with the rail outside the
+     two straights no longer meet at a shared vertex and `ter_road_corner` has to draw the turn
+     itself. So the plantation floor draws NO fence any more and the rail comes from the road.
+
+     WHICH TILE IS THE ROAD: the seven adjacent to the block.
+       (0,36) (1,36) (2,36)  ->  e2, rail on the EAST edge, which is the grass side
+       (3,37) (3,38) (3,39)  ->  e3, rail on the SOUTH edge, which is the grass side
+       (3,36)                ->  corner, the outside of the bend
+     ASKED OF THE RUNNING GAME, tile by tile, not reasoned on paper — and `(3,36)` is the reason the
+     corner has to carry both rails: **no orthogonal neighbour of it is plantation at all.** */
+  function plantationRoadId(c, r) {
+    if (ter2(c, r) !== 'grass') return null;
+    var cc = PLANTATION.c1 + 1, rr = PLANTATION.r0 - 1;      /* 3 and 36 — the corner */
+    if (c === cc && r === rr) return 'corner';
+    if (r === rr && c >= PLANTATION.c0 && c <= PLANTATION.c1) return 'e2';
+    if (c === cc && r >= PLANTATION.r0 && r <= PLANTATION.r1) return 'e3';
+    return null;
+  }
+
   /* A GROUND tile is the one thing in the pack that really is a full-bleed 2:1 diamond: its ink
      fills the whole cell, so it is drawn to the tile's own footprint rather than scaled out of a
      frame box. The grout goes down first in the terrain's own edge colour, so a hairline at the
@@ -6734,46 +6871,81 @@ var SPR = (function () {
      A CROWN is NOT a tile, whatever the manifest's anchor text says — it is a 1.37:1 blob with its
      own base point, and drawing it as a 2:1 diamond would stretch it and float it. It goes through
      put() like any other sprite. */
-  function tile(c, r) {
-    if (!on || !ready) return false;
-    var t = cell(c, r), e = null;
-    /* WATER AND BANK ARE PICKED BY EDGE, NOT BY VARIANT.
-       A full-bleed diamond can only say "this whole tile is water". A river is a BOUNDARY — water on
-       one side, land on the other — so with plain diamonds the bank can only ever be the diamond's
-       own four straight sides and the channel reads as a stair-stepped band of tiles. The 16 edge
-       tiles are what make it a stream, and they are in the pack as of round 3.
-       The edge tile is tried first; if this tile's edge configuration has no tile (three or four
-       edges differ, which a three-wide channel does not produce), it falls through to the variant. */
+  /* IS THIS TILE IN THE PACK, AND DID ITS IMAGE ACTUALLY DECODE? A pack containing a file and the
+     game being able to draw it are different facts, and the difference is exactly what a fallback
+     hides: `e.img.width` is 0 for a PNG that failed to decode, so the game quietly draws the code art
+     and everything still looks like a map. */
+  function has(id) { var e = rec[id]; return !!(e && e.img && e.img.width); }
+
+  /* WHICH PAINTED TILE THE GAME PICKS FOR A GROUND CELL, as an id.
+     Same reasoning as `edgeId` in the api below, and it exists for the same reason: the pack
+     containing a tile and the game CHOOSING it are two different facts, and only the second one is
+     on screen. It matters most for the fence, where the convention is about which side of a boundary
+     owns the rail — a screenshot cannot show you which of two tiles drew the line you can see.
+     `tile()` below reads through this, so there is one source of truth and a check on it is a check
+     on what is drawn. */
+  function groundTileId(c, r) {
+    var t = cell(c, r);
+    if (!t) return null;
+    /* WATER AND BANK ARE PICKED BY EDGE, NOT BY VARIANT. A full-bleed diamond can only say "this
+       whole tile is water". A river is a BOUNDARY, so with plain diamonds the channel reads as a
+       stair-stepped band of tiles; the edge tiles are what make it a stream. The edge tile is tried
+       first, and falls through to the variant when this tile's edge configuration has no painting
+       (three or four edges differ, which a three-wide channel does not produce). */
     if (t.ter === 'water' || t.ter === 'bank') {
       var suf = (t.ter === 'water') ? riverEdgeId(c, r) : bankEdgeId(c, r);
-      if (suf) e = rec['ter_' + t.ter + '_' + suf];
-      if (e && (!e.img || !e.img.width)) e = null;
+      if (suf && has('ter_' + t.ter + '_' + suf)) return 'ter_' + t.ter + '_' + suf;
     }
-    if (!e) {
-      /* HASH the variant per tile, never cycle it. `(c * 5 + r * 3) % 3` is `(2c) % 3` — the row term
-         vanishes modulo 3, so every tile took its variant from its COLUMN and the variants ran in
-         vertical stripes. drawGroundTile hashes its shade for exactly this reason (see TILE_ART).
+    /* THE FENCE IS AN EDGE TILE, AND IT IS DRAWN BY THE PLANTATION SIDE ONLY.
+       Owner's brief: a way to identify the plantation as a separate thing. Art built the floor and
+       eight fence autotiles and was explicit about the convention: *"Only the plantation-side tile
+       draws the fence; the tile on the far side is plain ground."* They tested both sides drawing it
+       and got a doubled rail. That is the opposite of how the river works — a bank tile names the
+       water side, because a shoreline can be split across the boundary and rejoin. A fence has
+       height, so it cannot: one of the two tiles has to own it, and it is the one inside the block.
+       So the fence is looked up FIRST and only on a plantation tile, from the edges where the
+       neighbour is NOT plantation. */
+    /* THE ROAD IS LOOKED UP BEFORE THE FLOOR, because a road tile is a GRASS tile carrying the road
+       and the rail — it is not plantation ground, and it must win over the plain grass variant. */
+    var rsuf = plantationRoadId(c, r);
+    if (rsuf && has('ter_road_' + rsuf)) return 'ter_road_' + rsuf;
+    /* THE FENCE IS NO LONGER DRAWN BY THE PLANTATION TILE.
+       It used to be: `plantationFenceId` asked "where does my neighbour stop being plantation" and
+       returned the fence autotile for this tile's own edge. The owner then moved the fence to the
+       FAR side of the road, so the rail is on the road tiles instead — see plantationRoadId above.
+       The function is kept because the gate still reads it, and because a second plantation elsewhere
+       on a bigger map would want the old convention back; it is simply not the one in the world.
+       Leaving it wired here would draw the rail TWICE, once on the floor and once on the road. */
+    if (t.ter === 'plantation') {
+      var fsuf = null;   /* retired — see the note above */
+      if (fsuf && has('ter_fence_' + fsuf)) return 'ter_fence_' + fsuf;
+    }
+    /* HASH the variant per tile, never cycle it. `(c * 5 + r * 3) % 3` is `(2c) % 3` — the row term
+       vanishes modulo 3, so every tile took its variant from its COLUMN and the variants ran in
+       vertical stripes. drawGroundTile hashes its shade for exactly this reason (see TILE_ART).
 
-         EXCEPT ON WATER, WHERE THE ROW IS THE RIGHT KEY. The channel is ONE PAINTING cut into three
-         windows, and the game picks a window per cell by hash — so consecutive rows are not
-         consecutive windows and the river restarts three times as it flows. Indexing by row makes it
-         literally continuous downstream. Grass is a repeating texture and the hash is right for it;
-         a river is a single object and it is not.
-         From the graphics side's round-7 note, which measured all three variants side by side and
-         called the gain small at this tile size — so this is applied to water only, where the argument
-         is structural rather than visual. The edge tiles' `_r2`/`_r3` variants are NOT in the pack, so
-         only the `_v` fall-through is changed, exactly as their note says. */
-      /* WATER USES ONE VARIANT, NOT THREE. The three variants differ on 8% of their pixels by more
-     than 12 grey, and the water switched variant EVERY ROW -- so on a FLAT surface, which has
-     nothing else for the eye to rest on, every row boundary showed the change. Measured: v1 vs
-     v2 mean 3.33, v1 vs v3 mean 3.21, with 8% of pixels over 12. A repeating texture hides that;
-     a flat one does not. This was my own round-7 change, made to stop the river restarting
-     three times as it flows -- it did that, and it replaced a per-cell change with a per-row
-     one. One variant removes the change entirely. */
+       EXCEPT ON WATER, WHERE THE ROW IS THE RIGHT KEY. Water's three variants differ on 8% of their
+       pixels by more than 12 grey, and on a FLAT surface, which has nothing else for the eye to rest
+       on, every row boundary showed the change; one variant removes it.
+       THE PLANTATION USED TO BE PINNED TO ONE VARIANT TOO, because art shipped a single painted
+       sheet for it and there was no `_v2`/`_v3` to pick. That is no longer true: the floor is now the
+       GRASS recoloured (owner: *"lets make it like the grass but brown"*), so it comes in the grass's
+       three variants and hashes exactly as grass does. Pinning it to `_v1` would have made the block
+       the one place on the map with a visibly repeating floor. */
     var vk = t.ter === 'water' ? 1 : (1 + Math.floor(jit(c, r, 37) * 3));
-      e = rec['ter_' + t.ter + '_v' + vk];
-    }
+    return has('ter_' + t.ter + '_v' + vk) ? 'ter_' + t.ter + '_v' + vk : null;
+  }
+
+  function tile(c, r) {
+    if (!on || !ready) return false;
+    var t = cell(c, r);
+    var id = groundTileId(c, r);
+    var e = id ? rec[id] : null;
     if (!e || !e.img || !e.img.width) return false;
+    /* WHICH TILES THE BAKE ACTUALLY DREW. `groundTileId` says what the rule asks for; this says what
+       was painted. They differ exactly when a file is in the manifest but did not decode, or when
+       the picker and the drawer have drifted apart — and both of those look like a map. */
+    tally[id] = (tally[id] || 0) + 1;
     /* WATER IS REJECTED ONLY ON AN AFFIRMATIVE "THIS IS NOT WATER" — see isBlueDominant(). It
        returns null when the pixels cannot be read at all (a tainted canvas off the disk), and null
        must pass, or opening the game by double-clicking it loses the river. */
@@ -6867,16 +7039,23 @@ var SPR = (function () {
      species' own full size -- a bramble is small, so it simply has less room to grow and its stages
      are closer together. The result: every sprout is at least ALIEN_MIN_PX tall and therefore
      identifiable, and none of them is full grown. */
-  drawAlien = function (kind, cx, base, s, stage) {
+  drawAlien = function (kind, cx, base, s, stage, ter) {
     var st = stage || 3;
+    /* THE BLOCK'S PINE IS A DIFFERENT PAINTING, AND THE SAME TREE.
+       Art derived `alien_pine_b` from `alien_pine` with the canopy regraded colder and bluer and the
+       bark left byte-identical, on purpose: the tell of a plantation is identical crowns in rows, so
+       a second generation that disagreed about where the branches are would break the one thing the
+       block is supposed to say. Only the pine on plantation ground takes it; the hillside pine is
+       unchanged. */
+    var aid = (kind === 'pine' && ter === 'plantation') ? 'pine_b' : kind;
     var pct = ALIEN_STAGE_SCALE[st] || 1;
     if (st < 3) {
-      var full = TW * (SIZE['alien_' + kind] || 1);      /* how tall this species draws at full size */
+      var full = TW * (SIZE['alien_' + aid] || 1);      /* how tall this species draws at full size */
       var floorPx = st === 1 ? ALIEN_MIN_PX : ALIEN_MIN_PX * 1.5;
       var sc = Math.min(1, Math.max(pct, floorPx / full));
       s = s * sc;
     }
-    if (prop('alien_' + kind, cx, base, s, 'weed')) return;
+    if (prop('alien_' + aid, cx, base, s, 'weed')) return;
     return _alien.call(null, kind, cx, base, s);
   };
 
@@ -7211,6 +7390,18 @@ var SPR = (function () {
     /* WHICH TILE THE GAME ACTUALLY PICKS for a water or bank cell. The pack containing a tile and
        the game choosing it are different facts, and only the second one is on screen. */
     edgeId: function (c, r, ter) { return ter === "bank" ? bankEdgeId(c, r) : riverEdgeId(c, r); },
+    /* WHICH FENCE TILE THE PLANTATION PICKS, for the same reason as edgeId above — and this one
+       matters more, because art's convention (the plantation side draws it, never the far side) is
+       a rule about a boundary and a screenshot cannot show which tile owns the rail. */
+    fenceId: function (c, r) { return plantationFenceId(c, r); },
+    /* AND WHICH PAINTED TILE IT ACTUALLY PICKS for a ground cell, by id. `fenceId` says what the rule
+       asks for; this says what the game reaches for after the pack has had its say — and the two
+       differ exactly when a file is in the manifest but did not decode, which is the failure that
+       otherwise looks like a map. */
+    groundTileId: function (c, r) { return groundTileId(c, r); },
+    /* Is an id in the pack AND decoded. */
+    has: function (id) { return has(id); },
+    tally: function () { return tally; },
     /* So a throw inside start() is readable instead of leaving the status at "idle". */
     fail: function (e) { status = 'the sprite layer threw: ' + ((e && e.message) ? e.message : String(e)); },
     status: function () { return status; },
