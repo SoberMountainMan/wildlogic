@@ -5977,6 +5977,67 @@ function pickSprite(x, y, c, r) {
   return { c: c, r: r };
 }
 
+/* WHAT IS THIS TILE? — ONE ANSWER, USED BY BOTH THE TAP AND THE PRESS-AND-HOLD.
+   Owner, 2026-10-04: *"we should check that everything is explained at some point somewhere,
+   especially when clicking on things. and done simply and to the point."*
+   It was two answers before this and they had drifted: the hold knew about the ground and the weeds,
+   and the TAP knew only about the bin, the nursery and the house — **everything else returned in
+   silence.** Tapping the signpost, the jetty or the seep did nothing and said nothing, which reads as
+   a broken button rather than as scenery. There is one function now and both paths call it.
+
+   AND THE THINGS THAT WERE NEVER EXPLAINED ANYWHERE ARE IN HERE: the seep (the word did not appear in
+   a single player-facing string), and the two objects that were silent. Every line is one sentence,
+   because the toast is read while the finger is still on the glass. */
+var OBJ_LINE = {
+  bin: 'The recycling bin. Tap it to trade cuttings for tokens.',
+  nursery: 'The nursery. Tap it to spend tokens on indigenous trees.',
+  house: 'The cottage. Tap it to see the day\u2019s board.',
+  sign: 'The village signpost.',
+  jetty: 'The jetty. It goes out over the stream.'
+};
+function describeTile(c, r) {
+  var t = cell(c, r), L = [], i;
+  if (!t) return '';
+  /* THE GROUND FIRST. */
+  if (t.ter === 'water') L.push('The stream.');
+  else if (t.ter === 'bank') L.push('Wet bank, one tile out from the water.');
+  else if (t.ter === 'forest') L.push('The old forest remnant.');
+  else if (t.ter === 'plantation') {
+    /* THE ONE THING THE REFUSAL NEVER SAID. A player who cannot cut something needs to know what it
+       is FOR, or the block is only a locked door. Pine is the one alien that pays at the bin. */
+    L.push('Plantation pine. Not yours \u2014 no permit. Its seed blows over and the pine that comes up ' +
+           'on your side is worth double at the bin.');
+  }
+  /* THE SEEP, WHICH NOTHING ANYWHERE NAMED UNTIL NOW. */
+  else if (state.seep && state.seep.c === c && state.seep.r === r) {
+    L.push('A seep \u2014 wet ground where the hill keeps it damp. Nothing grows on it and nothing can ' +
+           'be planted in it. It is where an Amathole toad will sit, if you keep its run clear.');
+  }
+  if (toad && toad.c === c && toad.r === r) L.push('The Amathole toad.');
+  /* THEN WHAT IS STANDING ON IT. */
+  if (t.alien) {
+    var a = ALIENS[t.alien];
+    L.push(a.name + ' (' + a.sci + ') \u2014 ALIEN. ' + a.tell);
+    L.push('Cutting it leaves ' + a.bank + ' lots of seed behind.' +
+           (t.alien === 'pine' ? ' Pine is a sawlog \u2014 it banks double at the bin.' : ''));
+  }
+  if (t.sp) {
+    var sp = SPECIES[t.sp];
+    var stage = ['a sapling', 'young', 'mature'][t.stage - 1] || 'growing';
+    L.push(sp.name + ', planted \u2014 ' + stage + '.' +
+           (t.hollow ? ' It has a hollow, which is what a parrot nests in.' : ''));
+  }
+  if (t.seeds > 0) {
+    L.push(t.seeds + ' lot' + (t.seeds === 1 ? '' : 's') + ' of alien seed waiting in the ground.');
+  }
+  var sh = matureAround(c, r);
+  if (sh >= SHADE_CLOSES_SEED) L.push('Shade ' + sh + ' \u2014 the seed bank here is closed for good.');
+  else if (sh > 0) L.push(sh + ' mature tree' + (sh === 1 ? '' : 's') + ' shading it.');
+  if (t.obj) L.push(OBJ_LINE[t.obj] || ('A ' + t.obj + ' stands here.'));
+  if (!L.length) L.push('Open ground.');
+  return L.join(' ');
+}
+
 function act(c, r) {
   var t = cell(c, r);
   if (!t) return;
@@ -5989,8 +6050,15 @@ function act(c, r) {
      about this?", which the block otherwise raises and never answers.
      IT IS SAID BEFORE ANY TOOL IS LOOKED AT, so it is the same sentence whichever tool is in hand —
      a refusal that changes with the tool reads as four different bugs. */
+  /* THE SEEP ANSWERS A TAP WITH WHAT IT IS. Nothing can be planted on it and nothing grows on it, so
+     a tap there can only be a question — and before this it was answered as if it were bare grass. */
+  if (state.seep && state.seep.c === c && state.seep.r === r) {
+    toast(describeTile(c, r));
+    return;
+  }
   if (t.ter === 'plantation' || isRoad(c, r)) {
-    toast('You cannot cut here. The plantation is not yours \u2014 no permit.', 'warn');
+    toast('You cannot cut here \u2014 it is not your plantation. Its seed blows over, and a pine on ' +
+          'your side banks double at the bin.', 'warn');
     return;
   }
   /* Captured before anything can spend it, so apWatch() can tell "this tap emptied the budget" from
@@ -6002,7 +6070,9 @@ function act(c, r) {
   }
   if (t.obj === 'nursery') { renderShop(); showModal(els.mShop); return; }
   if (t.obj === 'house') { renderBoard(); showModal(els.mBoard); return; }
-  if (t.obj) return;
+  /* NOT SILENCE. The signpost, the jetty and anything else that is scenery answered a tap with
+     nothing at all, which reads as a broken button rather than as scenery. It says what it is. */
+  if (t.obj) { toast(describeTile(c, r)); return; }
 
   if (tool === 'cut') {
     if (clearAt(c, r)) {
@@ -6671,34 +6741,9 @@ function boot() {
        player could not ask "what is that?" about their own hillside. Hold for half a second and it
        answers; move more than a few pixels and it is a pan, which is the same threshold a tap uses. */
     function identifyAt(c, r) {
-      var t = cell(c, r), L = [], i;
+      var t = cell(c, r);
       if (!t) return;
-      if (t.ter === 'water') L.push('The stream.');
-      else if (t.ter === 'bank') L.push('Wet bank, one tile out from the water.');
-      else if (t.ter === 'forest') L.push('The old forest remnant.');
-      /* AND THE PRESS-AND-HOLD SAYS THE SAME THING THE TAP DOES, because "what is that?" and "why
-         can I not touch it?" are the same question about this ground. */
-      else if (t.ter === 'plantation') L.push('Plantation pine, planted in rows. Not yours \u2014 no permit.');
-      else if (isRoad(c, r)) L.push('The plantation road. No permit to go in.');
-      if (t.alien) {
-        var a = ALIENS[t.alien];
-        L.push(a.name + ' (' + a.sci + ') \u2014 ALIEN. ' + a.tell);
-        L.push('Cutting it leaves ' + a.bank + ' lots of seed behind.');
-      }
-      if (t.sp) {
-        var sp = SPECIES[t.sp];
-        var stage = ['a sapling', 'young', 'mature'][t.stage - 1] || 'growing';
-        L.push(sp.name + ', planted \u2014 ' + stage + '.');
-      }
-      if (t.seeds > 0) {
-        L.push(t.seeds + ' lot' + (t.seeds === 1 ? '' : 's') + ' of alien seed waiting in the ground.');
-      }
-      var sh = matureAround(c, r);
-      if (sh >= SHADE_CLOSES_SEED) L.push('Shade ' + sh + ' \u2014 the seed bank here is closed for good.');
-      else if (sh > 0) L.push(sh + ' mature tree' + (sh === 1 ? '' : 's') + ' shading it.');
-      if (t.obj) L.push('A ' + t.obj + ' stands here.');
-      if (!L.length) L.push('Open ground.');
-      toast(L.join(' '));
+      toast(describeTile(c, r));
     }
     var pinchD = 0, pinchZ = 1;
 
@@ -6899,7 +6944,7 @@ var API = {
   apAccrue: apAccrue, msToNextAp: msToNextAp, apWaitText: apWaitText, PLACES: PLACES, TILE_ART: TILE_ART, TOAD_AT: TOAD_AT,
   TOAD_PATCH: TOAD_PATCH, TOAD_WATER: TOAD_WATER, aliensNear: aliensNear, matureNear: matureNear,
   primeState: primeState, placeSeep: placeSeep, seepRun: seepRun, seepRunWeeds: seepRunWeeds,
-  isRoad: isRoad, clearRoads: clearRoads, plantationSeed: plantationSeed, inPlantation: inPlantation,
+  isRoad: isRoad, clearRoads: clearRoads, describeTile: describeTile, OBJ_LINE: OBJ_LINE, plantationSeed: plantationSeed, inPlantation: inPlantation,
   TOAD_RUN: TOAD_RUN, TOAD_RUN_WEEDS: TOAD_RUN_WEEDS, TOAD_HOLD_DAYS: TOAD_HOLD_DAYS,
   /* The snag-and-stand rule. Exported because the parrot's requirements are now LOCAL -- a patch
      around a dead tree -- and a check that cannot count the patch cannot tell a real stand from a
