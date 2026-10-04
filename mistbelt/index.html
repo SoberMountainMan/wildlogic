@@ -1043,14 +1043,26 @@ function clearRoads() {
    done nothing to this. So the rows are re-planted on load, the same way `clearRoads()` re-clears the
    road — the tile list is the save's, and the block is the map's.
    It cannot fight the player: the pines are not removable (see clearAt), so there is no state of the
-   block this could overwrite. */
+   block this could overwrite.
+
+   AND IT REPLACES WHAT IS THERE, WHICH IS THE HALF I GOT WRONG FIRST.
+   Owner, 2026-10-04: *"my plantation in live game has bramble?"* — and it did, all nine tiles of it.
+   The first version skipped any tile that already carried an alien, on the reasoning that it should
+   not overwrite the player's work. But these tiles were GRASS before the block existed, so his save
+   carries whatever weed was growing on them then, and **every one of them survived into a plantation
+   that is supposed to be somebody else's straight rows of pine.** Measured on a fixture built the way
+   his save is: 9 plantation tiles, all 9 came back bramble.
+   A tile inside the block cannot hold a player's weed — nothing in the block is the player's, they
+   cannot cut there and they cannot plant there — so there is nothing to preserve. The species of a
+   block tile is PINE, always, and that is the rule this enforces. */
 function plantBlock() {
   var i, c, r, t, n = 0;
   for (i = 0; i < NTILES; i++) {
     c = i % COLS; r = Math.floor(i / COLS);
     if (!onPlantationLattice(c, r)) continue;
     t = state.tiles[i];
-    if (!t || t.obj || t.sp || t.alien) continue;
+    if (!t || t.obj || t.sp) continue;              /* a building or a tree is not ours to overwrite */
+    if (t.alien === 'pine') continue;               /* already right */
     t.alien = 'pine';
     t.astage = 1;
     t.seeds = ALIENS.pine.bank;
