@@ -992,6 +992,81 @@ function terrainAt(c, r) {
   return 'grass';
 }
 
+/* THE ROAD IS NOT GROUND YOU CAN WORK, AND NOTHING GROWS ON IT.
+   Owner, 2026-10-04: *"road tiles mustnt allow planting or weeds."*
+   A road is a made surface — compacted dirt with ruts cut into it — so there is nowhere for a root to
+   go, and the argument is the same one that makes the seep unplantable and unsprouting, with less
+   room to argue.
+   **FOUR PLACES HAVE TO AGREE OR THE RULE LEAKS**, and the fourth is the one that gets forgotten:
+     1. `alienDensity()` returns 0, so `newState()` never scatters a weed onto a road tile;
+     2. the sprout guard in `tickDay()` skips them, so nothing arrives there later;
+     3. `plantable()` refuses, so the player cannot put a tree in one;
+     4. and `primeState()` CLEARS any weed a save is already carrying on one — because the first three
+        only govern what happens from now on, and a save made before this rule would keep its road
+        weed for ever. That is the same shape of leak as the landmark stamp, and the same fix.
+   THE SEVEN TILES ARE THE ROAD, and they are derived from the block rather than listed: the corner is
+   `(c1 + 1, r0 - 1)`, the row runs from `c0` to `c1` at that r, and the column runs from `r0` to `r1`
+   at that c. `plantationRoadId()` in the sprite layer picks the PAINTING for these tiles; this decides
+   what they ARE, and it is deliberately a separate function — one is a picture and one is a rule. */
+function isRoad(c, r) {
+  if (terrainAt(c, r) !== 'grass') return false;
+  var cc = PLANTATION.c1 + 1, rr = PLANTATION.r0 - 1;      /* 3 and 36 — the corner */
+  if (c === cc && r === rr) return true;
+  if (r === rr && c >= PLANTATION.c0 && c <= PLANTATION.c1) return true;
+  if (c === cc && r >= PLANTATION.r0 && r <= PLANTATION.r1) return true;
+  return false;
+}
+
+/* AND THE CLEARING, so a save written before the rule does not keep its road weed for ever. */
+function clearRoads() {
+  var i, c, r, t, n = 0;
+  for (i = 0; i < NTILES; i++) {
+    c = i % COLS; r = Math.floor(i / COLS);
+    if (!isRoad(c, r)) continue;
+    t = state.tiles[i];
+    if (!t) continue;
+    if (t.alien) { t.alien = null; t.seeds = 0; n++; }
+    if (t.sp) { t.sp = null; t.stage = 0; t.age = 0; t.dead = false; t.snagDays = 0; n++; }
+  }
+  return n;
+}
+
+/* THE BLOCK SEEDS THE HILLSIDE.
+   Owner, 2026-10-04: *"auto drop seeds over the road onto our map."*
+   A pine block is a seed source — `pickAlien()` already says so for the block itself, and that is the
+   whole reason it is hard to be rid of. This is the same fact pointed OUTWARD. On a wet day some of
+   the pines put a seed onto a nearby GRASS tile, so the invasion arrives at the boundary and the road
+   stops being a wall the player can hide behind.
+   **THE SEED CARRIES ITS SPECIES, AND IT COSTS NO SAVE FORMAT.** It sets `t.seeds` AND
+   `t.lastAlien = 'pine'`, and `pickAlien()` returns `lastAlien` first — so what comes up is a pine,
+   which is what a pine dropped. `lastAlien` already means "this tile regrows the same species" and is
+   already in the save, so the mechanic rides on it rather than adding a field.
+   IT LANDS ON GRASS ONLY — never on the road, never in the water, never on a tile that already holds
+   something, and never inside the block, because the block is not the player's problem to receive. */
+var PLANTATION_SEED_RATE = 0.05;
+var PLANTATION_SEED_REACH = 4;
+function plantationSeed() {
+  var i, t, n = 0, tries, tc, tr, tt, span = PLANTATION_SEED_REACH * 2 + 1;
+  for (i = 0; i < NTILES; i++) {
+    t = state.tiles[i];
+    if (t.ter !== 'plantation' || !t.alien) continue;      /* only a standing pine drops */
+    if (Math.random() >= PLANTATION_SEED_RATE) continue;
+    for (tries = 0; tries < 8; tries++) {
+      tc = (i % COLS) + Math.floor(Math.random() * span) - PLANTATION_SEED_REACH;
+      tr = Math.floor(i / COLS) + Math.floor(Math.random() * span) - PLANTATION_SEED_REACH;
+      if (tc < 0 || tc >= COLS || tr < 0 || tr >= ROWS) continue;
+      if (terrainAt(tc, tr) !== 'grass' || isRoad(tc, tr)) continue;
+      tt = state.tiles[tr * COLS + tc];
+      if (!tt || tt.alien || tt.sp || tt.obj || tt.seeds > 0) continue;
+      tt.seeds += 1;
+      tt.lastAlien = 'pine';
+      n++;
+      break;
+    }
+  }
+  return n;
+}
+
 /* The cottage, the nursery, the signpost and the bin, on the near edge of the village, and
    the jetty out over the stream. These are absolute because a save restores them by coordinate.
    The jetty is placed by CALLING streamC() rather than by a hardcoded column: the stream meanders,
@@ -1059,6 +1134,7 @@ function apronClear(c, r) {
 function alienDensity(c, r) {
   if (terrainAt(c, r) !== 'grass') return 0;
   if (apronClear(c, r)) return 0;                   /* the apron in front of every placed thing */
+  if (isRoad(c, r)) return 0;                       /* a road is made ground — see isRoad() */
   var dc = c - VILLAGE.c, dr = r - VILLAGE.r;
   var fromVillage = Math.sqrt(dc * dc + dr * dr);
   if (fromVillage < 2.2) return 0;                  /* the doorstep stays clear */
@@ -1156,6 +1232,8 @@ function primeState() {
   /* PLACED AFTER THE ALIENS EXIST, which is why it is here and not in newState: placeSeep() picks
      the WEEDIEST run of bank, and before the invasion is rolled every run is equally clean. */
   if (!state.seep) state.seep = placeSeep(state);
+  /* AND CLEAR ANY ROAD WEED A SAVE IS CARRYING, because the other three only govern from now on. */
+  clearRoads();
   if (state.toadHold == null) state.toadHold = 0;
 }
 
@@ -1403,6 +1481,7 @@ function plantable(c, r) {
      convenient one, and it has the consequence the toad needs: **the one tile it lands on is the one
      tile the player's own forest cannot take.** */
   if (state.seep && state.seep.c === c && state.seep.r === r) return false;
+  if (isRoad(c, r)) return false;                   /* a made surface — see isRoad() */
   /* PLANTATION GROUND IS PLANTABLE, AND IT HAS TO BE. The block is eight tiles wide, and a mature
      tree only shades the eight tiles that touch it, so a ring planted round the OUTSIDE of a block
      this size reaches the rim and not the middle — the player would be able to clear the pines and
@@ -1492,6 +1571,8 @@ function tickDay(w) {
          and most obvious place to learn it. */
       if ((t.ter !== 'grass' && t.ter !== 'plantation') || t.obj || t.sp) continue;
       if (state.seep && state.seep.c === c && state.seep.r === r) continue;
+      /* AND NOTHING GROWS ON THE ROAD EITHER — see isRoad(). */
+      if (isRoad(c, r)) continue;
       if (!t.alien && t.seeds > 0 && k.wet) {
         /* THE SEED BANK CLOSES UNDER A CLOSED CANOPY.
            This read `Math.max(0.2, 0.55 - 0.12 * matureAround)` — a FLOOR of 20% that no amount of
@@ -1669,6 +1750,8 @@ function tickDay(w) {
       + 'one, which is the whole joke of this mountain.', null);
   }
   if (baboonLine) note(baboonLine, 'warn');
+  /* THE BLOCK SEEDS THE HILLSIDE, on wet days only — see plantationSeed(). */
+  if (k.wet) plantationSeed();
   rollBoard(w);
   note(voiceFor(w), 'dim');
   parrotCheck();
@@ -2229,6 +2312,16 @@ function claimBoard() {
 function clearAt(c, r) {
   var t = cell(c, r);
   if (!t || !t.alien || t.obj) return false;
+  /* A FORESTRY PINE IS NOT A WEED YOU PULL.
+     Owner, 2026-10-04: *"plantation pines need to be permanent and not removable."*
+     The block is a commercial stand, not a patch of invaders: it was planted on purpose, by somebody,
+     and the axe is not the answer to it. So it cannot be cut, and the only thing that changes it is
+     the thing that changes everything else on this map — shade.
+     THIS IS THE POINT OF THE BLOCK RATHER THAN A LIMIT ON IT. Everything else on the hillside is
+     yours to fight; this is the one piece that is simply there, and the player's job at it is the
+     boundary — the road, the fence, and holding the grass on their own side. That is also what the
+     seeds below are for. */
+  if (t.ter === 'plantation') return false;
   var def = ALIENS[t.alien];
   if (state.ap < def.ap) return false;
   state.ap -= def.ap;
@@ -2277,8 +2370,26 @@ function clearAt(c, r) {
      be explained to make it so.**
      The narration says WHY, not just what — the owner's note: '"the cutting is wasted" -- explain
      why'. */
+  /* PINE IS TIMBER, SO A PINE CUTTING IS WORTH TWO.
+     Owner, 2026-10-04: *"the plantation cant be cleared but you do benefit from their pine trees
+     starting to grow on your property..."*
+     That sentence is the whole reason the block is tolerable, and until now it was not true. Pine
+     costs TWO action points to cut and leaves a bank of THREE, so cutting it was strictly worse than
+     leaving it: the player paid double and the tile came back harder. **The benefit the owner is
+     describing did not exist.**
+     Now it does. A pine cutting banks two, because it is the only alien on this hillside with a
+     market — it is a sawlog, and the others are brush. The block seeds the player's grass with pine
+     (see plantationSeed), so the plantation is a source of the one weed that pays, and the boundary
+     the player is asked to hold is a boundary worth holding.
+     BIN_MAX STILL BINDS, deliberately: the bin holds six cuttings whether they are pine or bramble,
+     so the benefit is real but bounded by the same "clear in batches" rule as everything else. It
+     does not become a reason to rush. */
   if (binItems < BIN_MAX) {
-    binItems += 1;
+    /* THE SPECIES IS READ FROM `_was`, NOT FROM THE TILE. clearAt() nulls the tile before it reaches
+       the bin, so asking the tile what it was gets you a blank — the species is captured at the top
+       of this function for exactly this reason. */
+    binItems += (_was === 'pine') ? 2 : 1;
+    if (binItems > BIN_MAX) binItems = BIN_MAX;
     /* WARN WHEN IT FILLS, NOT WHEN IT SPILLS. The card below fires on the cutting that is WASTED,
        which teaches the rule at the cost of a cutting. Filling the bin is the last moment the
        player can still act on the advice, so the warning belongs here — one card, at the moment it
@@ -5745,6 +5856,19 @@ function pickSprite(x, y, c, r) {
 function act(c, r) {
   var t = cell(c, r);
   if (!t) return;
+  /* NO PERMIT. Owner, 2026-10-04: *"clicking anywhere on those 16 tiles should tell you you have no
+     permit to go into the plantation."*
+     The sixteen are the NINE of the block and the SEVEN of the road, and the message is the reason
+     the block behaves the way it does: it is not the player's land. That single fact explains all
+     four rules at once — the pines cannot be cut, nothing can be planted there, nothing grows on the
+     road, and the player cannot walk in — and it is the honest answer to "why can I not do anything
+     about this?", which the block otherwise raises and never answers.
+     IT IS SAID BEFORE ANY TOOL IS LOOKED AT, so it is the same sentence whichever tool is in hand —
+     a refusal that changes with the tool reads as four different bugs. */
+  if (t.ter === 'plantation' || isRoad(c, r)) {
+    toast('You cannot cut here. The plantation is not yours \u2014 no permit.', 'warn');
+    return;
+  }
   /* Captured before anything can spend it, so apWatch() can tell "this tap emptied the budget" from
      "the budget was already empty". */
   var apBefore = state.ap;
@@ -6428,6 +6552,10 @@ function boot() {
       if (t.ter === 'water') L.push('The stream.');
       else if (t.ter === 'bank') L.push('Wet bank, one tile out from the water.');
       else if (t.ter === 'forest') L.push('The old forest remnant.');
+      /* AND THE PRESS-AND-HOLD SAYS THE SAME THING THE TAP DOES, because "what is that?" and "why
+         can I not touch it?" are the same question about this ground. */
+      else if (t.ter === 'plantation') L.push('Plantation pine, planted in rows. Not yours \u2014 no permit.');
+      else if (isRoad(c, r)) L.push('The plantation road. No permit to go in.');
       if (t.alien) {
         var a = ALIENS[t.alien];
         L.push(a.name + ' (' + a.sci + ') \u2014 ALIEN. ' + a.tell);
@@ -6647,6 +6775,7 @@ var API = {
   apAccrue: apAccrue, msToNextAp: msToNextAp, apWaitText: apWaitText, PLACES: PLACES, TILE_ART: TILE_ART, TOAD_AT: TOAD_AT,
   TOAD_PATCH: TOAD_PATCH, TOAD_WATER: TOAD_WATER, aliensNear: aliensNear, matureNear: matureNear,
   primeState: primeState, placeSeep: placeSeep, seepRun: seepRun, seepRunWeeds: seepRunWeeds,
+  isRoad: isRoad, clearRoads: clearRoads, plantationSeed: plantationSeed, inPlantation: inPlantation,
   TOAD_RUN: TOAD_RUN, TOAD_RUN_WEEDS: TOAD_RUN_WEEDS, TOAD_HOLD_DAYS: TOAD_HOLD_DAYS,
   /* The snag-and-stand rule. Exported because the parrot's requirements are now LOCAL -- a patch
      around a dead tree -- and a check that cannot count the patch cannot tell a real stand from a
