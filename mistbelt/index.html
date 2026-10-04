@@ -4135,40 +4135,47 @@ function drawNursery(cx, base, s) {
 }
 
 function drawSeep(cx, base, s, c, r) {
-  /* A sodden patch on the slope. Wet ground is DARKER than the grass around it, which is the whole
-     read — a seep is not a puddle, it is ground that has been quietly soaked for years. */
+  /* WET GROUND, NOT A POND. The first version was a hard-edged olive ellipse with two grey blobs and
+     pale sticks round it, and photographed at draw size it read as a lily pad — a thing lying ON the
+     grass rather than ground that has been quietly soaked for years.
+     Three changes, all in that direction: the shape is a WOBBLY BLOB (`squircle`, the same helper the
+     trees use) instead of a true ellipse, so it has no geometric edge to give it away; the wet colour
+     is DARKER and more saturated than the grass, which is the whole read; and the rushes are small
+     dark tufts rather than pale strokes, because a seep's plants are sedges in the wet, not reeds
+     standing out of a pool.
+     STILL THE DRAWN FALLBACK. `ter_seep` does not exist; when art delivers it this whole function
+     goes and the tile-art path takes over. */
   var i, a;
   ctx.save();
-  ctx.globalAlpha = 0.92;
-  ctx.fillStyle = '#4a5f3c';
-  ctx.beginPath();
-  ctx.ellipse(cx, base - s * 0.02, s * 0.40, s * 0.21, 0, 0, Math.PI * 2);
+  /* the soaked ground, in two passes so the edge is soft and the middle is wetter */
+  ctx.globalAlpha = 0.42;
+  ctx.fillStyle = '#31452c';
+  squircle(cx, base - s * 0.02, s * 0.80, s * 0.42, 2.4, 1, c * 3 + r);
   ctx.fill();
-  ctx.fillStyle = '#3d5233';
-  ctx.beginPath();
-  ctx.ellipse(cx - s * 0.05, base - s * 0.04, s * 0.26, s * 0.13, 0, 0, Math.PI * 2);
+  ctx.globalAlpha = 0.34;
+  ctx.fillStyle = '#26381f';
+  squircle(cx - s * 0.03, base - s * 0.03, s * 0.50, s * 0.26, 2.2, 1, c * 5 + r * 2);
   ctx.fill();
-  /* TWO SHEENS, where the water actually stands. Small — a seep is ooze, not a pond. */
-  ctx.globalAlpha = 0.55;
-  ctx.fillStyle = '#7fa8bd';
+  /* THE SHEENS, where water actually stands. Small and muted — a seep is ooze, not a pool. */
+  ctx.globalAlpha = 0.30;
+  ctx.fillStyle = '#8fb0c4';
   for (i = 0; i < 2; i++) {
-    a = i === 0 ? -0.13 : 0.14;
-    ctx.beginPath();
-    ctx.ellipse(cx + s * a, base - s * 0.03 + i * s * 0.05, s * 0.10, s * 0.045, 0, 0, Math.PI * 2);
+    a = i === 0 ? -0.12 : 0.13;
+    squircle(cx + s * a, base - s * 0.03 + i * s * 0.04, s * 0.13, s * 0.055, 2, 1, i + c);
     ctx.fill();
   }
-  ctx.globalAlpha = 1;
-  /* RUSHES round the edge — the plant that actually grows on a seep. */
-  ctx.strokeStyle = '#6d8a52';
-  ctx.lineWidth = Math.max(1, s * 0.018);
+  /* SEDGES round the wet edge — dark, short, and in the ground rather than on it. */
+  ctx.globalAlpha = 0.75;
+  ctx.strokeStyle = '#405c33';
+  ctx.lineWidth = Math.max(1, s * 0.016);
   ctx.lineCap = 'round';
-  for (i = 0; i < 7; i++) {
-    a = (i / 7) * Math.PI * 2 + 0.4;
-    var rx = cx + Math.cos(a) * s * 0.36;
-    var ry = base - s * 0.03 + Math.sin(a) * s * 0.18;
+  for (i = 0; i < 9; i++) {
+    a = (i / 9) * Math.PI * 2 + 0.7;
+    var rx = cx + Math.cos(a) * s * 0.34;
+    var ry = base - s * 0.02 + Math.sin(a) * s * 0.17;
     ctx.beginPath();
     ctx.moveTo(rx, ry);
-    ctx.lineTo(rx + Math.cos(a) * s * 0.05, ry - s * 0.13);
+    ctx.lineTo(rx + Math.cos(a) * s * 0.035, ry - s * 0.075 - (i % 3) * s * 0.022);
     ctx.stroke();
   }
   ctx.restore();
@@ -4539,6 +4546,15 @@ function drawTileProp(c, r) {
      mechanic exists to reward was invisible, and nothing numeric could see it: the toad's tile was
      on the glass and the tile was in the visible set, so every cull and framing check passed. */
   var isToad = !!(toad && toad.c === c && toad.r === r);
+  /* AND THE SEEP HAS TO SURVIVE THE SAME BAIL, for the third time in this function's history.
+     A seep is a BARE grass tile once the player has cleared its run — no alien, no tree, no object,
+     no seed bank — which is exactly what the bail below throws away. So the seep drew while its tile
+     was weedy and **vanished the moment the player did the thing the gate asks for.** Found by
+     photographing it: the first shot showed it, the second did not, and the difference was a cleared
+     tile.
+     The toad had this bug, the waterfall had this bug, and this is the same fix as theirs: name the
+     exception in the bail. */
+  var isSeep = !!(state.seep && state.seep.c === c && state.seep.r === r);
   /* THE WATERFALL STANDS ON A WATER TILE WITH NOTHING ON IT, so it met every one of the bail
      conditions below and the landmark the owner asked for was never painted — not in one scene, in
      ANY scene, at any zoom, from the day it was written. Nothing numeric could see it, and this is
@@ -4556,7 +4572,7 @@ function drawTileProp(c, r) {
   var isMouth = (r === ROWS - 1 && c === streamC(ROWS - 1));
   /* Most of a 40x40 map is bare grass with nothing standing on it. Bail before doing any geometry,
      or the cull above just moves the cost from the loop into the body. */
-  if (!isToad && !isFalls && !isMouth && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) &&
+  if (!isToad && !isSeep && !isFalls && !isMouth && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) &&
       t.ter !== 'forest') return;
   var p = project(c, r, groundZ(c, r));
   var cx = p[0], base = p[1] + TH * 0.46;
