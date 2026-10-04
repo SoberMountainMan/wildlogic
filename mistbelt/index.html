@@ -2188,7 +2188,15 @@ var TOAD_RUN = 9;          /* tiles in the run, measured along the stream */
    KNOWN LIMIT: one map in four has a run that starts at six weeds and is much harder. The honest
    options are to place the seep on a run of at most five, or to accept that some hillsides are
    harder than others — which for a Critically Endangered animal is arguably true. */
-var TOAD_RUN_WEEDS = 4;
+/* FOUR WAS BELOW THE TREADMILL AND LEFT THE TOAD UNREACHABLE ON SOME MAPS.
+   Measured across twelve maps, playing properly (clearing the run daily AND shading it with mature
+   trees, which is the thing that actually works): **allowance 4 never arrived on 1 map in 12**;
+   allowance 5 arrived on all twelve, with the same median of day 5. The reason four fails is
+   arithmetic, not luck: a cleared tile gets its seed bank back the moment it is cut, so nine run tiles
+   at a 0.55 sprout chance is an EXPECTED five weeds a day — an allowance of four sits BELOW the
+   average regrowth, which turns a skill test into a lottery (about 1 in 77 per five-day window).
+   Five sits above it, so a diligent player reliably wins and a careless one still does not. */
+var TOAD_RUN_WEEDS = 5;
 var TOAD_HOLD_DAYS = 5;
 
 /* THE RUN, as a list of tiles. It follows the stream as it wiggles, because `streamC` moves with r —
@@ -6089,6 +6097,16 @@ function describeTile(c, r) {
            'no more than ' + TOAD_RUN_WEEDS + ' weeds, ' + TOAD_HOLD_DAYS + ' days running.');
     L.push('Right now ' + clear + ' of ' + MB_SEEP_RUN_N() + ' are clear, and you have held it ' +
            (state.toadHold || 0) + ' of ' + TOAD_HOLD_DAYS + ' days.');
+    /* AND THE THING THAT ACTUALLY WORKS, WHICH NOTHING SAID.
+       Measured: a cleared tile gets its seed bank back the moment you cut it (see clearAt), so the run
+       is a TREADMILL — nine tiles at a 0.55 sprout chance is an expected 5 weeds a day, which is
+       ABOVE the allowance of four. **Clearing alone therefore makes the toad a lottery: about a 1-in-77
+       chance of any given five-day window, and the gate measured a map that took 59 days.** The thing
+       that works is SHADE: three mature trees around a run tile and its sprout chance is zero, which
+       is the same rule the rest of the game runs on. A player who only ever cleared could hold that
+       run for a season and never once see the animal. */
+    L.push('Cutting holds it a day at a time \u2014 the seed comes back. Shade is what holds it for ' +
+           'good: plant mature trees along the run and it stops coming up at all.');
   }
   if (toad && toad.c === c && toad.r === r) L.push('The Amathole toad.');
   /* THEN WHAT IS STANDING ON IT. */
