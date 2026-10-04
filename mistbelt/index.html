@@ -2559,6 +2559,28 @@ function clearAt(c, r) {
   return true;
 }
 
+/* WHY A TILE WILL NOT TAKE SOMETHING — ONE SENTENCE, SAID OUT LOUD.
+   Owner, 2026-10-04: *"lets not teach rules that dont exist, and make sure we are teaching ones that
+   do."* The other half of that is not leaving a rule UNSAID when the player runs into it.
+   `plantAt()` has four silent `return false` paths and `placeDecor()` has two. The shade one is
+   explained by `explainShade()` and the empty-stock one names the nursery, but the rest were
+   silence: **tap a plant tool on a tile that already carries an alien and nothing at all happened**,
+   which is the same shape as the signpost, the jetty and the seep — a tap that does nothing and says
+   nothing reads as a broken game, not as a rule.
+   Returns null when the tile IS fine, so the caller can fall through to the real attempt. */
+function whyNotHere(c, r) {
+  var t = cell(c, r);
+  if (!t) return 'That is off the hillside.';
+  if (t.obj) return 'Something is standing there.';
+  if (t.ter === 'water') return 'That is the stream.';
+  if (t.ter === 'bank') return 'That is the wet bank, one tile out from the water.';
+  if (t.ter === 'forest') return 'That is the old forest remnant. It is already the thing you are building.';
+  if (t.ter === 'plantation') return 'That is not your land.';
+  if (t.alien) return 'There is an alien on that tile. Cut it first, then plant.';
+  if (t.sp) return 'You already have a tree on that tile.';
+  return null;
+}
+
 function plantAt(c, r, spKey) {
   var t = cell(c, r);
   if (!t || t.sp || t.alien || !plantable(c, r)) return false;
@@ -6207,6 +6229,14 @@ function act(c, r) {
     return;
   }
   if (DECOR[tool]) {
+    /* AND DECOR SAYS THE SAME TWO THINGS: whether the tile will take it, and whether you have one. */
+    if (!(state.decor[tool] > 0)) {
+      note('No ' + DECOR[tool].name.toLowerCase() + ' in stock. Buy them at the nursery \u2014 tap the ' +
+           'nursery in the village.', 'warn');
+      return;
+    }
+    var whyD = whyNotHere(c, r);
+    if (whyD) { note(whyD, 'warn'); return; }
     if (placeDecor(c, r, tool)) { saveLocal(); renderHud(); }
     return;
   }
@@ -6221,6 +6251,8 @@ function act(c, r) {
          'nursery in the village.', 'warn');
     return;
   }
+  var why = whyNotHere(c, r);
+  if (why) { note(why, 'warn'); return; }
   if (plantAt(c, r, tool)) {
     boardProgress('plants', 1);
     if (matureAround(c, r) >= SHADE_FOR_OLDGROWTH && !state.seen.shade) {
@@ -7020,7 +7052,8 @@ var API = {
   apAccrue: apAccrue, msToNextAp: msToNextAp, apWaitText: apWaitText, PLACES: PLACES, TILE_ART: TILE_ART, TOAD_AT: TOAD_AT,
   TOAD_PATCH: TOAD_PATCH, TOAD_WATER: TOAD_WATER, aliensNear: aliensNear, matureNear: matureNear,
   primeState: primeState, placeSeep: placeSeep, seepRun: seepRun, seepRunWeeds: seepRunWeeds,
-  isRoad: isRoad, clearRoads: clearRoads, describeTile: describeTile, OBJ_LINE: OBJ_LINE, plantationSeed: plantationSeed, inPlantation: inPlantation,
+  isRoad: isRoad, clearRoads: clearRoads, describeTile: describeTile, OBJ_LINE: OBJ_LINE,
+  whyNotHere: whyNotHere, plantationSeed: plantationSeed, inPlantation: inPlantation,
   TOAD_RUN: TOAD_RUN, TOAD_RUN_WEEDS: TOAD_RUN_WEEDS, TOAD_HOLD_DAYS: TOAD_HOLD_DAYS,
   /* The snag-and-stand rule. Exported because the parrot's requirements are now LOCAL -- a patch
      around a dead tree -- and a check that cannot count the patch cannot tell a real stand from a
