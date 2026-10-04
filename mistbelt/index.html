@@ -200,14 +200,21 @@
      fillShopRow must agree — the stylesheet sets the display size, the script sets the backing
      store. */
   .item canvas{width:44px;height:44px}
-  .price{display:flex;align-items:center;gap:4px;font-size:12px}
+  .price{display:flex;align-items:center;justify-content:center;gap:5px;font-size:15px;line-height:1}
   /* THE TOKEN ON THE SHELF HAS TO BE SEEN, BECAUSE IT IS THE DECISION.
      Owner, 2026-10-04: *"the weather symbols next to each tree in nursery are very small and easy to
      miss."* The icon is an inline SVG fixed at 15px and the price text beside it is 12px, so on a
      phone the one thing a player is comparing — WHICH TOKEN this tree costs, and the whole economy is
      "the day's token costs less" — is the smallest mark in the row. The SVG carries width/height
      attributes; CSS wins over them, so this is one rule and no markup change. */
-  .item .price svg{width:21px;height:21px;flex:0 0 auto}
+  .item .price svg{width:26px;height:26px;flex:0 0 auto}
+  /* AND THE QUALIFYING TEXT COMES OFF THE PRICE LINE.
+     Measured: four columns on a phone give an item about 77px, so the price line had 71px to hold the
+     token icon, the cost, the layer name AND 'needs shade (3 trees)' — and it wrapped to two lines at
+     12px. **The one thing a player is comparing is which token this tree costs**, and it was sharing
+     its line with two pieces of fine print. The layer moves to its own line and the shade note lives
+     on the purchase button, which already says it in full. */
+  .tier{font-size:10px;font-weight:700;color:#7d9686;letter-spacing:.02em}
   .buy{width:100%;border:none;border-radius:15px;padding:13px;font:inherit;font-size:16px;font-weight:800;
     color:#fff;background:#5aa85a;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
   .buy:disabled{background:#b6c6bd;cursor:default}
@@ -2644,7 +2651,7 @@ function placeDecor(c, r, key) {
    movable? Or is where you put them, where they'll stay?"* — **where you put them is where they
    stayed, for ever.**  spent one from the stock and set , and nothing anywhere
    took it back.
-   THAT IS NOT A COSMETIC GAP, IT IS A PERMANENT ONE.  refuses any tile with an obj, so a
+   THAT IS NOT A COSMETIC GAP, IT IS A PERMANENT ONE. plantable() refuses any tile with an obj, so a
    two-token bench mis-tapped onto good ground **blocked that tile from ever being planted, with the
    token gone and no way to undo either.** Same shape as the seep the player could forest away and the
    plantation tile that kept a bramble: a silent, permanent, unrecoverable refusal.
@@ -5813,15 +5820,18 @@ function fillShopRow(host, keys) {
       pr.className = 'price';
       /* The layer is on the label because it is the rule: an old-growth tree will not go into open
          ground, so the shelf has to say which trees are the pioneers. */
-      pr.innerHTML = TOKEN_ICON[def.token] + ' ' + def.cost +
-        (SPECIES[k] && TIER_NAME[SPECIES[k].tier] ? ' \u00b7 ' + TIER_NAME[SPECIES[k].tier] : '') +
+      pr.innerHTML = TOKEN_ICON[def.token] + ' ' + def.cost;
+      var tierLine = SPECIES[k] && TIER_NAME[SPECIES[k].tier] ? TIER_NAME[SPECIES[k].tier] : '';
+      var SHADE_NOTE = SPECIES[k] && needsShade(k) ? 'needs shade (' + SHADE_FOR_OLDGROWTH + ' trees)' : '';
+      var UNUSED_OLD =
         /* AND WHAT IT WILL ASK FOR. The layer name tells you it is old-growth; it does not tell you
            that means it will not go into open ground. Owner, 2026-09-30: "i bought one yellowwood and
            then it wouldnt let me plant it." The succession rule is the whole point of the game, and
            being surprised by it AT THE PLANTING STEP is the wrong place to learn it -- the shelf is
            where he is deciding, so the shelf is where it belongs. */
-        (SPECIES[k] && needsShade(k) ? ' \u00b7 needs shade (' + SHADE_FOR_OLDGROWTH + ' trees)' : '');
+        '';
       el.appendChild(nm); el.appendChild(pr);
+      if (tierLine) { var tl = document.createElement('div'); tl.className = 'tier'; tl.textContent = tierLine + (SHADE_NOTE ? ' \u00b7 ' + SHADE_NOTE : ''); el.appendChild(tl); }
       el.addEventListener('click', function () { state.pick = k; renderShop(); });
       host.appendChild(el);
       drawShopIcon(ic, k, 44);
@@ -6115,8 +6125,6 @@ function act(c, r) {
   }
   if (t.obj === 'nursery') { renderShop(); showModal(els.mShop); return; }
   if (t.obj === 'house') { renderBoard(); showModal(els.mBoard); return; }
-  /* NOT SILENCE. The signpost, the jetty and anything else that is scenery answered a tap with
-     nothing at all, which reads as a broken button rather than as scenery. It says what it is. */
   /* PICK IT UP. Only decor — see pickUpDecor(). A tap on the bin, the nursery, the house or the jetty
      is handled above this and never reaches here. */
   if (t.obj && DECOR[t.obj]) {
@@ -6128,6 +6136,10 @@ function act(c, r) {
           ' \u2014 it is back in your stock, put it down somewhere else.', 'good');
     saveLocal(); renderHud(); return;
   }
+  /* NOT SILENCE. The signpost, the jetty and anything else that is scenery used to answer a tap
+     with nothing at all, which reads as a broken button rather than as scenery. It says what it is.
+     IT SITS BELOW THE PICK-UP ON PURPOSE: decor is handled above, and the fixed things are handled
+     above that, so this is only reached by what is genuinely scenery. */
   if (t.obj) { toast(describeTile(c, r)); return; }
 
   if (tool === 'cut') {
