@@ -6227,8 +6227,16 @@ function act(c, r) {
       state.seen.shade = true;
       card('The shade does the work',
         'Indigenous canopy closes over the ground, and the alien seed under it comes up far less. ' +
-        'Two or three mature trees around a patch and the clearing holds itself \u2014 and that same ' +
-        'shade is what a yellowwood needs before it will go in.', null);
+        /* TWO AND THREE ARE DIFFERENT NUMBERS AND THIS CARD CONFLATED THEM.
+           SHADE_FOR_OLDGROWTH is 2 — how much shade a yellowwood needs before it will go in, which is
+           why this card fires at all. SHADE_CLOSES_SEED is 3 — how much shuts a seed bank for good.
+           The card said "two or three ... and the clearing holds itself", which is true only of three:
+           at two the sprout chance is still 0.31 on every wet day, so the patch comes back, and it
+           comes back for certain over a season. **A player who believed it would stop planting at two
+           and watch the work undo itself.** The distinction is the shape of the whole game — two lets
+           you PLANT, three lets you FINISH — so it is worth teaching rather than hiding. */
+        'Two mature trees around a spot is enough shade for a yellowwood to go in. ' +
+        'THREE is what shuts a seed bank for good — at two, the ground still comes back.', null);
     }
     saveLocal(); renderHud(); renderBoard();
     /* Planting has no toast of its own, so the day-done sentence stands alone here. It is worth
