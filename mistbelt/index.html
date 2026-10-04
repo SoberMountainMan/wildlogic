@@ -2339,7 +2339,10 @@ function toadCheck() {
 /* ============================================================ the day's board */
 
 var VOICES = {
-  wet: ['The nursery grower: "Soft ground today. The wattle comes out easier."',
+  /* WET DOES NOT MAKE CUTTING EASIER.  spends a fixed cost per species and the weather
+     never touches it — the only thing wet does is bring the seed bank up (see the sprout guard).
+     So this line was teaching a false rule, in the same breath as a day card saying the true one:/n     a player who believed it would wait for rain to do the cutting that rain makes harder. */
+  wet: ['The nursery grower: "Rain. Everything in the ground is up today \u2014 you will be busy."',
         'The parrot monitor: "Good rain for the seedlings. Good rain for the seed bank too."'],
   mist: ['The neighbour up the pass: "Mist like this is what a yellowwood wants."',
          'The nursery grower: "A mist day. Good day for putting things in the ground."'],
@@ -2366,7 +2369,7 @@ function rollBoard(w) {
     { text: 'Recycle three items at the bin', need: 3, metric: 'recycles' },
     { text: 'Buy one thing at the nursery', need: 1, metric: 'buys' }
   ];
-  if (k.wet) pool.push({ text: 'Clear five aliens while the ground is soft', need: 5, metric: 'cuts' });
+  if (k.wet) pool.push({ text: 'Clear five aliens on a wet day', need: 5, metric: 'cuts' });
   if (k.mist) pool.push({ text: 'Plant two trees in under the mist', need: 2, metric: 'plants' });
   if (k.frost) pool.push({ text: 'Clear three aliens before the cold settles', need: 3, metric: 'cuts' });
   if (k.berg) pool.push({ text: 'Clear four aliens before the wind spreads seed', need: 4, metric: 'cuts' });
@@ -5988,6 +5991,7 @@ function pickSprite(x, y, c, r) {
    AND THE THINGS THAT WERE NEVER EXPLAINED ANYWHERE ARE IN HERE: the seep (the word did not appear in
    a single player-facing string), and the two objects that were silent. Every line is one sentence,
    because the toast is read while the finger is still on the glass. */
+function MB_SEEP_RUN_N() { return TOAD_RUN; }
 var OBJ_LINE = {
   bin: 'The recycling bin. Tap it to trade cuttings for tokens.',
   nursery: 'The nursery. Tap it to spend tokens on indigenous trees.',
@@ -6010,8 +6014,22 @@ function describeTile(c, r) {
   }
   /* THE SEEP, WHICH NOTHING ANYWHERE NAMED UNTIL NOW. */
   else if (state.seep && state.seep.c === c && state.seep.r === r) {
+    /* THE TOAD'S ACTUAL REQUIREMENT, IN THE PLACE THE PLAYER WILL ASK FOR IT.
+       Owner, 2026-10-04: *"stating toad requirement seems like a obvious go. im assuming when you
+       click the seep?"* — yes, and the card alone was not enough: it says "keep a piece of the
+       hillside open and it stays", which is true and poetic and does not tell a player that the
+       piece is NINE TILES OF BANK, that four weeds are allowed and five are not, or that the count
+       has to HOLD for five days. A player could want this animal for a season and never work out what
+       it was waiting for.
+       AND IT SHOWS WHERE THEY ARE, because a requirement you cannot measure is a requirement you
+       cannot act on. The run and the hold are both live numbers. */
+    var run = seepRun(state), clear = MB_SEEP_RUN_N() - seepRunWeeds(state, run);
     L.push('A seep \u2014 wet ground where the hill keeps it damp. Nothing grows on it and nothing can ' +
-           'be planted in it. It is where an Amathole toad will sit, if you keep its run clear.');
+           'be planted in it.');
+    L.push('An Amathole toad sits here when the ' + MB_SEEP_RUN_N() + ' tiles of bank through it carry ' +
+           'no more than ' + TOAD_RUN_WEEDS + ' weeds, ' + TOAD_HOLD_DAYS + ' days running.');
+    L.push('Right now ' + clear + ' of ' + MB_SEEP_RUN_N() + ' are clear, and you have held it ' +
+           (state.toadHold || 0) + ' of ' + TOAD_HOLD_DAYS + ' days.');
   }
   if (toad && toad.c === c && toad.r === r) L.push('The Amathole toad.');
   /* THEN WHAT IS STANDING ON IT. */
