@@ -200,7 +200,14 @@
      fillShopRow must agree — the stylesheet sets the display size, the script sets the backing
      store. */
   .item canvas{width:44px;height:44px}
-  .price{display:flex;align-items:center;gap:3px;font-size:12px}
+  .price{display:flex;align-items:center;gap:4px;font-size:12px}
+  /* THE TOKEN ON THE SHELF HAS TO BE SEEN, BECAUSE IT IS THE DECISION.
+     Owner, 2026-10-04: *"the weather symbols next to each tree in nursery are very small and easy to
+     miss."* The icon is an inline SVG fixed at 15px and the price text beside it is 12px, so on a
+     phone the one thing a player is comparing — WHICH TOKEN this tree costs, and the whole economy is
+     "the day's token costs less" — is the smallest mark in the row. The SVG carries width/height
+     attributes; CSS wins over them, so this is one rule and no markup change. */
+  .item .price svg{width:21px;height:21px;flex:0 0 auto}
   .buy{width:100%;border:none;border-radius:15px;padding:13px;font:inherit;font-size:16px;font-weight:800;
     color:#fff;background:#5aa85a;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
   .buy:disabled{background:#b6c6bd;cursor:default}
@@ -2629,6 +2636,26 @@ function placeDecor(c, r, key) {
   if (!DECOR[key] || !(state.decor[key] > 0)) return false;
   state.decor[key] -= 1;
   t.obj = key;
+  return true;
+}
+
+/* PICKING IT BACK UP, WHICH IS THE HALF THAT WAS MISSING.
+   Miki the tester asked the right question: *"Benches/lanterns/bird bath etc... Can they be made
+   movable? Or is where you put them, where they'll stay?"* — **where you put them is where they
+   stayed, for ever.**  spent one from the stock and set , and nothing anywhere
+   took it back.
+   THAT IS NOT A COSMETIC GAP, IT IS A PERMANENT ONE.  refuses any tile with an obj, so a
+   two-token bench mis-tapped onto good ground **blocked that tile from ever being planted, with the
+   token gone and no way to undo either.** Same shape as the seep the player could forest away and the
+   plantation tile that kept a bramble: a silent, permanent, unrecoverable refusal.
+   Tap a piece of decor and it comes back to your stock. The HOLD still describes it, so looking is
+   unaffected. */
+function pickUpDecor(c, r) {
+  var t = cell(c, r);
+  if (!t || !t.obj) return false;
+  if (!DECOR[t.obj]) return false;            /* the bin, the nursery, the house and the jetty stay */
+  state.decor[t.obj] = (state.decor[t.obj] || 0) + 1;
+  t.obj = null;
   return true;
 }
 
@@ -6090,6 +6117,17 @@ function act(c, r) {
   if (t.obj === 'house') { renderBoard(); showModal(els.mBoard); return; }
   /* NOT SILENCE. The signpost, the jetty and anything else that is scenery answered a tap with
      nothing at all, which reads as a broken button rather than as scenery. It says what it is. */
+  /* PICK IT UP. Only decor — see pickUpDecor(). A tap on the bin, the nursery, the house or the jetty
+     is handled above this and never reaches here. */
+  if (t.obj && DECOR[t.obj]) {
+    /* THE KEY IS READ BEFORE THE PICK-UP, because pickUpDecor() nulls the tile — asking the tile what
+       it was afterwards gets you nothing, the same trap as the bin and the pine. */
+    var wasDecor = DECOR[t.obj].name.toLowerCase();
+    pickUpDecor(c, r);
+    toast('Picked up the ' + wasDecor +
+          ' \u2014 it is back in your stock, put it down somewhere else.', 'good');
+    saveLocal(); renderHud(); return;
+  }
   if (t.obj) { toast(describeTile(c, r)); return; }
 
   if (tool === 'cut') {
@@ -6971,7 +7009,7 @@ var API = {
   PARROT_R: PARROT_R, PARROT_PATCH_TREES: PARROT_PATCH_TREES, PARROT_PATCH_SPECIES: PARROT_PATCH_SPECIES,
   newState: newState, getState: function () { return state; }, setState: function (s) { state = s; },
   setTool: function (t) { tool = t; }, terrainAt: terrainAt,
-  tickDay: tickDay, clearAt: clearAt, plantAt: plantAt, placeDecor: placeDecor,
+  tickDay: tickDay, clearAt: clearAt, plantAt: plantAt, placeDecor: placeDecor, pickUpDecor: pickUpDecor,
   /* `act` is the TAP — the one entry point a finger actually reaches. It is exported because the
      three actions above it are the *decision* and `act` is the *reply*: a gate that only calls
      clearAt() can prove the weed was not cut, but not that the player was left in silence. Owner,
