@@ -1085,6 +1085,9 @@ function newState() {
     log: [], cleared: 0, planted: 0, bought: 0, recycled: 0,
     /* Parrots resident in the forest. A count, not a flag — see parrotCapacity(). */
     parrots: 0,
+    /* THE SEEP AND ITS HOLD. Both are placed by primeState(), because placeSeep() needs the aliens
+       already rolled — see the note there. toadHold is saved; seep is re-derived on load. */
+    seep: null, toadHold: 0,
     board: null, qty: 1, pick: 'wildpeach'
   };
 }
@@ -1102,6 +1105,10 @@ function newState() {
 function primeState() {
   state.weather = fallbackFor(new Date().getMonth());
   if (!state.board) rollBoard(state.weather);
+  /* PLACED AFTER THE ALIENS EXIST, which is why it is here and not in newState: placeSeep() picks
+     the WEEDIEST run of bank, and before the invasion is rolled every run is equally clean. */
+  if (!state.seep) state.seep = placeSeep(state);
+  if (state.toadHold == null) state.toadHold = 0;
 }
 
 /* HOW LONG A WORLD DAY IS, IN REAL TIME, AND THE ONE PLACE IT IS DECIDED.
@@ -1583,6 +1590,16 @@ function tickDay(w) {
   rollBoard(w);
   note(voiceFor(w), 'dim');
   parrotCheck();
+  /* THE HOLD, COUNTED HERE AND NOWHERE ELSE. One number advanced once per day, so "five days in a
+     row" means five days and not five calls. It resets the moment the run fails, which is what makes
+     the toad a thing you keep rather than a thing you did once. */
+  if (state.seep && !state.seen.toad) {
+    if (seepRunWeeds(state, seepRun(state)) <= TOAD_RUN_WEEDS) {
+      state.toadHold = (state.toadHold || 0) + 1;
+    } else {
+      state.toadHold = 0;
+    }
+  }
   toadCheck();
   return line;
 }
@@ -1857,6 +1874,93 @@ var TOAD_PATCH = 8;
    re-opening this question sees the patch fill with trees as the weeds come down. */
 var TOAD_WATER = 6;
 
+/* ============================================================ THE SEEP, AND THE RUN
+   Owner, 2026-10-03: *"im thinking the toad needs water. ... could we make the toad appear in a seep
+   when he appears that way hes in the right environment?"* A seep is where groundwater comes OUT of
+   the ground — water oozing from a slope with no channel and no standing pool, leaving a permanently
+   damp spongy patch. The BDI source names it as the toad's actual breeding habitat: *"shallow
+   temporary pools, and seeps on mountain slopes."* Seeps feed streams, so one on the bank is exactly
+   where it belongs.
+
+   AND IT IS WHAT MAKES THE GATE POSSIBLE AT ALL. Every version of "a clear area" failed the same way
+   and for the same reason: **the map always has a clear area somewhere**, so the player just picks
+   the clearest run and the gate is satisfied on day one. Measured — for run lengths 6, 9, 12 and 15
+   tiles, the best run on a fresh map is **100% clear**, so any threshold that is not above 100%
+   fires immediately and any threshold that is above it can never fire. There is no room between.
+
+   A SEEP GIVES THE RUN A FIXED ADDRESS, and that is the whole fix. The player no longer chooses which
+   ground counts. The seep is placed where the bank is WEEDIEST, so its run is the one run on the map
+   that is NOT already clear — and "hold it for N days" becomes a real ask instead of a description of
+   the opening map. */
+var TOAD_RUN = 9;          /* tiles in the run, measured along the stream */
+/* FOUR WEEDS ACROSS THE NINE, AND FIVE DAYS HELD. Both numbers are measured, and the sweep is in
+   `_tmp/_seep_numbers.js`. With no play at all the gate fires **0 times in 60 days** at every
+   setting tried — the run starts with five or six weeds on it, so there is nothing to inherit. With
+   perfect play, 4-and-5 arrives **on day 5** on three maps in four; at 2 it never arrives at all,
+   because the run cannot be held below that by cutting and planting is excluded by the rule itself
+   (a tree on the run counts against it, which is the tension working: the shade that would hold the
+   ground is the forest the toad will not have).
+   KNOWN LIMIT: one map in four has a run that starts at six weeds and is much harder. The honest
+   options are to place the seep on a run of at most five, or to accept that some hillsides are
+   harder than others — which for a Critically Endangered animal is arguably true. */
+var TOAD_RUN_WEEDS = 4;
+var TOAD_HOLD_DAYS = 5;
+
+/* THE RUN, as a list of tiles. It follows the stream as it wiggles, because `streamC` moves with r —
+   so it is a run of consecutive ROWS, not a straight line in map coordinates. `side` is -1 for the
+   west bank and +1 for the east. */
+function seepRun(s) {
+  var out = [], r, c;
+  if (!s || !s.seep) return out;
+  for (r = s.seep.r0; r < s.seep.r0 + TOAD_RUN; r++) {
+    c = streamC(r) + s.seep.side * 3;
+    out.push([c, r]);
+  }
+  return out;
+}
+
+/* HOW MANY OF THE RUN'S TILES ARE NOT CLEAR GRASS. A tile that is not grass, or that has a tree on
+   it, counts — the toad wants open ground, so a planted tile is a failure exactly like a weedy one. */
+function seepRunWeeds(s, tiles) {
+  var n = 0, i, t;
+  for (i = 0; i < tiles.length; i++) {
+    t = s.tiles[tiles[i][1] * COLS + tiles[i][0]];
+    if (!t || t.ter !== 'grass' || t.alien || t.sp) n++;
+  }
+  return n;
+}
+
+/* WHERE THE SEEP GOES: the weediest run of bank on the map, AND IT HAS TO BE WEEDIER THAN THE GATE.
+   WEEDIEST, not cleanest, and that is the point of the whole design — a seep in a clear stretch would
+   hand the player a gate that is already satisfied. Measured on one map: the weediest run had 4
+   weeds against an allowance of 4, which is satisfied before the player moves, so the gate was
+   accidental again on that hillside. **A run at or under the allowance is not a candidate.** If no
+   run on the map is over it — a rare kind roll — the weediest is used anyway and that game is simply
+   an easier one; the alternative is refusing to place a seep at all, which loses the feature. */
+function placeSeep(s) {
+  var K = TOAD_RUN, half = (K - 1) / 2, side, r0, r, c, t, weeds, ok, best = null, bestAny = null;
+  for (side = -1; side <= 1; side += 2) {
+    for (r0 = 1; r0 + K <= ROWS - 1; r0++) {
+      weeds = 0; ok = true;
+      for (r = r0; r < r0 + K; r++) {
+        c = streamC(r) + side * 3;
+        t = s.tiles[r * COLS + c];
+        if (!t || t.ter !== 'grass' || t.obj) { ok = false; break; }
+        if (t.alien || t.sp) weeds++;
+      }
+      if (!ok) continue;
+      if (!bestAny || weeds > bestAny.weeds) bestAny = { r0: r0, side: side, weeds: weeds };
+      if (weeds > TOAD_RUN_WEEDS && (!best || weeds > best.weeds)) {
+        best = { r0: r0, side: side, weeds: weeds };
+      }
+    }
+  }
+  var pick = best || bestAny;
+  if (!pick) return null;
+  var mid = pick.r0 + half;
+  return { c: streamC(mid) + pick.side * 3, r: mid, side: pick.side, r0: pick.r0, weeds: pick.weeds };
+}
+
 /* Weeds within a square patch of radius `rad` around a tile. Chebyshev, because that is the shape
    the shade rules already use (matureAround is the 8 neighbours). */
 function aliensNear(c, r, rad) {
@@ -1885,29 +1989,17 @@ function matureNear(c, r, rad) {
 
 function toadCheck() {
   if (state.seen.toad) return false;
-  /* The toad wants open grassland, so it picks the open grass tile FURTHEST from the village —
-     which on a 40x40 map is a long way off, and that is the point: the whole far side of the map
-     is now somewhere worth going. panTo below is what makes it findable.
-     The tile it settles on also has to be a CLEAN PATCH, not merely a clean tile: one bare tile in
-     the middle of a weed field is not grassland, and a toad on it would be a toad on a weed field. */
-  var i, c, r, t, dc, dr, d, best = -1, pick = -1;
-  for (i = 0; i < NTILES; i++) {
-    c = i % COLS; r = Math.floor(i / COLS);
-    t = state.tiles[i];
-    if (t.ter !== 'grass' || t.alien || t.sp || t.obj) continue;
-    /* NEAR THE WATER. `streamDist` is the distance to the stream's centre line, so this is
-       TOAD_WATER tiles out from the water's EDGE rather than from its middle. */
-    if (streamDist(c, r) > STREAM.half + TOAD_WATER) continue;
-    if (aliensNear(c, r, TOAD_PATCH) > TOAD_AT) continue;
-    dc = c - VILLAGE.c; dr = r - VILLAGE.r;
-    d = dc * dc + dr * dr;
-    if (d > best) { best = d; pick = i; }
-  }
-  if (pick < 0) return false;
+  /* THE SEEP IS THE ADDRESS AND THE HOLD IS THE GATE — see the block above TOAD_RUN for why a
+     free choice of clear ground could never work. */
+  if (!state.seep) return false;
+  if ((state.toadHold || 0) < TOAD_HOLD_DAYS) return false;
+  if (seepRunWeeds(state, seepRun(state)) > TOAD_RUN_WEEDS) return false;
+  /* AND THE SEEP ITSELF HAS TO BE BARE, because that is the tile it sits on. */
+  var st = state.tiles[state.seep.r * COLS + state.seep.c];
+  if (!st || st.alien || st.sp || st.obj) return false;
   state.seen.toad = true;
-  c = pick % COLS; r = Math.floor(pick / COLS);
-  toad = { c: c, r: r, t: 0 };
-  panTo(c, r);
+  toad = { c: state.seep.c, r: state.seep.r, t: 0 };
+  panTo(state.seep.c, state.seep.r);
   card('An Amathole toad',
     'The Amathole toad lives nowhere else on earth \u2014 only the grassland of the Amathole ' +
     'Mountains, around Hogsback. It is under four centimetres long, dark olive-brown with a pale ' +
@@ -2116,7 +2208,20 @@ function plantAt(c, r, spKey) {
      says nothing is the failure mode this file has already been bitten by twice today. */
   if (have <= 0) return false;
   state.bag[spKey] = have - 1;
-  state.ap = Math.max(0, state.ap - 1);
+  /* PLANTING DOES NOT COST AN ACTION POINT, AND UNTIL NOW IT DID — HALF THE TIME.
+     Owner, 2026-10-04: *"Planting doesnt cost AP in my experience and shouldnt. Clear til you run out
+     of points, buy, plant. repeat."*
+     He is describing the loop the game is built around, and the code was contradicting it in the
+     worst possible way — `state.ap = Math.max(0, state.ap - 1)` deducts while you have points and
+     CLAMPS at zero, so planting competed with cutting when the budget was full and was free once it
+     was empty. Two different prices for the same action depending on when you take it, which is
+     exactly the sort of thing that reads as a bug without ever being catchable as one. `act()`'s own
+     note has said "planting is the one action the budget does NOT stop" since the budget existed;
+     this line was the disagreement.
+     WHAT ACTUALLY GATES PLANTING IS THE TOKEN, and that is the right gate. A tree costs tokens, the
+     tokens come from cutting, and the nursery is the only shop — so planting is limited by how much
+     clearing you have done, which is the loop. Action points buy CLEARING; tokens buy TREES. */
+  /* (the AP line was here — see the note above for why it is gone) */
   /* THE TILE TAKES THE TREE, AND THE BANK GOES WITH IT.
      A tile that has just been cleared still holds the seed bank the cut left behind. Planting on it
      is allowed -- and it should be: trading a bank for a sapling is a real decision, and it is the
@@ -2454,6 +2559,10 @@ function encodeSave(s) {
                      overwritten the moment the day turns, and `bd` absent (an old save code) simply
                      comes back with no board, which primeState() then rolls fresh. */
                   bd: s.board || null,
+                  /* THE HOLD, so a player who has kept the seep clear for four days does not lose it to a
+                     refresh. The seep itself is NOT saved — it is re-derived from the map on load, which
+                     is cheaper than carrying it and cannot go stale if the stream moves. */
+                  th: s.toadHold || 0,
                   tk: s.tokens.sun + '.' + s.tokens.mist + '.' + s.tokens.rain + '.' + s.tokens.snow };
   var body = b64encode(JSON.stringify(payload));
   return 'MB2-' + body + '-' + checksum(body);
@@ -2525,6 +2634,9 @@ function decodeSave(code) {
      three tasks reset on every refresh, which is what the tester reported. `p.bd` absent means an
      old save code, and primeState() rolls a fresh board for it. */
   s.board = (p.bd && p.bd.tasks && p.bd.tasks.length) ? p.bd : null;
+  s.toadHold = p.th || 0;
+  /* THE SEEP IS RE-DERIVED, not loaded: placeSeep() reads the tiles, and the tiles are built by now. */
+  s.seep = placeSeep(s);
   /* ABSENT MEANS NOW, NOT ZERO. An old save code has no `at`, and zero would measure the accrual
      from 1970 — which caps at AP_MAX and hands a returning player a full tank for having been away,
      the opposite of what the field is for. "Now" keeps the points they had and starts the clock
@@ -4022,6 +4134,46 @@ function drawNursery(cx, base, s) {
   }
 }
 
+function drawSeep(cx, base, s, c, r) {
+  /* A sodden patch on the slope. Wet ground is DARKER than the grass around it, which is the whole
+     read — a seep is not a puddle, it is ground that has been quietly soaked for years. */
+  var i, a;
+  ctx.save();
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = '#4a5f3c';
+  ctx.beginPath();
+  ctx.ellipse(cx, base - s * 0.02, s * 0.40, s * 0.21, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#3d5233';
+  ctx.beginPath();
+  ctx.ellipse(cx - s * 0.05, base - s * 0.04, s * 0.26, s * 0.13, 0, 0, Math.PI * 2);
+  ctx.fill();
+  /* TWO SHEENS, where the water actually stands. Small — a seep is ooze, not a pond. */
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = '#7fa8bd';
+  for (i = 0; i < 2; i++) {
+    a = i === 0 ? -0.13 : 0.14;
+    ctx.beginPath();
+    ctx.ellipse(cx + s * a, base - s * 0.03 + i * s * 0.05, s * 0.10, s * 0.045, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  /* RUSHES round the edge — the plant that actually grows on a seep. */
+  ctx.strokeStyle = '#6d8a52';
+  ctx.lineWidth = Math.max(1, s * 0.018);
+  ctx.lineCap = 'round';
+  for (i = 0; i < 7; i++) {
+    a = (i / 7) * Math.PI * 2 + 0.4;
+    var rx = cx + Math.cos(a) * s * 0.36;
+    var ry = base - s * 0.03 + Math.sin(a) * s * 0.18;
+    ctx.beginPath();
+    ctx.moveTo(rx, ry);
+    ctx.lineTo(rx + Math.cos(a) * s * 0.05, ry - s * 0.13);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawBin(cx, base, s, full) {
   var bx = cx - s * 0.16;   /* the bin sits left; the baboon has the right-hand side */
   shadow(bx, base, s * 0.26, s * 0.09);
@@ -4434,6 +4586,14 @@ function drawTileProp(c, r) {
   var s = TW * 0.78 * vs;
 
   drawSeedMarkers(c, r);
+
+  /* THE SEEP. Groundwater coming out of the slope: a darker, sodden patch with a couple of water
+     sheens on it and rushes round the edge. Drawn here, before the trees and the objects, because it
+     is ground — a seep is a place, not a thing standing on one.
+     THIS IS THE DRAWN FALLBACK, not a pack sprite. `ter_seep` does not exist yet; when art delivers
+     it this becomes a one-line swap in the tile-art path like every other ground tile, and the rule
+     above it does not change. */
+  if (state.seep && state.seep.c === c && state.seep.r === r) drawSeep(cx, tbase, TW * 0.92, c, r);
 
   /* The forest remnant is terrain, not a planted tree, so it needs a canopy of its own or the old
      forest is a dark green patch with no trees in it. The tile's own coordinates go in, because the
@@ -6306,6 +6466,8 @@ var API = {
      screenshot cannot see it — the check has to drive the clock rather than look at the HUD. */
   apAccrue: apAccrue, msToNextAp: msToNextAp, apWaitText: apWaitText, PLACES: PLACES, TILE_ART: TILE_ART, TOAD_AT: TOAD_AT,
   TOAD_PATCH: TOAD_PATCH, TOAD_WATER: TOAD_WATER, aliensNear: aliensNear, matureNear: matureNear,
+  primeState: primeState, placeSeep: placeSeep, seepRun: seepRun, seepRunWeeds: seepRunWeeds,
+  TOAD_RUN: TOAD_RUN, TOAD_RUN_WEEDS: TOAD_RUN_WEEDS, TOAD_HOLD_DAYS: TOAD_HOLD_DAYS,
   /* The snag-and-stand rule. Exported because the parrot's requirements are now LOCAL -- a patch
      around a dead tree -- and a check that cannot count the patch cannot tell a real stand from a
      lone tree. SNAG_DAYS is exported so a fixture can age a snag without running the tick. */
