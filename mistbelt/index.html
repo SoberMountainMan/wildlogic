@@ -2709,6 +2709,17 @@ function pickUpDecor(c, r) {
   var t = cell(c, r);
   if (!t || !t.obj) return false;
   if (!DECOR[t.obj]) return false;            /* the bin, the nursery, the house and the jetty stay */
+  /* AND A LANDMARK IS NOT FURNITURE.
+     Owner, 2026-10-05: *"i removed the signpost that starts the game with the writing on it. shouldnt
+     be removable? then it put a blank sign in my stock, so now i have 2 signs."*
+     't.lm' marks the signs the map was BUILT with, and they carry the writing. Picking one up did two
+     things at once: **it destroyed the landmark the game opens on, and it handed the player a blank
+     'sign' in 'state.decor' — because decor stock is keyed by the OBJECT TYPE and not by what the
+     object was. So the player lost the written sign and gained a generic one they could place.
+     **AND IT CAME BACK ON THE NEXT LOAD**, because PLACES is re-stamped onto the map on every load —
+     so the sign returned AND the blank stayed in stock. That is a free sign every session.
+     A landmark is scenery the map owns, like the bin and the jetty. It stays. */
+  if (t.lm) return false;
   state.decor[t.obj] = (state.decor[t.obj] || 0) + 1;
   t.obj = null;
   return true;
@@ -6153,7 +6164,11 @@ function describeTile(c, r) {
   var sh = matureAround(c, r);
   if (sh >= SHADE_CLOSES_SEED) L.push('Shade ' + sh + ' \u2014 the seed in this ground is dead for good.');
   else if (sh > 0) L.push(sh + ' mature tree' + (sh === 1 ? '' : 's') + ' shading it.');
-  if (t.obj) L.push(OBJ_LINE[t.obj] || ('A ' + t.obj + ' stands here.'));
+  if (t.obj) {
+    /* A LANDMARK SAYS IT IS ONE, because the player will try to pick it up — see pickUpDecor(). */
+    if (t.lm) L.push(OBJ_LINE[t.obj] + ' It was here when you arrived, and it stays.');
+    else L.push(OBJ_LINE[t.obj] || ('A ' + t.obj + ' stands here.'));
+  }
   if (!L.length) L.push('Open ground.');
   return L.join(' ');
 }
@@ -6196,9 +6211,36 @@ function act(c, r) {
     /* THE KEY IS READ BEFORE THE PICK-UP, because pickUpDecor() nulls the tile — asking the tile what
        it was afterwards gets you nothing, the same trap as the bin and the pine. */
     var wasDecor = DECOR[t.obj].name.toLowerCase();
-    pickUpDecor(c, r);
+    /* A LANDMARK SAYS NO, AND SAYS WHY.
+       Owner, 2026-10-05: *"i removed the signpost that starts the game with the writing on it. shouldnt
+       be removable?"* — it should not, and until this line the refusal did not exist: the sign was
+       picked up, the landmark was destroyed, and a BLANK sign went into the stock because decor is
+       keyed by object type rather than by what the object was. **And the toast said "Picked up" either
+       way, because the return value was never read** — a refusal that announces a success is worse than
+       a silent one. */
+    if (t.lm) {
+      toast('That signpost was here when you arrived, and it stays. You can put your own sign up ' +
+            'anywhere else.', 'warn');
+      return;
+    }
+    /* TWO TAPS, NOT ONE. Owner: *"too easy to pick up just by clicking on it once."*
+       THE HOUSE ALREADY HAS THIS RULE — "Start a new game" is deliberately two taps, with the note
+       *"a single button that wipes a game on a mis-tap is not a feature"*. Picking up furniture is the
+       same shape of mistake: a tap is meant to be cheap, this is not, and the tile you tapped is often
+       the tile you meant to plant on. First tap asks; second tap does it. */
+    if (!state.pickAsk || state.pickAsk.c !== c || state.pickAsk.r !== r) {
+      state.pickAsk = { c: c, r: r };
+      toast('Pick up the ' + wasDecor + '? Tap it again to take it back into your stock.', 'dim');
+      return;
+    }
+    state.pickAsk = null;
+    if (!pickUpDecor(c, r)) {
+      toast('That one will not come up.', 'warn');
+      return;
+    }
     toast('Picked up the ' + wasDecor + ' \u2014 it is back in your stock. Its button is the '
           + 'second one in the tool bar \u2014 tap it, then tap the ground.', 'good');
+    saveLocal(); renderHud(); return;
   }
   /* NOT SILENCE. The signpost, the jetty and anything else that is scenery used to answer a tap
      with nothing at all, which reads as a broken button rather than as scenery. It says what it is.
