@@ -2064,7 +2064,7 @@ function hollowTrees() {
 
 /* THE FIRST HOLLOW DEAD TREE WITH A REAL STAND AROUND IT AND NO BIRD IN IT YET, or -1.
    This used to return any living mature yellowwood. It now wants a SNAG, because a Cape parrot
-   cannot make its own hole -- and it wants a FOREST around that snag, because the canopy and the mix
+   needs an old tree that has died and gone hollow -- and it wants a FOREST around that snag, because
    are the bird's foraging range, not a number about the whole map. See the note on the death loop in
    tickDay. */
 function nestFor() {
@@ -5769,13 +5769,12 @@ function renderHud() {
     if (els.parrotPill) els.parrotPill.title = (state.parrots || 0) > 0
       ? (state.parrots + ' Cape parrot' + (state.parrots === 1 ? '' : 's') + ' resident' +
          (_cap > 0 ? ', with room for ' + _cap : '') +
-         '. A parrot nests in a hollow DEAD tree with a stand of mixed canopy around it.')
+         '. A nest site is a hollow dead tree with a stand of mixed canopy around it.')
       : (_cap > 0
-          ? 'No parrots yet, but your forest has room for ' + _cap + '. A Cape parrot cannot make its ' +
-            'own hole — leave an old tree standing until it dies and goes hollow, with a mixed stand ' +
-            'around it.'
-          : 'No parrots, and nowhere for one yet. A Cape parrot cannot make its own hole: an old tree ' +
-            'has to die and go hollow, with a mixed stand around it, before there is a nest to move into.');
+          ? 'No parrots yet, but your forest has room for ' + _cap + '. Leave an old tree ' +
+            'standing until it dies and goes hollow, with a mixed stand around it.'
+          : 'No parrots, and nowhere for one yet. A Cape parrot nests in a hollow in an old tree ' +
+            'that has died and gone hollow, with a mixed stand around it.');
   }
   if (els.apPill) {
     els.apPill.className = 'ov appill' + (state.ap <= 0 ? ' empty' : '');
