@@ -448,11 +448,11 @@
          the day-1 beats, at the moment each one becomes true. See DESIGN-BRIEF-DAY-ONE-2026-09-29.md -->
     <div class="notes">
       <p><b>Clear the alien trees off the hillside and plant the indigenous forest back.</b> You get
-      <b id="introAp">12</b> action points a day and have <b id="introLeft">12</b> left today; they
-      come back when the day rolls over.</p>
+      <b id="introAp">24</b> action points a day and have <b id="introLeft">24</b> left today. One
+      comes back every hour. Cutting spends them; planting is free.</p>
       <p><b>Cutting one leaves its seed in the ground</b>, so it comes back. That is why a cleared
       patch does not stay cleared.</p>
-      <p><b>Three mature trees around a patch and the shade shuts its seed bank for good.</b> That is
+      <p><b>Three mature trees around a patch and the shade kills the seed in that ground for good.</b> That is
       the whole game, and it takes seasons.</p>
       <p class="dim">The bin takes <b id="introBin">3</b> cuttings and the baboon trades them for
       the day’s token; the nursery is where you spend it. <b>Hold a tile</b> to ask what it is.</p>
@@ -5531,8 +5531,8 @@ function dayDoneLine() {
 
 function apSay() {
   if (state && state.ap > 0) {
-    toast(state.ap + ' of ' + AP_MAX + ' action points left today. Cutting and planting both ' +
-          'spend them.', 'dim');
+    toast(state.ap + ' of ' + AP_MAX + ' action points left today. Cutting spends them; ' +
+          'planting is free.', 'dim');
   } else {
     toast(dayDoneLine() + ' You can still plant \u2014 only cutting is rationed.', 'warn');
   }
@@ -6237,7 +6237,7 @@ function act(c, r) {
       if (bd && state.ap < bd.ap) {
         toast(bd.name + ' needs ' + bd.ap + ' action point' + (bd.ap === 1 ? '' : 's') +
               ' and you have ' + state.ap +
-              '. They come back when the day rolls over.', 'warn');
+              '. One comes back every hour.', 'warn');
       } else {
         toast('That one will not come out.', 'warn');
       }
@@ -6258,7 +6258,7 @@ function act(c, r) {
       var sd2 = SPECIES[t.sp] || {};
       var sst = t.stage === 1 ? 'a sapling' : (t.stage === 2 ? 'a young tree' : 'full grown');
       toast((sd2.name || 'Your tree') + ' is ' + sst + ' \u2014 that one is yours, so there is ' +
-            'nothing to cut. Trees grow on wet days.', 'dim');
+            'nothing to cut. Trees grow every day, and faster when it rains.', 'dim');
     }
     return;
   }
