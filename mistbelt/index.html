@@ -783,7 +783,7 @@ var SPECIES = {
 var SP_BY_TIER = ['wildpeach', 'chestnut', 'stinkwood', 'whitepair', 'knobwood',
                   'yellowwood', 'outeniqua', 'ironwood'];
 
-var DECOR_KEYS = ['bench', 'birdbath', 'sign', 'hide', 'lantern'];
+var DECOR_KEYS = ['bench', 'birdbath', 'sign', 'hide', 'lantern', 'azalea', 'hydrangea'];
 /* THE BIRD HIDE IS NOT FOR SALE ANY MORE.
    Owner, 2026-10-03: "maybe we should get rid of the bird hide decoration? people might think thats
    what parrots need?"
@@ -795,6 +795,8 @@ var DECOR_KEYS = ['bench', 'birdbath', 'sign', 'hide', 'lantern'];
 var DECOR_SHOP = DECOR_KEYS.filter(function (k) { return k !== 'hide'; });
 var DECOR = {
   bench:    { name: 'Bench',     cost: 2, token: 'sun' },
+  azalea:   { name: 'Azalea',    cost: 2, token: 'sun' },
+  hydrangea:{ name: 'Hydrangea', cost: 2, token: 'rain' },
   birdbath: { name: 'Bird bath', cost: 2, token: 'rain' },
   sign:     { name: 'Signpost',  cost: 2, token: 'mist' },
   hide:     { name: 'Bird hide', cost: 4, token: 'mist' },
@@ -805,10 +807,30 @@ var ALIEN_CODE = { none: 0, wattle: 1, pine: 2, bugweed: 3, bramble: 4, blackwoo
 var ALIEN_FROM = [null, 'wattle', 'pine', 'bugweed', 'bramble', 'blackwood'];
 /* Everything that can stand on a tile, so a save keeps the things the player built as well as
    the things that grow. The sign is both a fixed place and a decoration; one code covers both. */
+/* OBJECT CODES PAST NINE, WITHOUT BREAKING A SINGLE SAVE CODE IN THE WILD.
+   The object field in a save code was ONE CHARACTER and the decoder asserted it was 1-9:
+   `v = parseInt(occ.charAt(i), 10); if (!(v >= 1 && v <= 9)) return null;`
+   **So a tenth object type would have written "10", the decoder would have read "1" and then eaten
+   the "0" as the next entry — silently corrupting every save that contained one.** That is why the
+   decor palette has been stuck at five since the beginning, and why the garden could not be built
+   without touching the format.
+   THE FIX KEEPS DIGITS FOR 1-9 AND USES LETTERS ABOVE THEM. An old code is all digits and reads
+   exactly as it did; a new code uses `a` for 10, `b` for 11, and so on to 35. Both directions go
+   through one function each, so the writer and the reader cannot drift. */
+function objCode(n) {
+  if (n >= 1 && n <= 9) return String(n);
+  if (n >= 10 && n <= 35) return String.fromCharCode(87 + n);   /* 10 -> 'a' */
+  return '0';
+}
+function objCodeRead(ch) {
+  if (ch >= '1' && ch <= '9') return ch.charCodeAt(0) - 48;
+  if (ch >= 'a' && ch <= 'z') return ch.charCodeAt(0) - 87;     /* 'a' -> 10 */
+  return 0;
+}
 var OBJ_CODE = { house: 1, nursery: 2, bin: 3, sign: 4, jetty: 5,
-                 bench: 6, birdbath: 7, hide: 8, lantern: 9 };
+                 bench: 6, birdbath: 7, hide: 8, lantern: 9, azalea: 10, hydrangea: 11 };
 var OBJ_FROM = [null, 'house', 'nursery', 'bin', 'sign', 'jetty',
-                'bench', 'birdbath', 'hide', 'lantern'];
+                'bench', 'birdbath', 'hide', 'lantern', 'azalea', 'hydrangea'];
 /* Codes 1-4 are frozen \u2014 they are already inside save codes players are holding. The four new
    species take 5-8, so an old code still reads exactly as it did; it simply has none of the new
    trees in it. That is why the palette could grow without breaking anybody's forest. */
@@ -2840,7 +2862,7 @@ function encodeTiles(tiles) {
   var occ = '';
   for (i = 0; i < tiles.length; i++) {
     t = tiles[i];
-    if (t.obj) occ += b64i(i) + 'o' + String(OBJ_CODE[t.obj] || 0);
+    if (t.obj) occ += b64i(i) + 'o' + objCode(OBJ_CODE[t.obj] || 0);
     if (t.sp) {
       /* Age is stored in HALF days. Growth is not whole days — a slow species gains `g - 0.5`, and
          a misty day gains one and a half — so rounding age to whole days would quietly delay a
@@ -2909,8 +2931,8 @@ function decodeTiles(str) {
     var kind = occ.charAt(i + 2), t = out[idx];
     i += 3;
     if (kind === 'o') {
-      v = parseInt(occ.charAt(i), 10); i += 1;
-      if (!(v >= 1 && v <= 9)) return null;
+      v = objCodeRead(occ.charAt(i)); i += 1;
+      if (!(v >= 1 && v <= 35)) return null;
       t.obj = OBJ_FROM[v] || null;
     } else if (kind === 's') {
       v = parseInt(occ.charAt(i), 10); i += 1;
@@ -4911,7 +4933,45 @@ function drawDecor(kind, cx, base, s) {
     ctx.beginPath(); ctx.ellipse(cx, base - s * 0.50, s * 0.105, s * 0.125, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = 'rgba(242,217,138,0.22)';
     ctx.beginPath(); ctx.ellipse(cx, base - s * 0.50, s * 0.22, s * 0.24, 0, 0, Math.PI * 2); ctx.fill();
-  }
+  } else if (kind === 'azalea') {
+    /* FLOWERS, AND THEY SIT ON THE GRID THE WAY EVERYTHING ELSE DOES.
+       Owner, 2026-10-05: *"do some flower art to use as decorations until we can decide what they'll
+       really be for."* So these are DECOR for now — an object on a tile, exactly like the bench, with
+       no mechanic attached. What they must NOT be is the thing the buildings got wrong: a flat
+       front-on drawing in an isometric world. A bush has no front, so it reads correctly from any
+       angle as long as its FOOTPRINT is a diamond and its shadow matches the light. */
+    shadow(cx, base, s * 0.30, s * 0.10);
+    ctx.fillStyle = '#3f6b3a';
+    ctx.beginPath(); ctx.ellipse(cx, base - s * 0.12, s * 0.32, s * 0.19, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#4e8047';
+    ctx.beginPath(); ctx.ellipse(cx - s * 0.05, base - s * 0.18, s * 0.24, s * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#d9528a';
+    ctx.beginPath(); ctx.ellipse(cx - s * 0.12, base - s * 0.26, s * 0.075, s * 0.055, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + s * 0.08, base - s * 0.30, s * 0.065, s * 0.048, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + s * 0.19, base - s * 0.20, s * 0.055, s * 0.040, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f08ab0';
+    ctx.beginPath(); ctx.ellipse(cx - s * 0.14, base - s * 0.28, s * 0.040, s * 0.030, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx + s * 0.06, base - s * 0.32, s * 0.034, s * 0.026, 0, 0, Math.PI * 2); ctx.fill();
+  } else if (kind === 'hydrangea') {
+    /* THE HOGBACK FLOWER, and the one that belongs on the wet bank: blue, and it wants the rain.
+       Its heads are BALLS of florets, so each is drawn as a disc with a lit highlight offset up-left —
+       which is the same light direction every other object in this game uses. */
+    shadow(cx, base, s * 0.32, s * 0.11);
+    ctx.fillStyle = '#3d5f3c';
+    ctx.beginPath(); ctx.ellipse(cx, base - s * 0.13, s * 0.34, s * 0.20, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#4c7549';
+    ctx.beginPath(); ctx.ellipse(cx - s * 0.04, base - s * 0.19, s * 0.26, s * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#6d94c8';
+    ctx.beginPath(); ctx.arc(cx - s * 0.14, base - s * 0.28, s * 0.085, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + s * 0.18, base - s * 0.22, s * 0.065, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8fb6e0';
+    ctx.beginPath(); ctx.arc(cx + s * 0.04, base - s * 0.33, s * 0.075, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx - s * 0.02, base - s * 0.20, s * 0.055, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#c3daf2';
+    ctx.beginPath(); ctx.arc(cx - s * 0.17, base - s * 0.31, s * 0.034, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + s * 0.01, base - s * 0.36, s * 0.030, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + s * 0.16, base - s * 0.25, s * 0.026, 0, Math.PI * 2); ctx.fill();
+}
 }
 
 /* Props stand on their own tile and overhang the tiles BEHIND them, which is how a flat grid gets
@@ -5542,6 +5602,39 @@ function dayDoneLine() {
          'rolls over.';
 }
 
+/* WHAT MAKES THE NUMBER GO UP, IN THE PLACE A PHONE CAN READ IT.
+   The count is the score and the ceiling is real — PARROT_MAX is 12 — but the pill hides "of N" while
+   the capacity is zero, deliberately, because "0 of 0" reads as a broken meter. So the reason has to
+   live somewhere, and it lived in the pill's title attribute, which needs a HOVER this game does not
+   have. The count of nest sites is stated separately from the capacity, because the two are different
+   facts: you can have hollows and still not have room. */
+function parrotSay() {
+  if (!state) return;
+  var cap = parrotCapacity();
+  var have = state.parrots || 0;
+  var sites = 0, i;
+  for (i = 0; i < NTILES; i++) if (isNestSite(state.tiles[i])) sites++;
+  var L = [];
+  L.push('Parrots: ' + have + ' of ' + cap + '.');
+  if (cap === 0) {
+    if (sites === 0) {
+      L.push('A Cape parrot nests in a hollow tree that has died standing, and it will not move into ' +
+             'one until a stand of mixed canopy has grown up around it. You have no hollow yet.');
+    } else {
+      L.push('You have ' + sites + ' hollow ' + (sites === 1 ? 'tree' : 'trees') + ', but the canopy ' +
+             'around ' + (sites === 1 ? 'it is' : 'them is') + ' not mixed or not tall enough yet: a ' +
+             'nest site needs ' + PARROT_PATCH_TREES + ' mature trees of ' + PARROT_PATCH_SPECIES +
+             ' different species around it.');
+    }
+  } else if (have < cap) {
+    L.push('Room for ' + (cap - have) + ' more. Birds arrive one a day, so long as the forest holds.');
+  } else {
+    L.push('Every hollow you have is taken. Another dead tree with a mixed stand around it is the way ' +
+           'to raise the ceiling.');
+  }
+  L.push('The ceiling is ' + PARROT_MAX + '.');
+  toast(L.join(' '));
+}
 function apSay() {
   if (state && state.ap > 0) {
     toast(state.ap + ' of ' + AP_MAX + ' action points left today. Cutting spends them; ' +
@@ -6728,6 +6821,14 @@ function boot() {
      means and what happens when it is gone — so a player who has run out does not have to work out
      that tapping a weed they cannot cut is the way to be told. */
   if (els.apPill) els.apPill.addEventListener('click', apSay);
+  /* AND THE PARROT PILL ANSWERS A TAP, BECAUSE ITS EXPLANATION WAS A TOOLTIP.
+     Owner, 2026-10-05: *"parrots : 0 is what it says, not 0 of 6. is there a min or max?"* — the
+     count is right and the ceiling is real (PARROT_MAX is 12), but on day one the capacity is 0 and
+     the pill deliberately hides "of 0" rather than show a broken meter. **The reason lived in the
+     pill title, which is a HOVER — and this is a phone game with no hover.** So the one thing a
+     player needs to know — what makes the number go up — was written down and unreadable. The AP pill
+     has answered a tap since the beginning; this one does now too. */
+  if (els.parrotPill) els.parrotPill.addEventListener('click', parrotSay);
 
   /* AN ESCAPE FROM EVERY SHEET. The nursery lists eight seeds, five decor items, a stepper, a buy
      button and a four-chip trade row, so on a phone the sheet is taller than the glass and its own
@@ -7137,7 +7238,8 @@ var API = {
   TOAD_PATCH: TOAD_PATCH, TOAD_WATER: TOAD_WATER, aliensNear: aliensNear, matureNear: matureNear,
   primeState: primeState, placeSeep: placeSeep, seepRun: seepRun, seepRunWeeds: seepRunWeeds,
   isRoad: isRoad, clearRoads: clearRoads, describeTile: describeTile, OBJ_LINE: OBJ_LINE,
-  whyNotHere: whyNotHere, renderDock: renderDock, placeDecor: placeDecor, plantationSeed: plantationSeed, inPlantation: inPlantation,
+  whyNotHere: whyNotHere, renderDock: renderDock, placeDecor: placeDecor,
+  objCode: objCode, objCodeRead: objCodeRead, plantationSeed: plantationSeed, inPlantation: inPlantation,
   TOAD_RUN: TOAD_RUN, TOAD_RUN_WEEDS: TOAD_RUN_WEEDS, TOAD_HOLD_DAYS: TOAD_HOLD_DAYS,
   /* The snag-and-stand rule. Exported because the parrot's requirements are now LOCAL -- a patch
      around a dead tree -- and a check that cannot count the patch cannot tell a real stand from a
