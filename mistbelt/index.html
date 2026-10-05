@@ -793,14 +793,25 @@ var DECOR_KEYS = ['bench', 'birdbath', 'sign', 'hide', 'lantern', 'azalea', 'hyd
    dropping it would shift every decoration after it and silently corrupt every existing save. It is
    simply no longer offered for sale, and a hide already bought still stands. */
 var DECOR_SHOP = DECOR_KEYS.filter(function (k) { return k !== 'hide'; });
+/* THE CHEAP THING IS THE EXPENSIVE MISTAKE.
+   Owner, 2026-10-05: *"we should make decorations cheaper than trees, as a trap."*
+   MEASURED BEFORE CHANGING IT: the cheapest tree was 2 tokens and the cheapest decoration was ALSO 2,
+   so the trap he was describing did not exist yet — a bench and a pioneer tree cost the same, and the
+   shelf made no argument either way. **A trap needs the bait to be visibly cheaper than the thing it
+   costs you.**
+   Every decoration is now 1 token, against a cheapest tree of 2. So a player with two sun tokens can
+   buy two benches or one wild peach — and **the parrot ceiling is what makes that a real decision**:
+   every tile spent on a bench is a tile that can never hold a nest site, and the pill says so from the
+   first frame. The decor is not a penalty and it is not a scam; it is the game's one genuinely cheap
+   thing, and the price of it is ground. */
 var DECOR = {
-  bench:    { name: 'Bench',     cost: 2, token: 'sun' },
-  azalea:   { name: 'Azalea',    cost: 2, token: 'sun' },
-  hydrangea:{ name: 'Hydrangea', cost: 2, token: 'rain' },
-  birdbath: { name: 'Bird bath', cost: 2, token: 'rain' },
-  sign:     { name: 'Signpost',  cost: 2, token: 'mist' },
+  bench:    { name: 'Bench',     cost: 1, token: 'sun' },
+  azalea:   { name: 'Azalea',    cost: 1, token: 'sun' },
+  hydrangea:{ name: 'Hydrangea', cost: 1, token: 'rain' },
+  birdbath: { name: 'Bird bath', cost: 1, token: 'rain' },
+  sign:     { name: 'Signpost',  cost: 1, token: 'mist' },
   hide:     { name: 'Bird hide', cost: 4, token: 'mist' },
-  lantern:  { name: 'Lantern',   cost: 3, token: 'sun' }
+  lantern:  { name: 'Lantern',   cost: 1, token: 'sun' }
 };
 
 var ALIEN_CODE = { none: 0, wattle: 1, pine: 2, bugweed: 3, bramble: 4, blackwood: 5 };
