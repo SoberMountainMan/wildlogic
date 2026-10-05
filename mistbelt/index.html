@@ -88,6 +88,8 @@
   .tokens{left:12px;top:44px;display:flex;align-items:center;background:rgba(255,255,255,.95);
     border-radius:999px;padding:5px 6px;box-shadow:0 2px 6px var(--shadow);line-height:1}
   .tk{display:flex;align-items:center;gap:3px;padding:0 6px;font-size:13px;font-weight:800;color:#33424b}
+  /* THE DAY'S TOKEN IS THE ONE THAT PAYS TODAY, and it is marked in the pill that is about tokens. */
+  .tk[data-today]{background:rgba(90,168,90,.22);border-radius:5px}
   .tk svg{display:block}
   .hudrow{left:12px;top:80px;display:flex;gap:6px;line-height:1}
   .hudrow button{width:33px;height:33px;border-radius:10px;border:none;cursor:pointer;
@@ -5762,9 +5764,22 @@ function card(title, body, link) {
 function renderTokens() {
   var bar = els.tokenBar;
   if (!bar) return;
+  /* THE DAY'S TOKEN IS MARKED HERE, BECAUSE THIS IS THE PILL THAT IS ABOUT TOKENS.
+     Owner, 2026-10-05: *"youve added a moon icon next to the sun icon? should be one or the other? or
+     token for that period gets it own pill? or add it to the token counter pill with something
+     idicating what it is?"*
+     **He is right and the muddle was mine.** The weather pill carried  — so it
+     was showing a TOKEN beside a temperature, which is why a sun could sit there at 22:00 — and then I
+     added a moon next to it, which made the weather pill carry two glyphs with two different meanings.
+     **The weather pill is about the SKY. The token pill is about TOKENS.** So the sky gets sun or moon,
+     one glyph, and the day's token is marked where it belongs — **and it costs nothing, because this
+     pill already lists all four and already knows which one is paying.** */
+  var today = state.weather ? tokenOf(state.weather) : null;
   var html = '', i;
   for (i = 0; i < TOKENS.length; i++) {
-    html += '<div class="tk">' + TOKEN_ICON[TOKENS[i]] + '<span>' + state.tokens[TOKENS[i]] + '</span></div>';
+    var on = TOKENS[i] === today;
+    html += '<div class="tk"' + (on ? ' data-today="1"' : '') + '>' + TOKEN_ICON[TOKENS[i]] +
+            '<span>' + state.tokens[TOKENS[i]] + '</span></div>';
   }
   bar.innerHTML = html;
 }
@@ -5793,29 +5808,31 @@ function renderHud() {
      drawTileProp and the season-average sites — so the pill shows the season rather than nothing, and
      everything below renders unconditionally because none of it depends on the weather at all. */
   var w = state.weather || fallbackFor(new Date().getMonth());
-  if (els.wxIcon) els.wxIcon.innerHTML = TOKEN_ICON[tokenOf(w)];
+  /* THE PILL IS ABOUT THE SKY. THE TOKEN PILL IS ABOUT TOKENS.
+     Owner, 2026-10-05: *"night can be weird when nobody knows, top left temp has pic of a sun only
+     maybe night should be moon, or something that says time and pm?"* — and then, on my first fix:
+     *"youve added a moon icon next to the sun icon? should be one or the other? or token for that
+     period gets it own pill? or add it to the token counter pill with something idicating what it is?"*
+     **Both complaints are the same complaint and he is right.** This line used to be
+     `TOKEN_ICON[tokenOf(w)]` — **a TOKEN glyph sitting beside a temperature** — which is exactly why a
+     sun could sit there at 22:00 and read as nonsense. It was never a sky icon. Then I added a moon
+     beside it and the pill carried two glyphs meaning two different things.
+     **So the sky gets sun or moon — ONE glyph — and the day's token is marked in the token pill, which
+     already lists all four and already knows which one is paying.** Nothing is lost and the muddle goes. */
+  var _now = new Date();
+  var _mins = _now.getHours() * 60 + _now.getMinutes();
+  var _clock = ("0" + _now.getHours()).slice(-2) + ":" + ("0" + _now.getMinutes()).slice(-2);
+  var _night = sunHeight(_mins / 1440, state.weather) < 0;
+  /* The moon glyph is the REAL phase, not a decoration: 0 new, 0.25 first quarter, 0.5 full, 0.75 last,
+     and anything between is shown as the nearest quarter. moonPhase() has existed since 2026-10-02. */
+  var _ph = moonPhase(_now);
+  var _moon = _ph < 0.125 || _ph >= 0.875 ? "\u25CF"
+            : _ph < 0.375 ? "\u25D0"
+            : _ph < 0.625 ? "\u25CB"
+            : "\u25D1";
+  if (els.wxIcon) els.wxIcon.textContent = _night ? _moon : "\u2600";
   if (els.wxText) {
-    /* THE CLOCK, AND A MOON WHEN IT IS DARK.
-       Owner, 2026-10-05: *"night can be weird when nobody knows, top left temp has pic of a sun only
-       maybe night should be moon, or something that says time and pm?"*
-       **The icon is not a sun and never was — it is the TOKEN the day pays**, which is why it can sit
-       there at 22:00 and read as nonsense. It is correct and it is unreadable, and the fix is not to
-       change what it means but to say WHAT TIME IT IS next to it. moonPhase() and sunHeight() have
-       both existed since 2026-10-02; nothing was showing either of them.
-       The moon glyph is the real phase, so a full moon and a new moon look different, and the clock is
-       the device clock because that is the sky the player is standing under. */
-    var _now = new Date();
-    var _mins = _now.getHours() * 60 + _now.getMinutes();
-    var _clock = ("0" + _now.getHours()).slice(-2) + ":" + ("0" + _now.getMinutes()).slice(-2);
-    var _night = sunHeight(_mins / 1440, state.weather) < 0;
-    /* The four quarter glyphs, drawn from the phase rather than guessed: 0 new, 0.25 first quarter,
-       0.5 full, 0.75 last quarter. Anything between is shown as the nearest quarter. */
-    var _ph = moonPhase(_now);
-    var _moon = _ph < 0.125 || _ph >= 0.875 ? "\u25CF"
-              : _ph < 0.375 ? "\u25D0"
-              : _ph < 0.625 ? "\u25CB"
-              : "\u25D1";
-    els.wxText.textContent = (_night ? _moon + " " : "") + Math.round(w.temp) + "\u00b0C \u00b7 " +
+    els.wxText.textContent = Math.round(w.temp) + "\u00b0C \u00b7 " +
       Math.round(w.wind) + " km/h \u00b7 " + weatherWord(w) + " \u00b7 " + _clock;
   }
   renderTokens();
