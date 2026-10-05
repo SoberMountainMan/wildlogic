@@ -1606,8 +1606,8 @@ function explainShade(spKey, c, r) {
       'this spot and it will go in.', null);
     saveLocal();
   } else {
-    note(def.name + ' needs shade \u2014 ' + SHADE_FOR_OLDGROWTH +
-         ' mature trees around the spot first.', 'warn');
+    note(def.name + ' needs the shade of ' + SHADE_FOR_OLDGROWTH + ' other trees around it '
+         + 'before it will go in.', 'warn');
   }
 }
 
@@ -4906,7 +4906,7 @@ function drawWaterfall(cx, base, s) {
   ctx.beginPath(); ctx.ellipse(cx + s * 0.20, base + s * 0.72, s * 0.08, s * 0.05, 0, 0, Math.PI * 2); ctx.fill();
 }
 
-function drawDecor(kind, cx, base, s) {
+function drawDecor(kind, cx, base, s, seed) {
   if (kind === 'bench') {
     shadow(cx, base, s * 0.24, s * 0.08);
     ctx.fillStyle = '#9a7442';
@@ -4964,21 +4964,36 @@ function drawDecor(kind, cx, base, s) {
     ctx.beginPath(); ctx.ellipse(cx - s * 0.14, base - s * 0.28, s * 0.040, s * 0.030, 0, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.ellipse(cx + s * 0.06, base - s * 0.32, s * 0.034, s * 0.026, 0, 0, Math.PI * 2); ctx.fill();
   } else if (kind === 'hydrangea') {
-    /* THE HOGBACK FLOWER, and the one that belongs on the wet bank: blue, and it wants the rain.
-       Its heads are BALLS of florets, so each is drawn as a disc with a lit highlight offset up-left —
-       which is the same light direction every other object in this game uses. */
+    /* THE COLOUR COMES FROM THE GROUND, WHICH IS WHAT ACTUALLY DECIDES IT.
+       Owner, 2026-10-05: *"could hydrangea have random colour? they come in blue, purple, pink, white,
+       usually, depends on soil acidity."*
+       IT IS NOT RANDOM, IT IS DERIVED — from the tile position passed in as `seed`. So the same
+       flower planted in two places comes up two colours, and the one you planted yesterday is STILL
+       THE SAME COLOUR TODAY, which random would not give. It is also the real mechanism: a hydrangea
+       takes its colour from the soil it stands in, not from the plant. Here the soil is the hillside,
+       and the hillside does not change. */
+    var HUES = [
+      { deep: "#6d94c8", mid: "#8fb6e0", lit: "#c3daf2" },
+      { deep: "#8a7cc0", mid: "#a99ada", lit: "#d2c8ee" },
+      { deep: "#c07a9e", mid: "#dda0bd", lit: "#f2cbdb" },
+      { deep: "#b9c2b4", mid: "#d6dcd2", lit: "#f0f3ee" }
+    ];
+    var h = HUES[Math.abs(seed || 0) % HUES.length];
+    /* THE HOGBACK FLOWER, and the one that belongs on the wet bank: it wants the rain, and it
+       stands in it. Its heads are BALLS of florets, so each is drawn as a disc with a lit
+       highlight offset up-left — the same light direction every other object here uses. */
     shadow(cx, base, s * 0.32, s * 0.11);
     ctx.fillStyle = '#3d5f3c';
     ctx.beginPath(); ctx.ellipse(cx, base - s * 0.13, s * 0.34, s * 0.20, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#4c7549';
     ctx.beginPath(); ctx.ellipse(cx - s * 0.04, base - s * 0.19, s * 0.26, s * 0.16, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#6d94c8';
+    ctx.fillStyle = h.deep;
     ctx.beginPath(); ctx.arc(cx - s * 0.14, base - s * 0.28, s * 0.085, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(cx + s * 0.18, base - s * 0.22, s * 0.065, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#8fb6e0';
+    ctx.fillStyle = h.mid;
     ctx.beginPath(); ctx.arc(cx + s * 0.04, base - s * 0.33, s * 0.075, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(cx - s * 0.02, base - s * 0.20, s * 0.055, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#c3daf2';
+    ctx.fillStyle = h.lit;
     ctx.beginPath(); ctx.arc(cx - s * 0.17, base - s * 0.31, s * 0.034, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(cx + s * 0.01, base - s * 0.36, s * 0.030, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(cx + s * 0.16, base - s * 0.25, s * 0.026, 0, Math.PI * 2); ctx.fill();
@@ -5242,7 +5257,7 @@ function drawTileProp(c, r) {
   else if (t.obj === 'sign' && t.lm) drawSign(cx, base, TW * 0.96, true);
   else if (t.obj === 'sign') drawSign(cx, base, TW * 0.96, false);
   else if (t.obj === 'jetty') drawJetty(cx, base, TW * 1.10);
-  else if (DECOR[t.obj]) drawDecor(t.obj, cx, base, TW * 0.98);
+  else if (DECOR[t.obj]) drawDecor(t.obj, cx, base, TW * 0.98, c * 31 + r * 17);
 
   /* THE WORDS ON THE SIGNPOST ARE NOT DRAWN HERE ANY MORE.
      Owner, 2026-10-02: "no, its not on the sign. mayb it needs art to redo." He is right: the sign
@@ -6004,7 +6019,7 @@ function fillShopRow(host, keys) {
          ground, so the shelf has to say which trees are the pioneers. */
       pr.innerHTML = TOKEN_ICON[def.token] + ' ' + def.cost;
       var tierLine = SPECIES[k] && TIER_NAME[SPECIES[k].tier] ? TIER_NAME[SPECIES[k].tier] : '';
-      var SHADE_NOTE = SPECIES[k] && needsShade(k) ? 'needs shade (' + SHADE_FOR_OLDGROWTH + ' trees)' : '';
+      var SHADE_NOTE = SPECIES[k] && needsShade(k) ? 'needs the shade of ' + SHADE_FOR_OLDGROWTH + ' other trees' : '';
       var UNUSED_OLD =
         /* AND WHAT IT WILL ASK FOR. The layer name tells you it is old-growth; it does not tell you
            that means it will not go into open ground. Owner, 2026-09-30: "i bought one yellowwood and
@@ -6146,7 +6161,7 @@ function drawShopIcon(canvasEl, key, size0, cx0, base0, unit0) {
      tree are drawn at the SAME unit (s = TW * 0.78), so an alien takes `unit` unnormalised: the
      four weeds are not stature-scaled against each other the way the eight forest species are. */
   else if (ALIENS[key]) drawAlien(key, cx, base, unit);
-  else drawDecor(key, cx, base, unit);
+  else drawDecor(key, cx, base, unit, 0);
   ctx = saved;
 }
 
