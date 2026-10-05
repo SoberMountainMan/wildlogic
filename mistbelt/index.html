@@ -1120,18 +1120,18 @@ function drawFenceEdge(c, r, which) {
   ctx.save();
   /* THE SHADOW AT THE FOOT, so the fence sits on the ground rather than floating over it. */
   ctx.globalAlpha = 0.30;
-  ctx.strokeStyle = '#2f241f';
+  ctx.strokeStyle = '#1a1410';
   ctx.lineWidth = 2.2;
   ctx.beginPath(); ctx.moveTo(a[0], a[1] + 1); ctx.lineTo(b[0], b[1] + 1); ctx.stroke();
   /* THE POSTS, one at each end. */
   ctx.globalAlpha = 1;
-  ctx.strokeStyle = '#7d6146';
+  ctx.strokeStyle = '#2e241b';
   ctx.lineWidth = 2.6;
   ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(ax, ay); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(b[0], b[1]); ctx.lineTo(bx, by); ctx.stroke();
   /* AND TWO RAILS BETWEEN THEM, which is what makes it read as a fence rather than as a hurdle. */
-  ctx.strokeStyle = '#9c7a5a';
+  ctx.strokeStyle = '#54402d';
   ctx.lineWidth = 2.2;
   var i, t;
   for (i = 0; i < 2; i++) {
