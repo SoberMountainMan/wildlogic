@@ -1875,10 +1875,10 @@ function tickDay(w) {
       (k0.wet
         ? 'Wet. The seed in the ground comes up on a day like this, so the hillside will be busy. '
         : 'Dry. Nothing comes up out of the ground today \u2014 the seed waits for rain. ')
-      + 'Today the hillside pays in ' + tokenOf(w) + ' tokens. The nursery sells trees for four '
-      + 'different tokens, and the ones that want ' + tokenOf(w) + ' are the cheap ones today; '
-      + 'tomorrow a different token is cheap. '
-      + 'Up here mist is worth more than sun, and that is the joke of this mountain.', null);
+      + 'Today the hillside pays in ' + tokenOf(w) + ' tokens. Every tree costs one of the four '
+      + 'tokens and the price never changes, so the trees that cost ' + tokenOf(w) + ' are the ones '
+      + 'you can afford today; tomorrow it pays a different one. '
+      + 'Rain and mist are what grow a forest. Sun does not. That is the joke of this mountain.', null);
   }
   if (baboonLine) note(baboonLine, 'warn');
   /* THE BLOCK SEEDS THE HILLSIDE, on wet days only — see plantationSeed(). */
