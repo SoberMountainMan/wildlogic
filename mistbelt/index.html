@@ -452,8 +452,9 @@
       comes back every hour. Cutting spends them; planting is free.</p>
       <p><b>Cutting one leaves its seed in the ground</b>, so it comes back. That is why a cleared
       patch does not stay cleared.</p>
-      <p><b>Three mature trees around a patch and the shade kills the seed in that ground for good.</b> That is
-      the whole game, and it takes seasons.</p>
+      <p><b>Three mature trees around a patch and the shade kills the seed in that ground for</b>
+      <b>good.</b> That is how the hillside comes back \u2014 a patch at a time, and the birds follow the
+      shade.</p>
       <p class="dim">The bin takes <b id="introBin">3</b> cuttings and the baboon trades them for
       the day’s token; the nursery is where you spend it. <b>Hold a tile</b> to ask what it is.</p>
       <!-- THE ONE THING A PLAYER MUST KNOW BEFORE THEY INVEST A WEEK IN IT. Owner, 2026-09-30:
@@ -5664,9 +5665,17 @@ function renderDock() {
   if (!dock) return;
   /* Shown by layer, not by storage order: pioneer, mid-storey, old-growth. The order in the dock is
      the order you plant them in, which is the whole game. */
-  var wanted = ['cut'].concat(SP_BY_TIER);
+  /* DECOR COMES SECOND, BEFORE THE TREES, AND THAT IS A FIX NOT A PREFERENCE.
+     Owner, 2026-10-05: *"picked up a sign, says went back into stock but i have no stock to chose
+     from except the tree bar."* The decor WAS in the dock — at the END, after eight tree buttons, in
+     a row that scrolls horizontally with its scrollbar hidden. **So the button existed and could not
+     be seen**, and the toast told the player to put it down somewhere else without saying where.
+     Second place is one scroll-free tap from the left edge, and 'cut' keeps first place because it is
+     the tool you use most. */
+  var wanted = ['cut'];
   var i;
   for (i = 0; i < DECOR_KEYS.length; i++) if (state.decor[DECOR_KEYS[i]] > 0) wanted.push(DECOR_KEYS[i]);
+  wanted = wanted.concat(SP_BY_TIER);
   /* THE STOCK IS PART OF THE SIGNATURE, AND IT HAS TO BE.
      `dock._sig` is what stops this rebuilding its buttons on every frame — but the buttons now SHOW
      the stock, so a cache keyed only on which species are listed would keep printing the count the
@@ -6094,7 +6103,7 @@ function describeTile(c, r) {
     /* THE ONE THING THE REFUSAL NEVER SAID. A player who cannot cut something needs to know what it
        is FOR, or the block is only a locked door. Pine is the one alien that pays at the bin. */
     L.push('Plantation pine. Not yours \u2014 no permit. Its seed blows over and the pine that comes up ' +
-           'on your side is worth double at the bin.');
+           'on your side is pine, and pine is worth cutting.');
   }
   /* THE SEEP, WHICH NOTHING ANYWHERE NAMED UNTIL NOW. */
   else if (state.seep && state.seep.c === c && state.seep.r === r) {
@@ -6130,8 +6139,7 @@ function describeTile(c, r) {
   if (t.alien) {
     var a = ALIENS[t.alien];
     L.push(a.name + ' (' + a.sci + ') \u2014 ALIEN. ' + a.tell);
-    L.push('Cutting it leaves ' + a.bank + ' lots of seed behind.' +
-           (t.alien === 'pine' ? ' Pine is a sawlog \u2014 it banks double at the bin.' : ''));
+    L.push('Cutting it leaves ' + a.bank + ' lots of seed behind.');
   }
   if (t.sp) {
     var sp = SPECIES[t.sp];
@@ -6169,8 +6177,8 @@ function act(c, r) {
     return;
   }
   if (t.ter === 'plantation' || isRoad(c, r)) {
-    toast('You cannot cut here \u2014 it is not your plantation. Its seed blows over, and a pine on ' +
-          'your side banks double at the bin.', 'warn');
+    toast('You cannot cut here \u2014 it is not your plantation. Its seed blows over, and the '
+          + 'pine that comes up on your side is yours to cut.', 'warn');
     return;
   }
   /* Captured before anything can spend it, so apWatch() can tell "this tap emptied the budget" from
@@ -6189,9 +6197,8 @@ function act(c, r) {
        it was afterwards gets you nothing, the same trap as the bin and the pine. */
     var wasDecor = DECOR[t.obj].name.toLowerCase();
     pickUpDecor(c, r);
-    toast('Picked up the ' + wasDecor +
-          ' \u2014 it is back in your stock, put it down somewhere else.', 'good');
-    saveLocal(); renderHud(); return;
+    toast('Picked up the ' + wasDecor + ' \u2014 it is back in your stock. Its button is the '
+          + 'second one in the tool bar \u2014 tap it, then tap the ground.', 'good');
   }
   /* NOT SILENCE. The signpost, the jetty and anything else that is scenery used to answer a tap
      with nothing at all, which reads as a broken button rather than as scenery. It says what it is.
@@ -7088,7 +7095,7 @@ var API = {
   TOAD_PATCH: TOAD_PATCH, TOAD_WATER: TOAD_WATER, aliensNear: aliensNear, matureNear: matureNear,
   primeState: primeState, placeSeep: placeSeep, seepRun: seepRun, seepRunWeeds: seepRunWeeds,
   isRoad: isRoad, clearRoads: clearRoads, describeTile: describeTile, OBJ_LINE: OBJ_LINE,
-  whyNotHere: whyNotHere, plantationSeed: plantationSeed, inPlantation: inPlantation,
+  whyNotHere: whyNotHere, renderDock: renderDock, placeDecor: placeDecor, plantationSeed: plantationSeed, inPlantation: inPlantation,
   TOAD_RUN: TOAD_RUN, TOAD_RUN_WEEDS: TOAD_RUN_WEEDS, TOAD_HOLD_DAYS: TOAD_HOLD_DAYS,
   /* The snag-and-stand rule. Exported because the parrot's requirements are now LOCAL -- a patch
      around a dead tree -- and a check that cannot count the patch cannot tell a real stand from a
