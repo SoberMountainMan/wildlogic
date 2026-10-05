@@ -2061,10 +2061,21 @@ function forestMix() {
 /* A parrot nests in a hollow, so N parrots need N hollow old-growth trees. That is why the count
    cannot be farmed with one big yellowwood standing in the open. */
 function hollowTrees() {
-  var n = 0, i;
+  /* IT COUNTED THE WRONG THING, AND ITS OWN NAME SAID SO.
+     Owner, 2026-10-05: *"so what makes a hollow? only a yellowwood that dies? when does a tree die
+     and form a nest?"* — and chasing that found this. The snag rule in tickDay() is SPECIES-AGNOSTIC:
+     any mature tree can die (SNAG_RATE) and any standing dead tree goes hollow after SNAG_DAYS. **So
+     a hollow is a function of TIME, not of species** — which is what the owner ruled on 2026-10-03 and
+     the comment on that loop records. But THIS function counted the SPECIES FLAG -- the two
+     yellowwoods -- so it counted LIVE yellowwoods and called them hollow trees.
+     It gates the "one tree is not a forest" card, so the card fired the first time a mature yellowwood
+     stood on the map, said "the hollow is there" when there was no hollow, and stayed silent for a
+     player whose first snag happened to be an ironwood or a stinkwood.
+     A HOLLOW TREE IS A DEAD TREE WITH A HOLLOW. Count that. */
+  var n = 0, i, t;
   for (i = 0; i < NTILES; i++) {
-    var t = state.tiles[i];
-    if (t.sp && SPECIES[t.sp] && SPECIES[t.sp].hollow && t.stage === 3) n++;
+    t = state.tiles[i];
+    if (t.sp && t.dead && t.hollow) n++;
   }
   return n;
 }
