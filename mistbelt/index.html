@@ -5615,7 +5615,7 @@ function parrotSay() {
   var sites = 0, i;
   for (i = 0; i < NTILES; i++) if (isNestSite(state.tiles[i])) sites++;
   var L = [];
-  L.push('Parrots: ' + have + ' of ' + cap + '.');
+  L.push('Parrots: ' + have + ' of ' + PARROT_MAX + '.');
   if (cap === 0) {
     if (sites === 0) {
       L.push('A Cape parrot nests in a hollow tree that has died standing, and it will not move into ' +
@@ -5632,7 +5632,7 @@ function parrotSay() {
     L.push('Every hollow you have is taken. Another dead tree with a mixed stand around it is the way ' +
            'to raise the ceiling.');
   }
-  L.push('The ceiling is ' + PARROT_MAX + '.');
+  L.push('Your forest can hold ' + cap + ' right now.');
   toast(L.join(' '));
 }
 function apSay() {
@@ -5715,7 +5715,7 @@ function renderHud() {
   if (els.parrotNow) {
     var _cap = parrotCapacity();
     els.parrotNow.textContent = state.parrots || 0;
-    els.parrotCap.textContent = _cap;
+    els.parrotCap.textContent = PARROT_MAX;
     /* "0 OF 0" IS NOT A SENTENCE, AND IT IS WHAT THE PILL SAID ALL DAY.
        Owner, 2026-10-03: *"parrot counter doesnt look like a parrot or make sense saying 0 of 0.
        'Parrots: 0' might be better or whats it actually supposed to say?"*
@@ -5726,8 +5726,19 @@ function renderHud() {
        reads as a broken meter rather than as "there is nowhere for one to live yet".
        SO THE CAP IS SHOWN ONLY WHEN THERE IS ONE TO FILL. Below that the pill reads "Parrots 0" and
        the title carries the reason, which is the part that actually teaches. */
-    if (els.parrotOf) els.parrotOf.hidden = !(_cap > 0);
-    if (els.parrotCap) els.parrotCap.hidden = !(_cap > 0);
+    /* AND IT READS "OF TWELVE" FROM THE FIRST FRAME, WHICH IS A DELIBERATE CHANGE OF MEANING.
+       Owner, 2026-10-05: *"is 12 really the max parrots? how does 0 of 0 make sense? thats an
+       achievable number? if so then maybe we can put 0 of 12. and let the player think thats the
+       goal."*
+       MEASURED, SO THIS IS NOT AN ASSERTION: with every plantable tile carrying a mature tree of
+       three species,  returns **exactly 12** — the cap and the ceiling are the same
+       number, and the only way to reach it is to fill the map with indigenous forest. So the second
+       number is the MAP'S ceiling and not the forest's current capacity, and the pill is honest: it
+       says how many parrots are resident out of how many this hillside can ever hold.
+       THE OLD READING WAS "how many could live here NOW", which on day one is 0, so the pill hid the
+       second number and said "Parrots 0" with the reason in a hover. **That hid the goal along with
+       the embarrassment.** The tap still gives the live capacity, which is the number that tells a
+       player whether their forest is big enough yet. */
     if (els.parrotPill) els.parrotPill.className = 'ov parrotpill' + ((state.parrots || 0) > 0 ? ' has' : '');
     if (els.parrotPill) els.parrotPill.title = (state.parrots || 0) > 0
       ? (state.parrots + ' Cape parrot' + (state.parrots === 1 ? '' : 's') + ' resident' +
