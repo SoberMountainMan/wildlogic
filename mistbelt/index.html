@@ -621,7 +621,19 @@ function zoomMin() {
 /* The world's extent in world pixels, and where the baked ground image sits in it. Tile (0,0) is
    at world (0, 0); the far corners are negative in x and positive in y. */
 var WORLD_W = (COLS + ROWS - 2) * (TW / 2) + TW;
-var WORLD_H = (COLS + ROWS - 2) * (TH / 2) + TH + (-CLIFF) * BH + 8;
+/* THE WORLD IS TALLER THAN THE GRID, BECAUSE THE TOP ROW OF TREES STICKS OUT OF IT.
+   Owner, 2026-10-05: *"on mobile the remnant is a bit hard to get into view, map need to be able to
+   scroll a bit higher so remnant forest doesnt get cut off at top of screen."*
+   **A prop does not sit inside its tile -- it stands on the tile and overhangs the tiles BEHIND it**,
+   which is the whole reason a flat 2:1 grid reads as a place. At r = 0 there is no tile behind, so the
+   crowns of the top row had nowhere to go and the viewport simply cropped them.
+   **The first attempt widened the CAMERA and the gate refused it -- correctly: "the camera cannot be
+   dragged off the world", 4 escapes. The rule is right.** The world was simply too short to hold what
+   is drawn in it, so the WORLD grows north by the overhang and the camera keeps its rule. */
+var WORLD_OVERHANG_N = 150;                    /* the crowns of row 0 stand this far above the grid */
+
+var WORLD_H = (COLS + ROWS - 2) * (TH / 2) + TH + (-CLIFF) * BH + 8 + WORLD_OVERHANG_N;
+
 var WX0 = (ROWS - 1) * (TW / 2) + TW / 2;      /* cache pixel of world x = 0 */
 var WY0 = BH + TH / 2 + 4;                     /* cache pixel of world y = 0 */
 /* The ground cache is drawn at world position (-WX0, -WY0) so that cache pixel (0,0) is the top
@@ -3294,7 +3306,7 @@ function bakePoint(c, r, z) {
    first version of this clamped to [0, WORLD_W - vw] and so refused to let the camera west or
    north of the origin at all — which put the village, at world x -186, permanently off the left of
    the screen and made the game open on empty field. */
-var WX_MIN = -WX0, WY_MIN = -WY0;
+var WX_MIN = -WX0, WY_MIN = -WY0 - WORLD_OVERHANG_N;   /* north is lower, because row 0 has crowns above it */
 
 function clampCam() {
   var vw = W / zoom, vh = H / zoom;
@@ -5783,8 +5795,28 @@ function renderHud() {
   var w = state.weather || fallbackFor(new Date().getMonth());
   if (els.wxIcon) els.wxIcon.innerHTML = TOKEN_ICON[tokenOf(w)];
   if (els.wxText) {
-    els.wxText.textContent = Math.round(w.temp) + '\u00b0C \u00b7 ' +
-      Math.round(w.wind) + ' km/h \u00b7 ' + weatherWord(w);
+    /* THE CLOCK, AND A MOON WHEN IT IS DARK.
+       Owner, 2026-10-05: *"night can be weird when nobody knows, top left temp has pic of a sun only
+       maybe night should be moon, or something that says time and pm?"*
+       **The icon is not a sun and never was — it is the TOKEN the day pays**, which is why it can sit
+       there at 22:00 and read as nonsense. It is correct and it is unreadable, and the fix is not to
+       change what it means but to say WHAT TIME IT IS next to it. moonPhase() and sunHeight() have
+       both existed since 2026-10-02; nothing was showing either of them.
+       The moon glyph is the real phase, so a full moon and a new moon look different, and the clock is
+       the device clock because that is the sky the player is standing under. */
+    var _now = new Date();
+    var _mins = _now.getHours() * 60 + _now.getMinutes();
+    var _clock = ("0" + _now.getHours()).slice(-2) + ":" + ("0" + _now.getMinutes()).slice(-2);
+    var _night = sunHeight(_mins / 1440, state.weather) < 0;
+    /* The four quarter glyphs, drawn from the phase rather than guessed: 0 new, 0.25 first quarter,
+       0.5 full, 0.75 last quarter. Anything between is shown as the nearest quarter. */
+    var _ph = moonPhase(_now);
+    var _moon = _ph < 0.125 || _ph >= 0.875 ? "\u25CF"
+              : _ph < 0.375 ? "\u25D0"
+              : _ph < 0.625 ? "\u25CB"
+              : "\u25D1";
+    els.wxText.textContent = (_night ? _moon + " " : "") + Math.round(w.temp) + "\u00b0C \u00b7 " +
+      Math.round(w.wind) + " km/h \u00b7 " + weatherWord(w) + " \u00b7 " + _clock;
   }
   renderTokens();
   /* The day's other budget, and the one thing on the HUD that changes what the player can DO. */
