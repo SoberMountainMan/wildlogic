@@ -82,9 +82,18 @@
      teaches the player to ignore the one that matters. Calm colours while it loads; red only when it
      has finished and is still not there. */
   .packwarn.loading{background:#22303a;color:#d8e6ee;border-color:#4a6b80}
+  /* THE PILL HAS A CEILING NOW, BECAUSE IT GREW AND NOTHING WAS STOPPING IT.
+     Owner, 2026-10-06: the clock went into the weather pill, and at 320px the layout gate caught
+     it overlapping the spent counter by 3.9px -- *"pill starts at 214.2, weather runs to 218.1."*
+     **The pill is absolutely positioned at left:12px with no max-width, so it simply grew into
+     whatever was beside it.** The clock is worth keeping (it is what the owner asked for, and he is
+     on a phone), so the fix is to let the TEXT give way instead of the layout: a ceiling and an
+     ellipsis. **A HUD element that cannot be too wide is a HUD element that cannot break the row.** */
   .wxpill{left:12px;top:12px;display:flex;align-items:center;gap:6px;line-height:1.2;
     background:rgba(255,255,255,.93);border-radius:999px;padding:5px 11px 5px 8px;
-    box-shadow:0 2px 6px var(--shadow);font-size:12.5px;font-weight:700;color:#2f4a58}
+    box-shadow:0 2px 6px var(--shadow);font-size:12.5px;font-weight:700;color:#2f4a58;
+    max-width:calc(100vw - 226px);overflow:hidden}
+  .wxpill #wxText{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .tokens{left:12px;top:44px;display:flex;align-items:center;background:rgba(255,255,255,.95);
     border-radius:999px;padding:5px 6px;box-shadow:0 2px 6px var(--shadow);line-height:1}
   .tk{display:flex;align-items:center;gap:3px;padding:0 6px;font-size:13px;font-weight:800;color:#33424b}
