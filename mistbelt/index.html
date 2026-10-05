@@ -1713,7 +1713,7 @@ function tickDay(w) {
       }
     }
   }
-  if (sprouted) line.push(sprouted + ' alien seedling' + (sprouted === 1 ? '' : 's') + ' came up out of the seed bank.');
+  if (sprouted) line.push(sprouted + ' alien seedling' + (sprouted === 1 ? '' : 's') + ' came up out of the ground.');
 
   var spread = 0;
   for (r = 0; r < ROWS; r++) {
@@ -1857,12 +1857,28 @@ function tickDay(w) {
     state.seen.rolled1 = true;
     var k0 = classify(w);
     card('Day ' + state.day + ' \u2014 ' + weatherWord(w).toLowerCase(),
+      /* REWRITTEN. Owner, 2026-10-05: *"the kind of copy that needs better writing"* — and he is
+         right about this one in four separate ways.
+         1. IT SAID 'SEED BANK'. He has already called that out: a bank sounds like something YOU
+            have saved. It is the enemy's seed, sitting in the ground, and the game's own best line
+            already says so — *"3 lots of alien seed waiting in the ground"*. The term is gone from
+            this card and from every other player-facing string.
+         2. 'THE WEATHER IS ALSO THE CURRENCY' is an abstraction offered before the player has met a
+            price. It now says what happens instead of what it is called.
+         3. 'THE SEEDS IN THE NURSERY COST WHATEVER THE DAY IS NOT' is a double negative that needs
+            algebra to unpack. On a sun day it means "they cost not-sun". It now says the thing.
+         4. 'A MIST DAY IS WORTH MORE HERE THAN A SUNNY ONE' was an assertion with no consequence,
+            and the joke it pointed at was never told. It still ends on the mountain, because that is
+            the game's thesis — but it says why.
+         AND THE TITLE AND THE BODY DISAGREED: the heading read 'Clear' and the first word of the
+         body read 'Dry'. Two words for one day. Both say 'Clear' now. */
       (k0.wet
-        ? 'Wet. The seed bank comes up on a day like this, so the hillside will be busy \u2014 and '
-        : 'Dry. Nothing comes up out of the seed bank today; it waits for rain. ')
-      + 'The weather is also the currency: today you earn ' + tokenOf(w) + ' tokens, and the seeds '
-      + 'in the nursery cost whatever the day is not. A mist day is worth more here than a sunny '
-      + 'one, which is the whole joke of this mountain.', null);
+        ? 'Wet. The seed in the ground comes up on a day like this, so the hillside will be busy. '
+        : 'Dry. Nothing comes up out of the ground today \u2014 the seed waits for rain. ')
+      + 'Today the hillside pays in ' + tokenOf(w) + ' tokens. The nursery sells trees for four '
+      + 'different tokens, and the ones that want ' + tokenOf(w) + ' are the cheap ones today; '
+      + 'tomorrow a different token is cheap. '
+      + 'Up here mist is worth more than sun, and that is the joke of this mountain.', null);
   }
   if (baboonLine) note(baboonLine, 'warn');
   /* THE BLOCK SEEDS THE HILLSIDE, on wet days only — see plantationSeed(). */
@@ -2365,7 +2381,7 @@ var VOICES = {
      never touches it — the only thing wet does is bring the seed bank up (see the sprout guard).
      So this line was teaching a false rule, in the same breath as a day card saying the true one:/n     a player who believed it would wait for rain to do the cutting that rain makes harder. */
   wet: ['The nursery grower: "Rain. Everything in the ground is up today \u2014 you will be busy."',
-        'The parrot monitor: "Good rain for the seedlings. Good rain for the seed bank too."'],
+        'The parrot monitor: "Good rain for the seedlings. Good rain for the seed in the ground, too."'],
   mist: ['The neighbour up the pass: "Mist like this is what a yellowwood wants."',
          'The nursery grower: "A mist day. Good day for putting things in the ground."'],
   frost: ['The nursery grower: "Cold one. The tender seedlings will feel it tonight."',
@@ -2560,7 +2576,7 @@ function clearAt(c, r) {
     card('Three trees close a patch',
       'That one left ' + t.seeds + ' lots of seed in this tile, and it will keep coming back. ' +
       'It stops when ' + SHADE_CLOSES_SEED + ' MATURE trees stand in the eight tiles around it — ' +
-      'not saplings, not half-grown ones, mature. The shade closes the seed bank and that tile is ' +
+      'not saplings, not half-grown ones, mature. The shade kills the seed in that ground and the tile is ' +
       'finished for good. So the way to beat this hillside is not to keep cutting: it is to cut a ' +
       'patch, plant around it, and let the canopy do the rest.', null);
   }
@@ -2641,7 +2657,7 @@ function plantAt(c, r, spKey) {
     state.seen.planted1 = true;
     card('A sapling gives no shade',
       'It has to be MATURE before it counts \u2014 that is a few seasons of weather, not a few taps. ' +
-      'Three mature trees around a patch and its seed bank shuts for good. ' +
+      'Three mature trees around a patch and the seed in it is dead for good. ' +
       'You will know when it happens.', null);
   }
 
@@ -2656,7 +2672,7 @@ function plantAt(c, r, spKey) {
         if (matureAround(c + ii, r + jj) >= SHADE_CLOSES_SEED) {
           state.seen.shadeclosed = true;
           card('A patch closes',
-            'That is ' + SHADE_CLOSES_SEED + ' mature trees around one tile, and its seed bank is ' +
+            'That is ' + SHADE_CLOSES_SEED + ' mature trees around one tile, and the seed in it is ' +
             'shut — nothing will come up there again, this season or any other. That is what the ' +
             'shade is for. Every patch you close stays closed, so the hillside gets quieter the ' +
             'more of it you put back.', null);
@@ -6126,7 +6142,7 @@ function describeTile(c, r) {
     L.push(t.seeds + ' lot' + (t.seeds === 1 ? '' : 's') + ' of alien seed waiting in the ground.');
   }
   var sh = matureAround(c, r);
-  if (sh >= SHADE_CLOSES_SEED) L.push('Shade ' + sh + ' \u2014 the seed bank here is closed for good.');
+  if (sh >= SHADE_CLOSES_SEED) L.push('Shade ' + sh + ' \u2014 the seed in this ground is dead for good.');
   else if (sh > 0) L.push(sh + ' mature tree' + (sh === 1 ? '' : 's') + ' shading it.');
   if (t.obj) L.push(OBJ_LINE[t.obj] || ('A ' + t.obj + ' stands here.'));
   if (!L.length) L.push('Open ground.');
@@ -6286,7 +6302,7 @@ function act(c, r) {
            and watch the work undo itself.** The distinction is the shape of the whole game — two lets
            you PLANT, three lets you FINISH — so it is worth teaching rather than hiding. */
         'Two mature trees around a spot is enough shade for a yellowwood to go in. ' +
-        'THREE is what shuts a seed bank for good — at two, the ground still comes back.', null);
+        'THREE is what kills the seed for good — at two, the ground still comes back.', null);
     }
     saveLocal(); renderHud(); renderBoard();
     /* Planting has no toast of its own, so the day-done sentence stands alone here. It is worth
