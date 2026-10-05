@@ -2527,6 +2527,25 @@ function voiceFor(w) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+/* THE BOARD'S REWARD, AND WHY IT IS THREE AND NOT TEN.
+   Owner, 2026-10-06: *"are the bonus reward points going to make the game too easy? extra 10 tokens
+   after cutting all your trees for the day. so you getting 20+ tokens per day at that rate?"*
+   **He is right, and the arithmetic is not close.**
+     the bin pays 1 token per cutting, so a day's income IS the day's cuttings
+     AP is 24/day and the aliens cost 1-3 (bugweed 1, bramble 1, wattle 2, pine 2, blackwood 3)
+     so an average cut is ~1.8 AP and a full day is ~13 cuttings = ~13 tokens
+     at reward 10 the board pays 75% of that -- the day becomes 23 tokens instead of 13
+   **AND THE GAME ALREADY AGREES WITH THE 13: its own task pool contains "Collect thirteen tokens",
+   which is a full day's clearing. So 10 was paying most of a day's work for doing a day's work.**
+   **Three is a quarter of the day's bin income** -- the day becomes 16 instead of 13 -- and it is
+   legible as a reward rather than a windfall: **three tokens buys the cheapest tree in the nursery,
+   which is a thing you can see yourself getting.**
+   THE NUANCE, LEFT ALONE DELIBERATELY: the pool mixes easy tasks (recycle 3, buy 1 -- the baseline
+   you were doing anyway) with hard ones (collect 13, clear five on a wet day), and the reward is flat.
+   **Scaling the reward per task is the better design and it is a real change, not a balance tweak** --
+   it needs its own decision, so this keeps the flat reward and fixes the number. */
+var BOARD_REWARD = 3;
+
 function rollBoard(w) {
   var k = classify(w);
   var pool = [
@@ -2548,7 +2567,7 @@ function rollBoard(w) {
     tasks.push(pool[i]);
   }
   state.board = { day: state.day, cuts: 0, plants: 0, recycles: 0, buys: 0, tokens: 0,
-                  tasks: tasks, claimed: false, reward: 10 };
+                  tasks: tasks, claimed: false, reward: BOARD_REWARD };
   return state.board;
 }
 
