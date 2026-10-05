@@ -5774,7 +5774,19 @@ function renderTokens() {
      **The weather pill is about the SKY. The token pill is about TOKENS.** So the sky gets sun or moon,
      one glyph, and the day's token is marked where it belongs — **and it costs nothing, because this
      pill already lists all four and already knows which one is paying.** */
-  var today = state.weather ? tokenOf(state.weather) : null;
+  /* IT READ , WHICH IS NULL ON A FIRST LOAD, SO NOTHING WAS EVER MARKED.
+     Owner, 2026-10-05: *""The day's token is marked in the token pill" - no it isnt?"*
+     **He is right and my probe lied to me.** The probe called renderHud() after primeState() with a
+     save that already had weather in it, so  was set and the mark appeared. **But
+     renderHud() itself uses  precisely because weather CAN be
+     null** -- and this line read  directly. So on a cold load the pill showed a season
+     and the token pill marked nothing, which is exactly what he saw.
+     **The probe tested the branch that worked.** A check that seeds the state it is testing cannot
+     find a bug that only exists in the state it did not seed. */
+  var today = tokenOf(state.weather || fallbackFor(new Date().getMonth()));
+  /* THE SAME FALLBACK renderHud() USES, spelled out here because 'w' is local to that function.
+     Without it a cold load has state.weather === null, the pill shows a season, and this pill
+     marked nothing -- which is what he saw. */
   var html = '', i;
   for (i = 0; i < TOKENS.length; i++) {
     var on = TOKENS[i] === today;
