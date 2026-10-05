@@ -1995,7 +1995,14 @@ function baboonPass() {
    birds as it can feed and house, and that number is the score. It goes UP as the forest grows and
    it goes DOWN if the forest is cut back, because a resident that stays through anything is not a
    resident, and not an indicator species either. */
-var PARROT_MIX = 3;           /* species in the mix, mature, for the first bird */
+/* DEAD CONSTANTS, KEPT ONLY BECAUSE THE VERIFIER EXPORTS THEM. Owner, 2026-10-05: *"three
+   different indigenous species, mature and six mature indigenous trees in all, in what size area?
+   around a hollow tree? or anywhere on the map?"* **NOTHING READS THE FOUR BELOW.** They describe an
+   earlier design in which the parrot score was a ladder of map-wide totals, and the only surviving
+   trace of it was a card that TAUGHT those totals as a requirement. The real gate is the patch around
+   the hollow -- see nestFor() and the corrected card. **A constant that only a card reads is a rule
+   that only exists in the writing.** */
+var PARROT_MIX = 3;           /* UNUSED -- see above */
 var PARROT_CANOPY = 6;        /* mature indigenous trees in all, for the first bird */
 var PARROT_STEP_CANOPY = 3;   /* each bird after the first wants three more mature trees */
 var PARROT_STEP_MIX = 1;      /* ...and one more species in the mix */
@@ -2151,13 +2158,24 @@ function parrotCheck() {
      that is the moment the whole premise lands. */
   if (!state.seen.parrot && !state.seen.parrotwait && hollowTrees() > 0) {
     state.seen.parrotwait = true;
-    st = stats(); mix = forestMix();
+    /* THE CARD DESCRIBES THE RULE THE CODE ACTUALLY RUNS, WHICH IT DID NOT BEFORE.
+       Owner, 2026-10-05: *"three different indigenous species, mature and six mature indigenous trees
+       in all, in what size area? around a hollow tree? or anywhere on the map?"* — **the card said
+       "it wants a mixed canopy around it" and then reported MAP-WIDE totals**, and the numbers it
+       named (PARROT_MIX, PARROT_CANOPY) **are not checked anywhere in the game.** They survive only in
+       this card and in the debug export; 'nestFor()' gates on 'PARROT_PATCH_TREES' and
+       'PARROT_PATCH_SPECIES' and nothing else. **So the card taught a requirement that does not
+       exist, in the wrong units, at the one moment a player is most likely to believe it.**
+       The real rule, and it is a better one: **it is all about the ground around the hollow.** */
+    var hIdx = -1, hi;
+    for (hi = 0; hi < NTILES; hi++) { if (isNestSite(state.tiles[hi]) && !state.tiles[hi].nest) { hIdx = hi; break; } }
+    var hp = hIdx >= 0 ? patchAround(hIdx % COLS, Math.floor(hIdx / COLS)) : { trees: 0, species: 0 };
     card('Not yet \u2014 one tree is not a forest',
       'The hollow is there, and a hollow is what a parrot nests in. But it will not move into a ' +
-      'single tree standing in the open ground. It wants a mixed canopy around it to feed in: ' +
-      PARROT_MIX + ' different indigenous species mature, and ' + PARROT_CANOPY +
-      ' mature trees in all. You have ' + mix + ' species and ' + st.mature + ' trees. ' +
-      'Restoring the Amathole is more than yellowwoods.', null);
+      'single tree standing in open ground. It wants a stand around THAT hollow: ' +
+      PARROT_PATCH_TREES + ' mature trees of ' + PARROT_PATCH_SPECIES + ' different species within ' +
+      (PARROT_R * 2 + 1) + ' tiles of it. You have ' + hp.trees + ' trees and ' + hp.species + ' species ' +
+      'around this one. Restoring the Amathole is more than yellowwoods.', null);
     saveLocal();
   }
   return false;
