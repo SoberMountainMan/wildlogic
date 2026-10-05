@@ -1109,6 +1109,7 @@ function clearRoads() {
     if (t.alien) { t.alien = null; t.seeds = 0; n++; }
     if (t.sp) { t.sp = null; t.stage = 0; t.age = 0; t.dead = false; t.snagDays = 0; n++; }
   }
+
   return n;
 }
 
@@ -1408,6 +1409,20 @@ function primeState() {
   if (!state.seep) state.seep = placeSeep(state);
   /* AND CLEAR ANY ROAD WEED A SAVE IS CARRYING, because the other three only govern from now on. */
   clearRoads();
+  /* A SAVE CAN CARRY A PINE ON THE TOAD SEAT, AND CLEARING IT HERE IS THE ONLY WAY TO REACH IT.
+     Owner, 2026-10-06: *"my seep still has a pine on it that i cant cut."* -- and my fix from the day
+     before did NOT help him, which is the part worth keeping. placeSeep() clears its own tile now, but
+     primeState() only CALLS it when there is no seep yet ().
+     **His save already had a seep, so the placement never ran again.** A fix at placement time cannot
+     reach a save that was placed before it -- clearRoads() and plantBlock() exist two lines up for
+     exactly this reason.
+     INLINED, not a helper: a  defined a hundred lines away reported  here
+     despite being top-level in the same block, and rather than keep guessing at the scope, the three
+     lines are written where they run. */
+  if (state.seep) {
+    var _st = state.tiles[state.seep.r * COLS + state.seep.c];
+    if (_st) { _st.alien = null; _st.seeds = 0; _st.astage = 0; _st.aage = 0; _st.lastAlien = null; }
+  }
   /* AND RE-PLANT THE BLOCK, for the same reason in the other direction — see plantBlock(). */
   plantBlock();
   if (state.toadHold == null) state.toadHold = 0;
@@ -1936,10 +1951,20 @@ function tickDay(w) {
       (k0.wet
         ? 'Wet. The seed in the ground comes up on a day like this, so the hillside will be busy. '
         : 'Dry. Nothing comes up out of the ground today \u2014 the seed waits for rain. ')
-      + 'Today the hillside pays in ' + tokenOf(w) + ' tokens. Every tree costs one of the four '
-      + 'tokens and the price never changes, so the trees that cost ' + tokenOf(w) + ' are the ones '
-      + 'you can afford today; tomorrow it pays a different one. '
-      + 'Rain and mist are what grow a forest. Sun does not. That is the joke of this mountain.', null);
+      /* IT SAID WHAT YOU COULD AFFORD AND THEN SAID IT DID NOT MATTER, WITHOUT SAYING WHAT IT MEANT.
+         Owner, 2026-10-06: *"this text makes little sense."* **It did not.** It told you today pays sun,
+         that sun buys the trees you can afford, and then that sun does not grow a forest -- which is a
+         contradiction unless you already know the mechanic, and it never said the one thing that follows
+         from it: what to DO today. `k0.wet` is the same flag the card already used for its first line,
+         so the advice cannot disagree with the weather it is describing. */
+      + 'Today the hillside pays in ' + tokenOf(w) + ' tokens, so the trees that cost ' + tokenOf(w) +
+        ' are the ones you can afford. Tomorrow it pays a different one. '
+      + (k0.wet
+          ? 'A wet day pays rain or mist \u2014 the two that buy the trees that close a canopy. '
+          : 'A clear day pays sun, and sun buys the cheapest trees. ')
+      + 'Rain and mist are what grow a forest. Sun does not. '
+      + (k0.wet ? 'So today is a planting day.' : 'So a dry day is for cutting, not for planting.'),
+      null);
   }
   if (baboonLine) note(baboonLine, 'warn');
   /* THE BLOCK SEEDS THE HILLSIDE, on wet days only — see plantationSeed(). */
@@ -6397,8 +6422,25 @@ function describeTile(c, r) {
   if (t.sp) {
     var sp = SPECIES[t.sp];
     var stage = ['a sapling', 'young', 'mature'][t.stage - 1] || 'growing';
-    L.push(sp.name + ', planted \u2014 ' + stage + '.' +
-           (t.hollow ? ' It has a hollow, which is what a parrot nests in.' : ''));
+    /* A DEAD TREE SAID NOTHING ABOUT BEING DEAD, AND A PLAYER REASONABLY WORRIES.
+       Owner, 2026-10-06: *"clicking a dead tree doesnt tell me whats happening. People might worry
+       they have shot borer beetle. which would be a funny addition to the game."*
+       **He is right on both counts.** The tile read `Name, planted -- mature.` whether the tree was
+       alive or a standing snag, so the one state the whole parrot mechanic turns on was the one state
+       the game would not name. And the fear is real: the polyphagous shot hole borer is in the Cape
+       Parrot Action Plan as a growing threat killing trees across South Africa, so a player who knows
+       this mountain has a genuine reason to wonder.
+       **A dead tree is not a loss here -- it is the nest site.** So the line says what it is, what it
+       is for, and names the borer, because that is the honest answer to the question being asked. */
+    if (t.dead) {
+      L.push(sp.name + ' \u2014 DEAD, and still standing.' +
+             (t.hollow ? ' It has gone hollow, which is exactly what a Cape parrot nests in.'
+                       : ' The wood has not opened up yet \u2014 a standing dead tree goes hollow in time.'));
+      L.push('Age did that, nothing else. (Rows of small round holes in the bark would be the ' +
+             'polyphagous shot hole borer \u2014 that is a different problem, and a worse one.)');
+    } else {
+      L.push(sp.name + ', planted \u2014 ' + stage + '.');
+    }
   }
   if (t.seeds > 0) {
     L.push(t.seeds + ' lot' + (t.seeds === 1 ? '' : 's') + ' of alien seed waiting in the ground.');
