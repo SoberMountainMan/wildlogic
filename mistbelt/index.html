@@ -971,7 +971,22 @@ var FLOAT_C = {
 };
 function addFloat(c, r, text, colour) {
   var z = groundZ(c, r), p = project(c, r, z);
-  floats.push({ x: p[0], y: p[1] - TW * 0.42, t: 0, life: 1500, text: text, colour: colour });
+  var x = p[0], y = p[1] - TW * 0.42;
+  /* FLOATS ON THE SAME TILE STACK INSTEAD OF OVERPRINTING.
+     Owner, 2026-10-06: *"your floats are lying over each other?"* -- **and a blackwood cut is the
+     case that proves it.** Cutting one fires `suckers xN` (red, a loss) AND the cut float (green,
+     what you got), **both on the same tile, at the same pixel, so the second one drew straight over
+     the first and the player saw whichever happened to be on top.**
+     **Lifting the new one above any float still live at that spot is the general fix** -- it does
+     not need the caller to know what else is going to fire, which is the property that matters:
+     the bug was created by two call sites that could not see each other, and the fix belongs where
+     both of them end up. */
+  var lift = 0, i, f;
+  for (i = 0; i < floats.length; i++) {
+    f = floats[i];
+    if (Math.abs(f.x - x) < TW * 0.5 && Math.abs(f.y - y) < TW * 0.9) lift += TW * 0.34;
+  }
+  floats.push({ x: x, y: y - lift, t: 0, life: 1500, text: text, colour: colour });
 }
 
 function drawFloats(dt) {
