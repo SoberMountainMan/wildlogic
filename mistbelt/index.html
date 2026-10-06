@@ -1264,8 +1264,16 @@ function plantationSeed() {
    These offsets give 124px of separation from the house for the nursery and the sign, and 93px for
    the bin, which clears every pair with room. See the note on the gate's "village sits together"
    check for why its radius had to move with them. */
+/* THE NURSERY MOVED A TILE UP-LEFT, AND IT IS ART'S OWN NUMBER.
+   Owner, 2026-10-06: *"the house now bumping into the nursery. move nursery up and left. or
+   further apart from each other a little."* -- and it is the cottage's own fault: it grew to a
+   3 x 2 block, so its base now reaches 93 world px up-left of its anchor while the nursery's
+   anchor sat 124 px to the left, and their inks overlapped in x by about 44 px.
+   **`NOTE-FROM-ART-2026-10-06-MESH-FIT.md` measured exactly this and named the fix before anyone
+   saw it: "if the village reads crowded at phone zoom, moving the nursery to (vc-3, vr+3) costs
+   nothing and doubles the gap."** That is this line, unchanged from their recommendation. */
 var PLACES = [[VILLAGE.c, VILLAGE.r, 'house'],
-              [VILLAGE.c - 2, VILLAGE.r + 2, 'nursery'],
+              [VILLAGE.c - 3, VILLAGE.r + 3, 'nursery'],
               [VILLAGE.c + 2, VILLAGE.r - 2, 'sign'],
               [VILLAGE.c + 3, VILLAGE.r + 2, 'bin']];
 /* THE JETTY IS GONE. Owner, 2026-09-29: "the jetty must go." It was the last landmark still drawn as
