@@ -1667,6 +1667,43 @@ function count(pred) {
   return n;
 }
 
+/* HOW MANY TILES EACH BUILDING STANDS ON, AND WHICH WAY IT EXTENDS FROM ITS ANCHOR.
+   From art's `NOTE-FROM-ART-2026-10-06-MESH-FIT.md`, which measured the delivered cells:
+     obj_house    3 wide x 2 deep    c in [c-2 .. c],  r in [r-1 .. r]     6 tiles
+     obj_nursery  2 x 2              c in [c-1 .. c],  r in [r-1 .. r]     4 tiles
+     obj_bin      1 x 1              c, r                                  1 tile
+   THE ANCHOR IS THE BLOCK'S FRONT TILE, which is what the draw order wants: every other tile of
+   the block has a smaller `c + r`, so it is drawn first and the building correctly covers it. */
+var BLOCK_W = { house: 3, nursery: 2, bin: 1 };
+var BLOCK_D = { house: 2, nursery: 2, bin: 1 };
+
+/* WHICH BUILDING STANDS ON THIS TILE, COUNTING THE WHOLE BLOCK.
+   Owner's report: *"flower end up under house."* **Art found the cause and it is this.** `placeDecor()`
+   tested `t.obj` on the TAPPED tile alone, so a cottage covering six tiles was registered on ONE of
+   them -- a player could buy a flower, plant it on any of the other five, and the tile loop would draw
+   it AFTER the cottage, on top of it. **No `base_point` can fix that: the flower is genuinely on a
+   different tile and genuinely later in the draw order.**
+   A building anchored at (ac, ar) covers c in [ac-w+1 .. ac] and r in [ar-d+1 .. ar], so this scans
+   only the handful of anchors that could possibly cover (c, r) -- at most 3 x 2 -- and returns the
+   kind standing there, or null. **One rule, asked by everything that needs to know whether ground is
+   free.** */
+function blockAt(c, r) {
+  var dc, dr, t, w, d;
+  for (dc = 0; dc <= 2; dc++) {
+    for (dr = 0; dr <= 1; dr++) {
+      t = cell(c + dc, r + dr);
+      if (!t || !t.obj) continue;
+      /* EVERYTHING ELSE IS ONE TILE. The gate caught this: an earlier version of this function
+         skipped any obj with no entry in BLOCK_W, so a BENCH stopped blocking its own tile and
+         the existing rule -- pick it up, or it blocks the ground for ever -- silently broke.
+         A building has a block; a bench, a lantern, a bird bath, a sign and a hide have a tile. */
+      w = BLOCK_W[t.obj] || 1; d = BLOCK_D[t.obj] || 1;
+      if (dc < w && dr < d) return t.obj;
+    }
+  }
+  return null;
+}
+
 function plantable(c, r) {
   var t = cell(c, r);
   /* AND THE SEEP IS NOT PLANTABLE, WHICH IS A RULE THE GAME WAS MISSING.
@@ -1688,7 +1725,9 @@ function plantable(c, r) {
      never be able to end them. Letting them plant inside is what makes the block a problem with a
      solution rather than a permanent brown rectangle. The floor keeps its plantation colour, which
      is the honest record of what the ground was. */
-  return !!t && (t.ter === 'grass' || t.ter === 'plantation') && !t.obj;
+  /* THE WHOLE BLOCK, NOT JUST THE TILE -- see blockAt(). A cottage reserves six tiles and this test
+     is what stops a flower or a tree being planted on the five it is not anchored to. */
+  return !!t && (t.ter === 'grass' || t.ter === 'plantation') && !blockAt(c, r);
 }
 
 function stats() {
@@ -2839,7 +2878,8 @@ function plantAt(c, r, spKey) {
 
 function placeDecor(c, r, key) {
   var t = cell(c, r);
-  if (!t || t.obj || t.alien || t.sp || !plantable(c, r)) return false;
+  /* `t.obj` ALONE WAS THE BUG: a tile beside a cottage has no obj of its own, so it looked free. */
+  if (!t || blockAt(c, r) || t.alien || t.sp || !plantable(c, r)) return false;
   if (!DECOR[key] || !(state.decor[key] > 0)) return false;
   state.decor[key] -= 1;
   t.obj = key;
