@@ -4217,13 +4217,37 @@ function drawSeedMarkers(c, r) {
      marker just has to be drawn behind the alien instead of not at all. */
   if (!(t.seeds > 0) || t.ter !== 'grass' || t.obj) return;
   var z = groundZ(c, r), p = project(c, r, z);
+  /* ONE MARK, AND ITS SIZE IS THE COUNT -- NOT ONE MARK PER LOT OF SEED.
+     Owner, 2026-10-06: *"theyre too big. they make the ground look weird. we need a better way to
+     show whats happening."* -- **and after clustering them tighter and shrinking them, the answer
+     was that there should not be four marks in the first place.**
+     **Four small things scattered on grass read as DEBRIS, at any size.** The player is not
+     counting seeds; they are asking *"will this come back?"* -- and that is a state, not a scatter.
+     **So a tile draws ONE seed, and how big it is carries how much is under it**: a single lot is a
+     small mark, four lots is a noticeably larger one. **The eye reads a size difference instantly and
+     a count not at all.**
+     **And the mark is the same size on every tile that has the same amount**, which is what stops it
+     reading as litter: debris varies, a stamp does not. */
   var sn = Math.min(4, t.seeds), sk;
+  var markScale = TW * 0.98 / 2.8 * (0.72 + 0.18 * (sn - 1));
   ctx.fillStyle = 'rgba(96,72,36,0.78)';
-  for (sk = 0; sk < sn; sk++) {
-    var u = jit(c + sk, r, 31) * 2 - 1;
-    var v = jit(c, r + sk, 32) * 2 - 1;
-    var sx = p[0] + (u - v) * (TW / 2) * 0.62;
-    var sy = p[1] + (u + v) * (TH / 2) * 0.62;
+  /* A TIGHT CLUSTER, NOT A SCATTER -- AND THE SIZE IS THE OTHER HALF OF IT.
+     Owner, 2026-10-06: *"theyre too big. they make the ground look weird. we need a better way to
+     show whats happening."*
+     **He is right, and the shape of the marker was the problem, not the painting.** Each seed was
+     jittered across the FULL width of its tile (`* 0.62` of the half-tile, so about 1.5 world px of
+     spread in each axis), which means four seeds landed in four corners and the tile read as LITTER
+     rather than as a state. **The player is not counting seeds; they are asking "will this come
+     back?"** -- and that question wants ONE mark in one place, not a scatter.
+     **So the seeds cluster now** -- a third of the old spread, pulled toward the tile's centre and
+     slightly up-left where the light is -- **and they are drawn at half size.** One mark per tile
+     that reads as a mark; a denser mark when there is more seed under it. **The exact count is still
+     on the hold card, which is where a number belongs.** */
+  for (sk = 0; sk < 1; sk++) {
+    /* THE SAME SPOT ON EVERY TILE. No jitter at all -- a jittered mark is what made it read as
+       something that fell there. */
+    var sx = p[0] - TW * 0.02;
+    var sy = p[1] - TH * 0.02;
     /* THE PAINTED SEED FIRST, THE ELLIPSE ONLY IF IT IS MISSING.
        Owner: *"we still have flat drawn brown seeds tho. whats the solution?"* -- and the answer
        turned out not to be "it is a fill colour". **Art measured it: the ellipse's separation from
@@ -4236,7 +4260,9 @@ function drawSeedMarkers(c, r) {
        reachable from here, which is the same boundary the decor hit. It returns false when the id is
        not loaded, so **the ellipse keeps drawing until the pack lands and nothing breaks between.** */
     if (drawDecorSprite &&
-        drawDecorSprite('seed_v' + (sk % 3 + 1), sx, sy, TW * 0.98 / 2, 0, 0)) continue;
+        /* HALF OF HALF -- a quarter of the decor scale. The painted seed at the size art measured it
+           was still the biggest thing on a tile of grass. */
+        drawDecorSprite('seed_v1', sx, sy, markScale, 0, 0)) continue;
     ctx.beginPath();
     /* Bigger than they were. At TW*0.026 a seed was 1.6px across, so a tile with three lots of
        seed left in it looked like a tile with nothing on it — and "nothing on it, but it will not
