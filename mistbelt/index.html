@@ -1692,6 +1692,20 @@ var SHADE_FOR_OLDGROWTH = 2;
    Amathole toad needs 4 or fewer, so a reward the game advertises could never be earned.
    THREE, because that is what the shade card has always told the player. */
 var SHADE_CLOSES_SEED = 3;
+/* ARE ART'S PAINTED SHADE TILES THE THING THAT DRAWS, OR IS THE WASH?
+   **FALSE, and it is a deliberate reversal of a delivery that landed and was measured.** Art's
+   `ter_shade1_v*` / `ter_shade2_v*` / re-derived `ter_forest_v*` are in the pack and are correct in every
+   respect art could check -- the hue holds, the three variants agree to 0.0011-0.0052 against a 0.008
+   tolerance, and the luma field correlates 0.990-0.997 with the same-variant grass tile.
+   **What they get wrong is the DARK TAIL.** Measured over the opaque pixels of the installed tiles, the
+   mean moves -12.5 / -20.7 / -25.7 from grass while the darkest 1% moves -20.2 / -41.1 / -47.4 -- **about
+   twice as far** -- and the range WIDENS as it darkens, 44 -> 55 -> 72 -> 77. **The owner: "its too dark,
+   looks like black mold speckles."** That is the dark tail, and it is not fixable by making the steps
+   smaller.
+   **So the wash draws instead -- a multiply, which moves every pixel by the same ratio and therefore
+   COMPRESSES the range, the way a real shadow does.** Flip this to true when a redone ramp lands with a
+   dark tail that tracks its mean; **the wash is also the floor it has to beat.** */
+var USE_PAINTED_SHADE = false;
 
 function needsShade(spKey) {
   var def = SPECIES[spKey];
@@ -8047,6 +8061,9 @@ var SPR = (function () {
        the one place on the map with a visibly repeating floor. */
     /* THE SHADE STEP IS RESOLVED HERE, NOT LEFT TO THE DRAWING -- see groundKey(). */
     var key = groundKey(c, r);
+    /* WHEN THE WASH IS DRAWING, THE LOOKUP ASKS FOR GRASS -- the wash supplies the shade. Otherwise a
+       painted shade tile AND the wash would both apply and the ground would be darkened twice. */
+    if (!USE_PAINTED_SHADE && key !== 'grass' && key !== t.ter) key = t.ter;
     var vk = key === 'water' ? 1 : (1 + Math.floor(jit(c, r, 37) * 3));
     /* AND IF THE VARIANT THIS TILE HASHED TO IS NOT IN THE PACK, TAKE _v1 RATHER THAN NOTHING.
        Found 2026-10-06 by the page gate, which had been reporting it for two days as *"the tile
@@ -8070,6 +8087,7 @@ var SPR = (function () {
   function tile(c, r) {
     if (!on || !ready) return false;
     var t = cell(c, r);
+    var _ter = groundKey(c, r);   /* the same answer the lookup uses -- see the wash below */
     var id = groundTileId(c, r);
     var e = id ? rec[id] : null;
     if (!e || !e.img || !e.img.width) return false;
@@ -8131,6 +8149,31 @@ var SPR = (function () {
     }
     var OVER = 1.02;
     ctx.drawImage(e._sc, p[0] - TW * OVER / 2, p[1] - TH * OVER / 2, TW * OVER, TH * OVER);
+    /* THE SHADE IS A MULTIPLY OVER THE PAINTED GRASS, NOT A BAKED TILE.
+       Owner, 2026-10-06, on art's painted ramp: *"its too dark, looks like black mold speckles. they
+       just need to be a little darker than original grass tiles, not black."* -- **and the numbers
+       said exactly that.** Measured over the opaque pixels, the painted steps move the MEAN by
+       -12.5 / -20.7 / -25.7 but the DARKEST 1% by -20.2 / -41.1 / -47.4 -- **the dark tail ran about
+       twice as fast as the tile, and the range WIDENED as it darkened (44 -> 55 -> 72 -> 77).** That
+       is backwards: a surface in shade has LESS contrast than the same surface in light. The wide
+       dark tail is the mould speckle, and no size of step fixes it.
+       A multiply cannot do that. `v * (1 - a)` moves every pixel by the same RATIO, so the dark end
+       moves LESS than the mean and **the range COMPRESSES** -- which is what a shadow does.
+       THE ALPHAS ARE THE OWNER'S OWN WORDS: "a little darker". -5.6 / -9.6 / -13.6 off a grass mean
+       of 79.6 is 0.070 / 0.121 / 0.171. Art's painted tiles stay in the pack for when they redo the
+       ramp; **this is what draws until then, and it is also the floor the redone ramp has to beat.** */
+    /* ONLY ON GRASS THAT HAS GONE SHADED. A tile whose own terrain IS forest keeps its painted tile --
+       the wash is for the ground the SHADE spreads onto, not for the remnant's own floor. */
+    var _sh = t.ter !== 'grass' ? 0
+            : _ter === 'shade1' ? 0.070 : _ter === 'shade2' ? 0.121 : _ter === 'forest' ? 0.171 : 0;
+    if (_sh > 0) {
+      ctx.save();
+      tilePath(c, r, z, TILE_K, TILE_F);
+      ctx.clip();
+      ctx.fillStyle = 'rgba(0,0,0,' + _sh + ')';
+      ctx.fill();
+      ctx.restore();
+    }
     /* (The soft pool that used to live here is gone: the GROUND now carries the shade, which is
        what the owner asked for -- the remnant's own colour, spread to the tiles it affects. Two
        shade systems would have doubled up on the same pixel.) */
