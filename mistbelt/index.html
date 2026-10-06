@@ -475,9 +475,10 @@
       comes back every hour. Cutting spends them; planting is free.</p>
       <p><b>Cutting one leaves its seed in the ground</b>, so it comes back. That is why a cleared
       patch does not stay cleared.</p>
-      <p><b>Three mature trees around a patch and the shade kills the seed in that ground for</b>
-      <b>good.</b> That is how the hillside comes back \u2014 a patch at a time, and the birds follow the
-      shade.</p>
+      <p><b>Three mature trees around a patch and the seed under it stops coming up.</b> Not for ever
+      — <b>the shade shuts the seed bank, and cutting the shade opens it again.</b> That is how the
+      hillside comes back: a patch at a time, and the dead trees you leave standing are what the birds
+      nest in.</p>
       <p class="dim">The bin takes <b id="introBin">3</b> cuttings and the baboon trades them for
       the day’s token; the nursery is where you spend it. <b>Hold a tile</b> to ask what it is.</p>
       <!-- THE ONE THING A PLAYER MUST KNOW BEFORE THEY INVEST A WEEK IN IT. Owner, 2026-09-30:
@@ -2873,9 +2874,9 @@ function clearAt(c, r) {
     card('Three trees close a patch',
       'That one left ' + t.seeds + ' lots of seed in this tile, and it will keep coming back. ' +
       'It stops when ' + SHADE_CLOSES_SEED + ' MATURE trees stand in the eight tiles around it — ' +
-      'not saplings, not half-grown ones, mature. The shade kills the seed in that ground and the tile is ' +
-      'finished for good. So the way to beat this hillside is not to keep cutting: it is to cut a ' +
-      'patch, plant around it, and let the canopy do the rest.', null);
+      'not saplings, not half-grown ones, mature. The shade shuts the seed bank — it does not destroy ' +
+      'the seed, and cutting the shade opens it again. So the way to beat this hillside is not to keep ' +
+      'cutting: it is to cut a patch, plant around it, and let the canopy do the rest.', null);
   }
   return true;
 }
