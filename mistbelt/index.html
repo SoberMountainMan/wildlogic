@@ -818,7 +818,9 @@ var SPECIES = {
 var SP_BY_TIER = ['wildpeach', 'chestnut', 'stinkwood', 'whitepair', 'knobwood',
                   'yellowwood', 'outeniqua', 'ironwood'];
 
-var DECOR_KEYS = ['bench', 'birdbath', 'sign', 'hide', 'lantern', 'azalea', 'hydrangea'];
+/* APPEND ONLY. A save stores a decoration as its POSITION in this list, so inserting anywhere but the
+   end shifts every entry after it and silently corrupts every existing save. `arum` goes last. */
+var DECOR_KEYS = ['bench', 'birdbath', 'sign', 'hide', 'lantern', 'azalea', 'hydrangea', 'arum'];
 /* THE BIRD HIDE IS NOT FOR SALE ANY MORE.
    Owner, 2026-10-03: "maybe we should get rid of the bird hide decoration? people might think thats
    what parrots need?"
@@ -854,7 +856,14 @@ var DECOR = {
   birdbath: { name: 'Bird bath', cost: 1, token: 'rain' },
   sign:     { name: 'Signpost',  cost: 1, token: 'mist' },
   hide:     { name: 'Bird hide', cost: 4, token: 'mist' },
-  lantern:  { name: 'Lantern',   cost: 1, token: 'sun' }
+  lantern:  { name: 'Lantern',   cost: 1, token: 'sun' },
+  /* THE ARUM LILY, AND ITS RULE IS THE ONE FACT ABOUT IT.
+     Owner, 2026-10-05: *"arum lilies often act like aggressive, invasive weeds in Hogsback's specific
+     managed landscapes"* -- native to the region, and a problem in disturbed ground. Art's note: it
+     *"stands in wet pebbly ground with the soil glossing... it only stays evergreen where the water
+     is."* **So it is the one decoration that wants the BANK** -- wet ground the forest cannot use,
+     which is exactly where a garden belongs. The azalea and the hydrangea want dry ground. */
+  arum:     { name: 'Arum lily', cost: 2, token: 'rain', wet: true }
 };
 
 var ALIEN_CODE = { none: 0, wattle: 1, pine: 2, bugweed: 3, bramble: 4, blackwood: 5 };
@@ -2913,7 +2922,14 @@ function plantAt(c, r, spKey) {
 function placeDecor(c, r, key) {
   var t = cell(c, r);
   /* `t.obj` ALONE WAS THE BUG: a tile beside a cottage has no obj of its own, so it looked free. */
-  if (!t || blockAt(c, r) || t.alien || t.sp || !plantable(c, r)) return false;
+  if (!t || blockAt(c, r) || t.alien || t.sp) return false;
+  /* THE ARUM IS THE ONE DECORATION THAT WANTS WET GROUND, AND THE RELAXATION LIVES HERE, NOT IN
+     plantable(). **That function is asked by tree planting too**, and a bank that passed it would let a
+     tree stand in a bog and take the toad's seep with it -- so it still refuses banks, correctly. Only
+     decorations come through here, so this is the only place the rule can safely live. */
+  var _wet = DECOR[key] && DECOR[key].wet;
+  if (_wet) { if (t.ter !== 'bank' && t.ter !== 'grass') return false; }
+  else if (!plantable(c, r)) return false;
   if (!DECOR[key] || !(state.decor[key] > 0)) return false;
   state.decor[key] -= 1;
   t.obj = key;
