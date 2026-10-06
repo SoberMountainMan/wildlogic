@@ -3584,10 +3584,29 @@ function loadLocal() {
   try {
     if (typeof localStorage === 'undefined') { loadFail = 'no storage'; return null; }
     var c = localStorage.getItem(SAVE_KEY);
-    if (!c) return null;                        /* a first run, not a failure */
-    var s = decodeSave(c);
-    if (!s) { loadFail = 'unreadable'; window.__MB_BADSAVE = c; }
-    return s;
+    var s = c ? decodeSave(c) : null;
+    if (s) return s;
+    /* THE BACKUP WAS WRITTEN FOR TWO YEARS AND NEVER READ.
+       Owner, 2026-10-06: *"tester has same issue so not just mine"* -- two phones, same morning, both
+       back to day 1. **There has been a `-prev` key since the share-link feature: the game copied the
+       outgoing save into it before a link was applied, and NOTHING EVER READ IT.** A recovery that is
+       written and never used is not a backup, it is a file.
+       **It is a rolling snapshot now, and it is read here.** If the main key is missing or unreadable
+       and a backup exists, the backup is what loads -- and the player is told, because a silent restore
+       is the same bug as a silent reset. */
+    var b = null;
+    try { b = localStorage.getItem(SAVE_KEY + '-prev'); } catch (e2) {}
+    if (b) {
+      var sb = decodeSave(b);
+      if (sb) {
+        loadFail = c ? 'unreadable, restored from backup' : 'missing, restored from backup';
+        if (c) window.__MB_BADSAVE = c;
+        sb.restoredFromBackup = true;
+        return sb;
+      }
+    }
+    if (c) { loadFail = 'unreadable'; window.__MB_BADSAVE = c; }
+    return null;
   } catch (e) { loadFail = 'threw: ' + e.message; return null; }
 }
 
@@ -7305,7 +7324,16 @@ function boot() {
   /* AND IF THERE WAS A SAVE AND IT WOULD NOT READ, THAT IS SAID OUT LOUD.
      Starting a fresh game is the right fallback; **doing it in silence is not**, because the player's
      only clue is that their progress is gone and their only conclusion is that the game ate it.** */
+  /* A SNAPSHOT OF WHAT IS ABOUT TO BE PLAYED, TAKEN BEFORE ANYTHING CAN OVERWRITE IT.
+     The backup used to be written only when a share link was opened, which is the one moment it is
+     least needed. **Taking it at boot means there is always a copy of the last session**, and the
+     failure it protects against -- a save that will not read, or a key the browser has evicted -- is
+     exactly the one that cost two testers their games. */
   if (!state) {
+    try {
+      var _live = localStorage.getItem(SAVE_KEY);
+      if (_live && decodeSave(_live)) localStorage.setItem(SAVE_KEY + '-prev', _live);
+    } catch (e) {}
     state = loadLocal();
     if (!state) {
       var _fail = loadFail;
@@ -7317,7 +7345,14 @@ function boot() {
      A fresh game with a warning is a very different thing from a fresh game -- **one is a beginning and
      the other is a loss**, and until now the game could only produce the first. The raw string is kept on
       so the player can hand it over rather than the evidence being thrown away. */
-  if (state.saveWarning) {
+  /* A SILENT RESTORE IS THE SAME BUG AS A SILENT RESET -- the player has to know which game they are in.
+     **The difference is that this one is good news**, and it says so. */
+  if (state.restoredFromBackup) {
+    setTimeout(function () {
+      note('Your last save could not be read, so the game restored the copy before it. ' +
+           'Copy a save code from the field notes when you can, so this is not the only copy.', 'warn');
+    }, 1200);
+  } else if (state.saveWarning) {
     setTimeout(function () {
       note('Your saved game could not be read (' + state.saveWarning + '), so this is a new one. ' +
            'Nothing has overwritten it yet — if you have a save code or a share link, load it now.', 'warn');
@@ -7579,7 +7614,9 @@ function boot() {
     }
     newArmed = 0;
     if (els.btnNew) els.btnNew.textContent = 'Start a new game';
-    try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+    /* BOTH KEYS. An explicit new game that left the backup behind would come back from the dead on the
+       next boot, which is worse than either behaviour on its own. */
+    try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(SAVE_KEY + '-prev'); } catch (e) {}
     /* PRIMED, NOT JUST NEW. A bare newState() has no weather and no board, and the HUD reads both —
        see the note on primeState() for why this was the restart button's whole bug. */
     state = newState();
@@ -8841,6 +8878,11 @@ var SPR = (function () {
        competition is TESTABLE. **A rule nothing can ask about is a rule that drifts**, and this one
        is arithmetic over eight neighbours that no screenshot can show. */
     pickAlien: function (t, c, r) { return pickAlien(t, c, r); },
+    /* THE SAVE PATH, EXPORTED FOR THE SAME REASON. **A recovery that cannot be tested is a recovery
+       nobody knows is broken** -- this one was written and never read for two years, and there was no
+       way to ask it a question. */
+    loadLocal: function () { return loadLocal(); },
+    loadFail: function () { return loadFail; },
     /* THE PAINTED DECOR, for the tile loop -- see the note on drawDecorSprite. */
     decorSprite: function (kind, cx, base, s, c, r) {
       return drawDecorSprite ? drawDecorSprite(kind, cx, base, s, c, r) : false;
