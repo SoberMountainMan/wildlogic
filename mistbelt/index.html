@@ -839,6 +839,14 @@ var DECOR_SHOP = DECOR_KEYS.filter(function (k) { return k !== 'hide'; });
    every tile spent on a bench is a tile that can never hold a nest site, and the pill says so from the
    first frame. The decor is not a penalty and it is not a scam; it is the game's one genuinely cheap
    thing, and the price of it is ground. */
+/* THE CLOSURE FILLS THIS IN. `drawDecor()` is a top-level function and `prop()` lives inside the
+   render closure, so they cannot see each other -- which is why the decor has always been code art
+   even though the painted sprites have shipped. The closure assigns this on boot and the call site
+   tries it first. **It returns TRUE when a sprite drew, so the primitive -- and its shadow -- is
+   skipped entirely.** That matters: every primitive calls `shadow()` first and the painted sprites
+   carry none of their own, so drawing both puts two shadows under one bench. */
+var drawDecorSprite = null;
+
 var DECOR = {
   bench:    { name: 'Bench',     cost: 1, token: 'sun' },
   azalea:   { name: 'Azalea',    cost: 1, token: 'sun' },
@@ -5460,6 +5468,11 @@ function drawTileProp(c, r) {
   else if (t.obj === 'sign' && t.lm) drawSign(cx, base, TW * 0.96, true);
   else if (t.obj === 'sign') drawSign(cx, base, TW * 0.96, false);
   else if (t.obj === 'jetty') drawJetty(cx, base, TW * 1.10);
+  /* THE PAINTED DECOR FIRST, AND THE PRIMITIVE ONLY IF IT IS MISSING. Owner, 2026-10-06: *"are you
+     gonna add arum? or you waiting for answers from art first?"* -- and then, when the answer was that
+     nothing was blocking it: *"ok why you waiting then?"* **The sprites have been in the pack since
+     the garden round and this line has been drawing flat colour over them the whole time.** */
+  else if (DECOR[t.obj] && drawDecorSprite && drawDecorSprite(t.obj, cx, base, TW * 0.98, c, r)) { /* the sprite drew */ }
   else if (DECOR[t.obj]) drawDecor(t.obj, cx, base, TW * 0.98, c * 31 + r * 17);
 
   /* THE WORDS ON THE SIGNPOST ARE NOT DRAWN HERE ANY MORE.
@@ -7697,6 +7710,63 @@ var SPR = (function () {
     return on && ready && put(rec[id], cx, base, s * (SIZE[id] || 1), f);
   }
 
+  /* THE DECOR SPRITES, AND THE ONE THAT NEEDS TINTING.
+     The hydrangea is painted NEUTRAL so its colour can come from the tile -- and art measured the mask
+     for us: **every bloom pixel is above luminance 140 and no leaf pixel is**, with a bloom mean of 194.
+     **Without the mask the tint multiplies the whole sprite and the foliage takes the colour of the
+     soil**, which is what art warned about in as many words. Cached per tint -- four canvases, built once. */
+  var HUES = [
+    { r: 0x6d, g: 0x94, b: 0xc8 },
+    { r: 0x8a, g: 0x7c, b: 0xc0 },
+    { r: 0xc0, g: 0x7a, b: 0x9e },
+    { r: 0xb9, g: 0xc2, b: 0xb4 }
+  ];
+  var TINT_CACHE = {};
+
+  function tintedSprite(id, idx) {
+    var key = id + '#' + idx;
+    if (TINT_CACHE[key]) return TINT_CACHE[key];
+    var e = rec[id];
+    if (!e || !e.img || !e.img.width) return null;
+    var cv = document.createElement('canvas');
+    cv.width = e.img.width; cv.height = e.img.height;
+    var g = cv.getContext('2d');
+    g.drawImage(e.img, 0, 0);
+    var d, px, i, lum, k, t = HUES[idx];
+    try { d = g.getImageData(0, 0, cv.width, cv.height); } catch (err) { return null; }
+    px = d.data;
+    for (i = 0; i < px.length; i += 4) {
+      if (px[i + 3] < 24) continue;
+      lum = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+      if (lum <= 140) continue;              /* a LEAF, not a bloom -- leave it painted */
+      k = lum / 194;                         /* 194 is the delivered bloom mean */
+      px[i]     = Math.min(255, t.r * k);
+      px[i + 1] = Math.min(255, t.g * k);
+      px[i + 2] = Math.min(255, t.b * k);
+    }
+    g.putImageData(d, 0, 0);
+    TINT_CACHE[key] = cv;
+    return cv;
+  }
+
+  /* Returns TRUE when a sprite drew, so the caller skips the primitive and its shadow. */
+  drawDecorSprite = function (kind, cx, base, s, c, r) {
+    var id = 'obj_' + kind;
+    var e = rec[id];
+    if (!(on && ready && e && e.img && e.img.width)) return false;
+    var H = (e.cell[1] / PPWW) * (s / sRef(e.family));
+    if (!(H > 1)) return false;
+    var W = H * (e.cell[0] / e.cell[1]);
+    var img = e.img;
+    if (kind === 'hydrangea') {
+      var tinted = tintedSprite(id, Math.abs(c * 31 + r * 17) % HUES.length);
+      if (!tinted) return false;
+      img = tinted;
+    }
+    ctx.drawImage(img, cx - (e.base[0] / e.cell[0]) * W, base - (e.base[1] / e.cell[1]) * H, W, H);
+    return true;
+  };
+
   /* THE FOUR DIAMOND EDGES, NAMED THE WAY THE PACK NAMES THEM.
      The pack names them CLOCKWISE FROM THE UPPER-LEFT: north = upper-left edge, east = upper-right,
      south = lower-right, west = lower-left. A 2:1 diamond shares its EDGES with the DIAGONAL
@@ -8395,6 +8465,10 @@ var SPR = (function () {
        differ exactly when a file is in the manifest but did not decode, which is the failure that
        otherwise looks like a map. */
     groundTileId: function (c, r) { return groundTileId(c, r); },
+    /* THE PAINTED DECOR, for the tile loop -- see the note on drawDecorSprite. */
+    decorSprite: function (kind, cx, base, s, c, r) {
+      return drawDecorSprite ? drawDecorSprite(kind, cx, base, s, c, r) : false;
+    },
     packHas: function (id) { return packHas(id); },
     /* Is an id in the pack AND decoded. */
     has: function (id) { return has(id); },
