@@ -730,7 +730,16 @@ var ALIENS = {
    believes cutting it was a mistake if it LOOKED worth cutting, and then I drew it smaller than the
    pine. In the field A. melanoxylon reaches 40 m against P. patula's 25-30, so it is the taller tree
    as well. 1.75 puts it just above the pine, which is both the fact and the point. */
-var ALIEN_SCALE = { bramble: 1.45, blackwood: 1.75 };
+/* THE BLACKWOOD WAS SCALED TWICE, AND THE SECOND ONE WAS A HALF-FINISHED MIGRATION.
+   Art, `NOTE-FROM-ART-2026-10-06-ALIEN-STAGES.md`: *"ALIEN_SCALE.blackwood = 1.75 and
+   SIZE.alien_blackwood = 1.75 both apply -- the world call site multiplies and prop() multiplies again.
+   The dev's comment says the new SIZE entry 'Mirrors ALIEN_SCALE', and 726-727 records that ALIEN_SCALE
+   used to hold pine: 1.65, blackwood: 1.30 -- pine has since left that table and blackwood did not."*
+   **A half-finished migration, and the result was a blackwood drawing at 3.06x instead of 1.75x:**
+   170.5 world px where the pine is 91.9, against a recorded intent of *"1.75 puts it just above the
+   pine."* **Removing the entry puts it at 97 px -- just above the pine, which is both the fact and the
+   point the comment makes.** `bramble` stays here because there is no `SIZE.alien_bramble` to mirror it. */
+var ALIEN_SCALE = { bramble: 1.45 };
 /* A WEED IS NOT FULL GROWN THE DAY IT COMES UP. Three stages, the same shape the planted trees use
    (0.26 / 0.56 / 1), sized so a fresh sprout reads as a seedling on the tile rather than as a tree
    that was not there a second ago. Index 0 is deliberately absent -- an alien is never stage 0 --
@@ -8250,8 +8259,20 @@ var SPR = (function () {
     var aid = (kind === 'pine' && ter === 'plantation') ? 'pine_b' : kind;
     var pct = ALIEN_STAGE_SCALE[st] || 1;
     if (st < 3) {
-      var full = TW * (SIZE['alien_' + aid] || 1);      /* how tall this species draws at full size */
-      var floorPx = st === 1 ? ALIEN_MIN_PX : ALIEN_MIN_PX * 1.5;
+      /* THE FLOOR WAS COMPUTED AGAINST A HEIGHT THAT IS NOT THE HEIGHT.
+         Art measured it: `full = TW * SIZE` *"omits both `vs` and `ALIEN_SCALE`, so the floor is exact
+         only at one particular scatter"* -- **below vs 1.0 the two smallest weeds were drawn UNDER the
+         minimum the floor exists to guarantee**, which is the scatter's whole range bar the top eighth.
+         `s` arrives carrying both factors (the call site applies them), so dividing it out recovers
+         exactly what was missing and the floor is compared against the real drawn height. */
+      var full = TW * (SIZE['alien_' + aid] || 1) * (s / (TW * 0.78));
+      /* AND THE FLOOR IS CAPPED AS A FRACTION OF FULL, which is the bramble's whole problem.
+         `22.5 / 19.84 = 1.134`, so stage 2 clamped to 1.0 and drew IDENTICALLY to stage 3 -- **the
+         species the owner singled out as the horrible one is the one whose three stages collapsed into
+         two.** A fixed pixel floor cannot work for a plant whose full size is 20 px: it either makes the
+         sprout full-grown or it makes it unidentifiable. **Capping it at 55% of full gives the pine its
+         15 px guarantee where 15 px is possible, and gives the bramble a real sprout where it is not.** */
+      var floorPx = Math.min(st === 1 ? ALIEN_MIN_PX : ALIEN_MIN_PX * 1.5, full * 0.55);
       var sc = Math.min(1, Math.max(pct, floorPx / full));
       s = s * sc;
     }
