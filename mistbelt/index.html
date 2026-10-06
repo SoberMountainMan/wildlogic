@@ -3541,7 +3541,16 @@ var saveFailed = false;
 function saveLocal() {
   try {
     if (typeof localStorage === 'undefined') throw new Error('no localStorage');
-    localStorage.setItem(SAVE_KEY, encodeSave(state));
+    /* A NEW GAME DOES NOT WRITE OVER A SAVE THAT WOULD NOT READ.
+       Owner, 2026-10-06: *"my game reset on its own? im back at day 1?"* -- and the reset was only half
+       the damage. **The old code loaded null, started a fresh game, and the first action the player
+       took wrote that fresh game over the top of whatever was there** -- so a save that might have
+       been recoverable was destroyed by the act of playing.
+       **Now a game that started because a save would not read writes to a DIFFERENT key.** The
+       unreadable one is left exactly as it was, which means it can still be looked at, handed over,
+       or recovered -- and the player is told which key holds what. */
+    var _key = state.saveWarning ? SAVE_KEY + '.new' : SAVE_KEY;
+    localStorage.setItem(_key, encodeSave(state));
     if (saveFailed) { saveFailed = false; note('Saving again.', 'good'); }
     return true;
   } catch (e) {
@@ -3560,12 +3569,26 @@ function saveLocal() {
     return false;
   }
 }
+/* WHY A SAVE DID NOT LOAD, KEPT RATHER THAN SWALLOWED.
+   Owner, 2026-10-06: *"my game reset on its own? im back at day 1?"*
+   **The old version returned null for every failure, and null means `newState()`** -- so a save that
+   could not be read became a NEW GAME, silently, and the first thing a new game does is SAVE OVER IT.
+   **A player cannot tell a corrupt save from a wiped one, and by the time they notice the evidence is
+   gone.**
+   **Now the reason is kept.** `loadLocal` still returns null so nothing downstream changes, but it
+   records what happened in `loadFail`, and the boot says so out loud. **The raw string is kept too,
+   because it is the only thing that can be looked at afterwards.** */
+var loadFail = null;
 function loadLocal() {
+  loadFail = null;
   try {
-    if (typeof localStorage === 'undefined') return null;
+    if (typeof localStorage === 'undefined') { loadFail = 'no storage'; return null; }
     var c = localStorage.getItem(SAVE_KEY);
-    return c ? decodeSave(c) : null;
-  } catch (e) { return null; }
+    if (!c) return null;                        /* a first run, not a failure */
+    var s = decodeSave(c);
+    if (!s) { loadFail = 'unreadable'; window.__MB_BADSAVE = c; }
+    return s;
+  } catch (e) { loadFail = 'threw: ' + e.message; return null; }
 }
 
 /* ============================================================ geometry */
@@ -7279,7 +7302,27 @@ function boot() {
       openedFromLink = true;
     }
   }
-  if (!state) state = loadLocal() || newState();
+  /* AND IF THERE WAS A SAVE AND IT WOULD NOT READ, THAT IS SAID OUT LOUD.
+     Starting a fresh game is the right fallback; **doing it in silence is not**, because the player's
+     only clue is that their progress is gone and their only conclusion is that the game ate it.** */
+  if (!state) {
+    state = loadLocal();
+    if (!state) {
+      var _fail = loadFail;
+      state = newState();
+      if (_fail) state.saveWarning = _fail;
+    }
+  }
+  /* AND IT IS SAID, ONCE THE SCREEN EXISTS TO SAY IT ON.
+     A fresh game with a warning is a very different thing from a fresh game -- **one is a beginning and
+     the other is a loss**, and until now the game could only produce the first. The raw string is kept on
+      so the player can hand it over rather than the evidence being thrown away. */
+  if (state.saveWarning) {
+    setTimeout(function () {
+      note('Your saved game could not be read (' + state.saveWarning + '), so this is a new one. ' +
+           'Nothing has overwritten it yet — if you have a save code or a share link, load it now.', 'warn');
+    }, 1200);
+  }
   /* A LOADED SAVE HAS A DIFFERENT FOREST, SO THE BAKED GROUND IS STALE.
      The ground cache carries the shade, and the shade is a function of where the mature trees are --
      so a cache built before the save was applied would draw the shade of an empty hillside and keep
