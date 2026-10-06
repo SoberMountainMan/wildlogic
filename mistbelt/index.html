@@ -821,15 +821,19 @@ var SP_BY_TIER = ['wildpeach', 'chestnut', 'stinkwood', 'whitepair', 'knobwood',
 /* APPEND ONLY. A save stores a decoration as its POSITION in this list, so inserting anywhere but the
    end shifts every entry after it and silently corrupts every existing save. `arum` goes last. */
 var DECOR_KEYS = ['bench', 'birdbath', 'sign', 'hide', 'lantern', 'azalea', 'hydrangea', 'arum'];
-/* THE BIRD HIDE IS NOT FOR SALE ANY MORE.
-   Owner, 2026-10-03: "maybe we should get rid of the bird hide decoration? people might think thats
-   what parrots need?"
-   He is right. The player is told a parrot needs a DEAD TREE, and a "bird hide" is exactly the thing
-   someone would buy expecting it to bring birds -- nothing in the code made it do anything for them.
-   It STAYS in DECOR_KEYS, because the save stores decor as a string indexed by POSITION in that list:
-   dropping it would shift every decoration after it and silently corrupt every existing save. It is
-   simply no longer offered for sale, and a hide already bought still stands. */
-var DECOR_SHOP = DECOR_KEYS.filter(function (k) { return k !== 'hide'; });
+/* THE HIDE CAME OFF THE SHELF, AND THE HIVE WENT BACK ON.
+   Owner, 2026-10-03: *"maybe we should get rid of the bird hide decoration? people might think thats
+   what parrots need?"* -- and he was right: the player is told a parrot needs a DEAD TREE, and a
+   "bird hide" is exactly the thing someone would buy expecting it to bring birds.
+   Owner, 2026-10-06, on what replaced it: *"hive works as decor since its a hogsback hobby. we can
+   add it having benefits later."*
+   **That is the whole test, and the hive passes it where the hide failed: beekeeping is a real thing
+   people do on this mountain, so a hive standing in a garden is honest with no mechanic behind it.**
+   The hide needed to bring birds to make sense; a hive just needs to be a hive.
+   **It is sold under the key `hide`, which is the save slot and must not move** -- the name the
+   player reads is Beehive. Benefits, if they come, are a later decision and the shelf does not have
+   to wait for them. */
+var DECOR_SHOP = DECOR_KEYS.slice();
 /* THE CHEAP THING IS THE EXPENSIVE MISTAKE.
    Owner, 2026-10-05: *"we should make decorations cheaper than trees, as a trap."*
    MEASURED BEFORE CHANGING IT: the cheapest tree was 2 tokens and the cheapest decoration was ALSO 2,
