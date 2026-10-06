@@ -4344,6 +4344,24 @@ function drawAlien(kind, cx, base, s) {
     ctx.fillRect(cx + s * 0.03, base - s * 0.42, s * 0.09, s * 0.42);
     ctx.fillStyle = '#7d7568';
     ctx.fillRect(cx - s * 0.02, base - s * 0.30, s * 0.07, s * 0.30);
+    /* THE CROWN HAD NO MASS, SO THE FALLBACK READ AS A STICK WITH SPECKS.
+       Art, `NOTE-FROM-ART-2026-10-06-WATTLE.md`: *"one value for stem and crown does not read as a
+       tree at any size"* -- and they asked for this to be fixed while the plantation lookup is open,
+       because that is exactly the case where a fallback shows.
+       **Checked before changing it: both `#7d7568` strokes are the TRUNK, and the canopy already has
+       its own three greens, so the colour was never the fault here.** The fault is the same one the
+       sprite had: **eleven leaflets at s*0.115 x s*0.070, scattered over a radius of s*0.10 to
+       s*0.355, with nothing behind them.** Fine foliage is right for an Acacia -- but fine foliage
+       with nothing behind it is not a crown. So the leaflets stay exactly as they are and a soft mass
+       goes in UNDER them, in the darkest of the three leaflet greens. */
+    ctx.fillStyle = '#96a45e';
+    ctx.beginPath();
+    ctx.ellipse(cx, base - s * 0.62, s * 0.30, s * 0.20, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#a3b068';
+    ctx.beginPath();
+    ctx.ellipse(cx - s * 0.10, base - s * 0.70, s * 0.20, s * 0.14, 0, 0, Math.PI * 2);
+    ctx.fill();
     var wc = ['#b9c47a', '#a8b56a', '#c8d089'], wi;
     for (wi = 0; wi < 11; wi++) {
       var wa = wi * 2.399;
