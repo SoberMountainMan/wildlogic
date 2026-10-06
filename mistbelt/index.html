@@ -2616,11 +2616,29 @@ function rollBoard(w) {
   pool.push({ text: 'Plant one tree on the hillside', need: 1, metric: 'plants' });
   pool.push({ text: 'Collect thirteen tokens', need: 13, metric: 'tokens' });
 
+  /* THE BOARD DREW THE SAME THREE TASKS EVERY DAY, BECAUSE IT TOOK THE FIRST THREE IN ORDER.
+     Owner, 2026-10-06: *"is it still 3 tasks? random? achievable list of tasks?"*
+     **It was three, and it was neither random nor varied.** The loop walked `pool` from the top
+     and stopped at three, so every day was *"Recycle three items" + "Buy one thing" + one
+     weather task* -- and the last entry, *"Collect thirteen tokens"*, was **unreachable**, because
+     it sits after the weather entries and the loop always stopped before it. **A task nobody can
+     ever be given is not a task.**
+     Now the pool is shuffled per day and the first three are taken, so the board is drawn from the
+     whole list. **The first two entries are still in the pool and can still appear -- they are the
+     baseline and they belong -- but they no longer crowd out everything else by construction.**
+     Seeded from the day so the board is stable within a day and different across days, and it does
+     not reshuffle on every render. */
+  var shuffled = pool.slice(), j, tmp, seed = state.day * 7919 + 13;
+  for (j = shuffled.length - 1; j > 0; j--) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    var pickI = seed % (j + 1);
+    tmp = shuffled[j]; shuffled[j] = shuffled[pickI]; shuffled[pickI] = tmp;
+  }
   var tasks = [], seen = {}, i;
-  for (i = 0; i < pool.length && tasks.length < 3; i++) {
-    if (seen[pool[i].text]) continue;
-    seen[pool[i].text] = true;
-    tasks.push(pool[i]);
+  for (i = 0; i < shuffled.length && tasks.length < 3; i++) {
+    if (seen[shuffled[i].text]) continue;
+    seen[shuffled[i].text] = true;
+    tasks.push(shuffled[i]);
   }
   state.board = { day: state.day, cuts: 0, plants: 0, recycles: 0, buys: 0, tokens: 0,
                   tasks: tasks, claimed: false, reward: BOARD_REWARD };
