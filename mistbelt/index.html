@@ -420,6 +420,13 @@
         <button id="btnSave">Copy code</button>
         <button id="btnLoad">Load</button>
       </div>
+      <!-- THE OLDER COPIES, AND THE REASON THEY NEED A UI AT ALL.
+           Owner, 2026-10-06: *"but how do you load the right game?"* -- **and he is right: a ring of
+           backups that only fires when the CURRENT save will not read does nothing for the failure
+           that actually happened, because the reset left a perfectly VALID day-1 game in the main
+           slot.** The game cannot tell "this is your game" from "this is a new game that replaced
+           yours" -- **only the player can, and only if they are shown the choice.** -->
+      <div id="older"></div>
       <div class="coderow">
         <button id="btnLink">Copy a share link</button>
         <button id="btnFile">Save to a file</button>
@@ -7870,8 +7877,66 @@ function boot() {
     zoom = 1;
     centreOn(VILLAGE.c, VILLAGE.r);
   });
+  /* THE OLDER COPIES, LISTED SO THE PLAYER CAN CHOOSE ONE.
+     **The game cannot know which save is "yours" -- a reset and a deliberate new game look
+     identical from the inside.** So it does not guess: it keeps the copies and shows them, with the
+     day and the work done in each, and lets the person who knows decide. */
+  function renderOlder() {
+    var box = document.getElementById('older');
+    if (!box) return;
+    box.innerHTML = '';
+    var slots = ['-prev', '-prev2', '-prev3'], i, raw, sv, row, label, btn;
+    var found = 0;
+    for (i = 0; i < slots.length; i++) {
+      try { raw = localStorage.getItem(SAVE_KEY + slots[i]); } catch (e) { raw = null; }
+      if (!raw) continue;
+      sv = decodeSave(raw);
+      if (!sv) continue;
+      if (found === 0) {
+        var head = document.createElement('div');
+        head.className = 'savenote';
+        head.innerHTML = '<b>Older copies of this game.</b> The game keeps the three furthest-along ' +
+          'saves it has seen. If your hillside ever resets on its own, one of these is it.';
+        box.appendChild(head);
+      }
+      found++;
+      row = document.createElement('div');
+      row.className = 'coderow';
+      label = document.createElement('span');
+      label.style.flex = '1';
+      label.style.color = '#dbe8de';
+      label.textContent = 'Day ' + (sv.day || 1) + ' \u00b7 ' + (sv.cleared || 0) + ' cleared' +
+                          (sv.planted ? ' \u00b7 ' + sv.planted + ' planted' : '');
+      btn = document.createElement('button');
+      btn.textContent = 'Load this one';
+      btn.setAttribute('data-slot', slots[i]);
+      btn.addEventListener('click', function () {
+        var slot = this.getAttribute('data-slot');
+        var raw2 = null;
+        try { raw2 = localStorage.getItem(SAVE_KEY + slot); } catch (e2) {}
+        var sv2 = raw2 ? decodeSave(raw2) : null;
+        if (!sv2) { note('That copy will not read.', 'warn'); return; }
+        if (!this._armed) {
+          this._armed = 1;
+          this.textContent = 'Tap again \u2014 this replaces the game you are playing';
+          var self = this;
+          setTimeout(function () { self._armed = 0; self.textContent = 'Load this one'; }, 12000);
+          return;
+        }
+        state = sv2;
+        primeState();
+        GROUND = null;
+        saveLocal(); renderHud(); renderBoard(); renderShop(); renderOlder();
+        hideModal(els.mNotes);
+        note('Loaded day ' + (sv2.day || 1) + ' from an older copy.', 'good');
+      });
+      row.appendChild(label);
+      row.appendChild(btn);
+      box.appendChild(row);
+    }
+  }
   if (els.notesClose) els.notesClose.addEventListener('click', function () { hideModal(els.mNotes); });
-  if (els.btnNotes) els.btnNotes.addEventListener('click', function () { showModal(els.mNotes); });
+  if (els.btnNotes) els.btnNotes.addEventListener('click', function () { renderOlder(); showModal(els.mNotes); });
   if (els.btnGuide) els.btnGuide.addEventListener('click', function () { renderGuide(); showModal(els.mGuide); });
   if (els.guideClose) els.guideClose.addEventListener('click', function () { hideModal(els.mGuide); });
   if (els.introClose) els.introClose.addEventListener('click', function () { hideModal(els.mIntro); });
