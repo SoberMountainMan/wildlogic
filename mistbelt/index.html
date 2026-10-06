@@ -6439,7 +6439,14 @@ function drawShopIcon(canvasEl, key, size0, cx0, base0, unit0) {
      tree are drawn at the SAME unit (s = TW * 0.78), so an alien takes `unit` unnormalised: the
      four weeds are not stature-scaled against each other the way the eight forest species are. */
   else if (ALIENS[key]) drawAlien(key, cx, base, unit);
-  else drawDecor(key, cx, base, unit, 0);
+  /* THE ICON TRIES THE SPRITE FIRST TOO, OR THE ARUM HAS NO ICON AT ALL.
+     `drawDecor` has a branch per kind and there is no 'arum' branch -- it is the one decoration
+     whose art exists and whose code primitive never did, so the shop row would have been blank.
+     **The sprite path already works here because this function swaps `ctx` to the icon's canvas
+     before it draws**, and `drawDecorSprite` uses that same `ctx`. */
+  else if (!(drawDecorSprite && drawDecorSprite(key, cx, base, unit, 0, 0))) {
+    drawDecor(key, cx, base, unit, 0);
+  }
   ctx = saved;
 }
 
