@@ -2835,7 +2835,19 @@ function clearAt(c, r) {
   /* SAY WHAT THE CHOP DID, ON THE TILE, WHERE THE PLAYER IS LOOKING. `def.bank` lots of seed go into
      this tile every time it is cut and nothing said so — which is why the loop the whole game turns
      on read as "chop five things and the day is over" rather than "this will come back". */
-  addFloat(c, r, '+' + def.bank + ' seed' + (def.bank === 1 ? '' : 's'), '#f2e6ae');
+  /* THE CHOP SAYS BOTH THINGS, IN ONE LINE, IN THE ORDER THEY MATTER.
+     Owner, 2026-10-06: *"i dont like the big '+3 seeds' text that pops up every cut. needs to make more
+     sense about whats going on. '+2 cuttings added. 3 seeds dropped on the soil' i dunno, something
+     different."*
+     **Two things were wrong and the `+` was only one of them.** The seed bank is not a reward -- it is
+     the thing the player is trying to be rid of -- so `+3 seeds` read as a payout for a penalty, in a
+     warm cream, on the one action the game is trying to teach them is not the answer. **And the cutting
+     they actually earned had NO float at all**, so the only number a cut produced was the bad one.
+     **They are one line now, because `addFloat` draws every float at the same pixel** -- two calls on one
+     tile would overprint. The cutting leads because it is what the player got; the seed follows, in
+     amber, with no sign, because it is what the ground kept. */
+  var _cutMsg = [];
+  _cutMsg.push(def.bank + ' seed' + (def.bank === 1 ? '' : 's') + ' in the soil');
 
   /* THE BIN IS SMALL AND WHAT DOES NOT FIT IS LOST — and that is the whole consequence.
      The hillside starts FULL, which is the one thing this game has that a blank-map game does not:
@@ -2864,8 +2876,11 @@ function clearAt(c, r) {
     /* THE SPECIES IS READ FROM `_was`, NOT FROM THE TILE. clearAt() nulls the tile before it reaches
        the bin, so asking the tile what it was gets you a blank — the species is captured at the top
        of this function for exactly this reason. */
-    binItems += (_was === 'pine') ? 2 : 1;
-    if (binItems > BIN_MAX) binItems = BIN_MAX;
+    /* A PINE IS WORTH TWO, AND THAT BONUS HAS BEEN INVISIBLE SINCE IT WAS ADDED ON 2026-10-04. */
+    var _took = (_was === 'pine') ? 2 : 1;
+    binItems += _took;
+    if (binItems > BIN_MAX) { _took -= (binItems - BIN_MAX); binItems = BIN_MAX; }
+    if (_took > 0) _cutMsg.unshift('+' + _took + ' cutting' + (_took === 1 ? '' : 's'));
     /* WARN WHEN IT FILLS, NOT WHEN IT SPILLS. The card below fires on the cutting that is WASTED,
        which teaches the rule at the cost of a cutting. Filling the bin is the last moment the
        player can still act on the advice, so the warning belongs here — one card, at the moment it
@@ -2914,6 +2929,10 @@ function clearAt(c, r) {
       'the seed, and cutting the shade opens it again. So the way to beat this hillside is not to keep ' +
       'cutting: it is to cut a patch, plant around it, and let the canopy do the rest.', null);
   }
+  /* ONE FLOAT, EMITTED ONCE, WITH WHATEVER HAPPENED IN IT -- see the note at the top of the chop.
+     The cutting leads when there was one; a full bin leaves only the seed, which is the honest
+     reading of that cut. */
+  if (_cutMsg.length) addFloat(c, r, _cutMsg.join('  ·  '), '#e0b46a');
   return true;
 }
 
