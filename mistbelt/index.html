@@ -7895,7 +7895,21 @@ var SPR = (function () {
        three variants and hashes exactly as grass does. Pinning it to `_v1` would have made the block
        the one place on the map with a visibly repeating floor. */
     var vk = t.ter === 'water' ? 1 : (1 + Math.floor(jit(c, r, 37) * 3));
-    return has('ter_' + t.ter + '_v' + vk) ? 'ter_' + t.ter + '_v' + vk : null;
+    /* AND IF THE VARIANT THIS TILE HASHED TO IS NOT IN THE PACK, TAKE _v1 RATHER THAN NOTHING.
+       Found 2026-10-06 by the page gate, which had been reporting it for two days as *"the tile
+       the game PICKS is not the tile its rule asks for: 0,37 must pick a plantation floor tile,
+       picked null"* -- **five cells on the plantation block.**
+       **The picker was right and the PACK was short.** The plantation floor is the grass
+       recoloured, so the rule hashes it into the grass's three variants -- but the pack ships only
+       `ter_plantation_v1`, so every tile whose hash lands on `_v2` or `_v3` fell through to the
+       code art. **The owner never noticed because the fallback brown is close to the painted one,
+       which is the worst kind of missing art: close enough to pass.**
+       A missing variant must not be a missing TILE. **Two painted variants are on the art brief;
+       until they land, a tile that hashed to a variant the pack lacks uses the one it has.** */
+    var vid = 'ter_' + t.ter + '_v' + vk;
+    if (has(vid)) return vid;
+    var v1 = 'ter_' + t.ter + '_v1';
+    return has(v1) ? v1 : null;
   }
 
   function packHas(id) { return has(id); }
