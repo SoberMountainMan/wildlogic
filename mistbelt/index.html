@@ -1656,6 +1656,28 @@ function matureAround(c, r) {
   return n;
 }
 
+/* WHICH GROUND KEY A TILE ACTUALLY WEARS -- ONE ANSWER, ASKED BY BOTH THE LOOKUP AND THE DRAWING.
+   Art, `NOTE-FROM-ART-2026-10-06-SHADE.md`, and this is why the shade has never once been visible:
+   *"Nothing in the game ever asks for a shade tile."*
+   `groundTileId()` built its id from `t.ter`, which is `'grass'` on a shaded tile, while the shade
+   step lived as a local inside `drawGroundTile` -- and **that function only runs when the sprite is
+   MISSING.** So with the pack installed, a grass tile with three mature neighbours asked for
+   `ter_grass_v*` and drew the identical tile as open grass. **The 2026-10-03 fix spread shade through
+   `TILE_ART`, which is the code-art path -- which is why the owner's "why dont i see the tiles around
+   the remnant as being darker" came back a second time.**
+   **The rule is `matureAround()`, and now both callers read it from here, so the lookup and the drawing
+   cannot disagree.** It also means `ter_forest_v*` finally gets asked for on shaded grass, which today
+   it never is -- so the top step of the ramp was invisible too. */
+function groundKey(c, r) {
+  var t = cell(c, r);
+  if (!t || t.ter !== 'grass') return t ? t.ter : 'grass';
+  var m = matureAround(c, r);
+  return m >= SHADE_CLOSES_SEED ? 'forest'
+       : m >= SHADE_FOR_OLDGROWTH ? 'shade2'
+       : m >= 1 ? 'shade1' : 'grass';
+  }
+
+
 /* The succession rule, and the reason the game is about a forest rather than about yellowwoods.
    An old-growth tree will not take in open ground: in a mistbelt forest the Podocarpus comes up in
    the shade of a canopy that is already there, so it is one of the last trees in and never the
@@ -4070,13 +4092,10 @@ function drawGroundTile(c, r) {
      A tile that `matureAround()` counts as shaded now draws with the forest ground. The remnant is
      counted by matureAround, so its shade spreads outward from it exactly as a planted stand's does --
      one rule, one look, and the player can see the wall of shade the whole game turns on. */
-  var _ter = t.ter;
-  if (_ter === 'grass') {
-    /* THE STEP IS `matureAround()` ITSELF, so the ground cannot disagree with the rule. One
-       neighbour is the first step, two is the old-growth threshold, three is the wall. */
-    var _m = matureAround(c, r);
-    _ter = _m >= SHADE_CLOSES_SEED ? 'forest' : _m >= SHADE_FOR_OLDGROWTH ? 'shade2' : _m >= 1 ? 'shade1' : 'grass';
-  }
+  /* ASKED, NOT RE-DERIVED. This block computed the step itself, which is exactly how the lookup and the
+     drawing came to disagree -- see groundKey(). Removed rather than disabled: a dead branch that still
+     reads as live is the next person's bug. */
+  var _ter = groundKey(c, r);
   var a = TILE_ART[_ter] || TILE_ART.grass;
   var z = groundZ(c, r), p = project(c, r, z);
   var i, u, v, rr;
@@ -8026,7 +8045,9 @@ var SPR = (function () {
        GRASS recoloured (owner: *"lets make it like the grass but brown"*), so it comes in the grass's
        three variants and hashes exactly as grass does. Pinning it to `_v1` would have made the block
        the one place on the map with a visibly repeating floor. */
-    var vk = t.ter === 'water' ? 1 : (1 + Math.floor(jit(c, r, 37) * 3));
+    /* THE SHADE STEP IS RESOLVED HERE, NOT LEFT TO THE DRAWING -- see groundKey(). */
+    var key = groundKey(c, r);
+    var vk = key === 'water' ? 1 : (1 + Math.floor(jit(c, r, 37) * 3));
     /* AND IF THE VARIANT THIS TILE HASHED TO IS NOT IN THE PACK, TAKE _v1 RATHER THAN NOTHING.
        Found 2026-10-06 by the page gate, which had been reporting it for two days as *"the tile
        the game PICKS is not the tile its rule asks for: 0,37 must pick a plantation floor tile,
@@ -8038,9 +8059,9 @@ var SPR = (function () {
        which is the worst kind of missing art: close enough to pass.**
        A missing variant must not be a missing TILE. **Two painted variants are on the art brief;
        until they land, a tile that hashed to a variant the pack lacks uses the one it has.** */
-    var vid = 'ter_' + t.ter + '_v' + vk;
+    var vid = 'ter_' + key + '_v' + vk;
     if (has(vid)) return vid;
-    var v1 = 'ter_' + t.ter + '_v1';
+    var v1 = 'ter_' + key + '_v1';
     return has(v1) ? v1 : null;
   }
 
