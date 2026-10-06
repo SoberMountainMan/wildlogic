@@ -1705,6 +1705,8 @@ var SHADE_CLOSES_SEED = 3;
    **So the wash draws instead -- a multiply, which moves every pixel by the same ratio and therefore
    COMPRESSES the range, the way a real shadow does.** Flip this to true when a redone ramp lands with a
    dark tail that tracks its mean; **the wash is also the floor it has to beat.** */
+/* FALSE -- and the ramp art delivered is measured against a forest that is 18 luma darker than the one
+   the game has, so it would be too dark even with a perfect dark tail. See BRIEF-SHADE-2. */
 var USE_PAINTED_SHADE = false;
 
 function needsShade(spKey) {
@@ -8164,8 +8166,20 @@ var SPR = (function () {
        ramp; **this is what draws until then, and it is also the floor the redone ramp has to beat.** */
     /* ONLY ON GRASS THAT HAS GONE SHADED. A tile whose own terrain IS forest keeps its painted tile --
        the wash is for the ground the SHADE spreads onto, not for the remnant's own floor. */
+    /* THE RAMP SPANS GRASS TO THE FOREST THE GAME ALREADY HAS, NOT TO A NUMBER IN A BRIEF.
+       Owner, 2026-10-06: *"the remnant is now a bit too dark. probably because they use different
+       grass to start with."* -- **right, and the mistake was mine.** My shade brief took its
+       endpoint from the CODE ramp's forest hex (luma 53.4) instead of from the INSTALLED painted
+       forest, which measures **72.2**. Art flagged the discrepancy in their own note and then
+       followed the brief anyway, which is what a brief is for -- so the ramp was built to a
+       darker forest than the game has ever had.
+       **MEASURED, and this is the whole ramp: grass 79.6 -> old forest 72.2, a 9.3% drop.** That
+       is what "a little darker" means on this map, and the old forest was already it.
+       So the three alphas are 0.031 / 0.061 / 0.093, which lands shade1 at 77.2, shade2 at 74.7
+       and forest at **72.2 -- the same value as the remnant's own floor.** A shaded grass tile and
+       a remnant tile now read as the same ground, which is the rule the whole mechanic turns on. */
     var _sh = t.ter !== 'grass' ? 0
-            : _ter === 'shade1' ? 0.070 : _ter === 'shade2' ? 0.121 : _ter === 'forest' ? 0.171 : 0;
+            : _ter === 'shade1' ? 0.031 : _ter === 'shade2' ? 0.061 : _ter === 'forest' ? 0.093 : 0;
     if (_sh > 0) {
       ctx.save();
       tilePath(c, r, z, TILE_K, TILE_F);
