@@ -6334,7 +6334,22 @@ function renderDock() {
       btn.appendChild(mkLabel(isCut ? 'Cut' : (def.short || def.name),
                               isCut ? 'the aliens'
                                     : (SPECIES[k] ? stock + ' in stock' : 'place it')));
-      btn.addEventListener('click', mkPicker(k));
+      /* A SLOT WITH NOTHING IN IT SELLS YOU SOME, RATHER THAN TELLING YOU TO GO AND BUY IT.
+         Owner, 2026-10-06: *"maybe we need a nursery icon somewhere on screen so you dont have to scroll
+         to nursery to buy something? or you think the home button is enough to jump there?"*
+         **The home button is not enough -- it is two actions (jump to the village, then tap the nursery)
+         and the need is one.** But a floating nursery button is the wrong fix: it takes the one building
+         the game asks you to care about and turns it into chrome. **The dock already knows your stock, so
+         the empty slot is where the need actually arises.** A tap on it opens the shop; a tap on a slot
+         you can use opens the picker. **The button that exists where you are looking beats the one you
+         have to remember to go to** -- which is the lesson from the decor button that was in the dock
+         all along and nobody could see. */
+      if (SPECIES[k] && stock <= 0) {
+        btn.setAttribute('title', 'None in stock -- tap to buy more at the nursery');
+        btn.addEventListener('click', function () { renderShop(); showModal(els.mShop); });
+      } else {
+        btn.addEventListener('click', mkPicker(k));
+      }
       dock.appendChild(btn);
     }
     dock._sig = sig;
