@@ -953,6 +953,22 @@ var actors = [], parrot = null, troop = null, binItems = 0, binFlash = 0, toad =
    Kept in world space (project() coordinates) so they stay on their tile through a pan or a zoom. */
 var floats = [];
 
+/* THE FLOAT COLOURS ARE A LANGUAGE, SO THEY ARE NAMED ONCE.
+   Owner, 2026-10-06: *"maybe the positive is green, the negative is red?"*
+   **Four words, and it is the right rule** -- but it only works if the same meaning always gets the
+   same colour, and until now the hexes were written at each call site. **A colour that has to be
+   remembered per site is not a language.**
+   GREEN is something the player gained. RED is something they lost. AMBER is a state the ground is
+   in -- real, worth saying, and not yet a loss. **That third one matters: the seed in the soil is
+   not a loss, it is the reason the tile will come back, and painting it red would say "you lost
+   something" about a consequence the player can still prevent.**
+   The hues are the ones already in the game --  and  were both in use -- so this
+   is a naming of the existing palette rather than a new one. */
+var FLOAT_C = {
+  gain: '#b8d9a0',   /* you got something */
+  lose: '#eaa9a9',   /* you lost something */
+  state: '#e0b46a'   /* the ground changed, and it is not a loss yet */
+};
 function addFloat(c, r, text, colour) {
   var z = groundZ(c, r), p = project(c, r, z);
   floats.push({ x: p[0], y: p[1] - TW * 0.42, t: 0, life: 1500, text: text, colour: colour });
@@ -2829,7 +2845,9 @@ function clearAt(c, r) {
         _n += 1;
       }
     }
-    if (_n) addFloat(c, r, 'suckers \u00d7' + _n, '#e0b46a');
+    /* RED, NOT AMBER. Suckers are the blackwood answering the axe -- the player lost ground,
+       and this is the one float in the game that means that made it worse. */
+    if (_n) addFloat(c, r, 'suckers \u00d7' + _n, FLOAT_C.lose);
   }
 
   /* SAY WHAT THE CHOP DID, ON THE TILE, WHERE THE PLAYER IS LOOKING. `def.bank` lots of seed go into
@@ -2895,7 +2913,7 @@ function clearAt(c, r) {
     }
   } else {
     binWasted += 1;
-    addFloat(c, r, 'bin full — lost', '#eaa9a9');
+    addFloat(c, r, 'bin full — lost', FLOAT_C.lose);
     if (state.seen.binwaste) {
       note('The bin is full — that cutting is wasted. Empty it and the next one counts.', 'warn');
     } else {
@@ -2932,7 +2950,7 @@ function clearAt(c, r) {
   /* ONE FLOAT, EMITTED ONCE, WITH WHATEVER HAPPENED IN IT -- see the note at the top of the chop.
      The cutting leads when there was one; a full bin leaves only the seed, which is the honest
      reading of that cut. */
-  if (_cutMsg.length) addFloat(c, r, _cutMsg.join('  ·  '), '#e0b46a');
+  if (_cutMsg.length) addFloat(c, r, _cutMsg.join('  ·  '), FLOAT_C.gain);
   return true;
 }
 
