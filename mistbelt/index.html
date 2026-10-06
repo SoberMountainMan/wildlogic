@@ -3594,12 +3594,15 @@ function loadLocal() {
        **It is a rolling snapshot now, and it is read here.** If the main key is missing or unreadable
        and a backup exists, the backup is what loads -- and the player is told, because a silent restore
        is the same bug as a silent reset. */
-    var b = null;
-    try { b = localStorage.getItem(SAVE_KEY + '-prev'); } catch (e2) {}
-    if (b) {
-      var sb = decodeSave(b);
+    /* THE WHOLE RING, NEWEST FIRST. Any one of them is a better outcome than day 1. */
+    var _slots = ['-prev', '-prev2', '-prev3'], _si, b, sb;
+    for (_si = 0; _si < _slots.length; _si++) {
+      b = null;
+      try { b = localStorage.getItem(SAVE_KEY + _slots[_si]); } catch (e2) {}
+      if (!b) continue;
+      sb = decodeSave(b);
       if (sb) {
-        loadFail = c ? 'unreadable, restored from backup' : 'missing, restored from backup';
+        loadFail = (c ? 'unreadable' : 'missing') + ', restored from backup' + (_si ? ' ' + (_si + 1) : '');
         if (c) window.__MB_BADSAVE = c;
         sb.restoredFromBackup = true;
         return sb;
@@ -7329,10 +7332,26 @@ function boot() {
      least needed. **Taking it at boot means there is always a copy of the last session**, and the
      failure it protects against -- a save that will not read, or a key the browser has evicted -- is
      exactly the one that cost two testers their games. */
+  /* A RING OF THREE, BECAUSE ONE SLOT IS NOT A BACKUP -- IT IS A SECOND CHANCE.
+     Owner, 2026-10-06: *"mine was in pc brave browser. wasnt restored. so is it lost because i opened
+     it? wrote new on over itself?"*
+     **He is exactly right about what happened, and my first version of this made it worse.** Writing the
+     live save to a single `-prev` at boot **overwrites the older copy on the very next reload** -- so a
+     player who opens the game twice after a reset has destroyed the thing that would have saved them.
+     **One slot protects against a bad write; it does not protect against a bad write that happened
+     before you noticed.**
+     **Three slots, rotated at boot, means the last three sessions are always recoverable** and no single
+     reload can destroy them all. It costs three small strings. */
   if (!state) {
     try {
       var _live = localStorage.getItem(SAVE_KEY);
-      if (_live && decodeSave(_live)) localStorage.setItem(SAVE_KEY + '-prev', _live);
+      if (_live && decodeSave(_live)) {
+        var _r1 = localStorage.getItem(SAVE_KEY + '-prev');
+        var _r2 = localStorage.getItem(SAVE_KEY + '-prev2');
+        if (_r2) { try { localStorage.setItem(SAVE_KEY + '-prev3', _r2); } catch (e3) {} }
+        if (_r1) { try { localStorage.setItem(SAVE_KEY + '-prev2', _r1); } catch (e2) {} }
+        localStorage.setItem(SAVE_KEY + '-prev', _live);
+      }
     } catch (e) {}
     state = loadLocal();
     if (!state) {
@@ -7616,7 +7635,10 @@ function boot() {
     if (els.btnNew) els.btnNew.textContent = 'Start a new game';
     /* BOTH KEYS. An explicit new game that left the backup behind would come back from the dead on the
        next boot, which is worse than either behaviour on its own. */
-    try { localStorage.removeItem(SAVE_KEY); localStorage.removeItem(SAVE_KEY + '-prev'); } catch (e) {}
+    try {
+      localStorage.removeItem(SAVE_KEY);
+      ['-prev', '-prev2', '-prev3'].forEach(function (suf) { localStorage.removeItem(SAVE_KEY + suf); });
+    } catch (e) {}
     /* PRIMED, NOT JUST NEW. A bare newState() has no weather and no board, and the HUD reads both —
        see the note on primeState() for why this was the restart button's whole bug. */
     state = newState();
