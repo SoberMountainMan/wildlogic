@@ -8065,7 +8065,16 @@ var SPR = (function () {
     var key = groundKey(c, r);
     /* WHEN THE WASH IS DRAWING, THE LOOKUP ASKS FOR GRASS -- the wash supplies the shade. Otherwise a
        painted shade tile AND the wash would both apply and the ground would be darkened twice. */
-    if (!USE_PAINTED_SHADE && key !== 'grass' && key !== t.ter) key = t.ter;
+    /* ONLY THE SHADE KEYS, NOT EVERY NON-GRASS KEY. Water and bank resolve by edge and have their own
+       tiles -- mapping them to grass would delete the stream.
+       AND `forest` IS IN THE LIST. Owner, 2026-10-06: *"remnant is not right. they need to change to same
+       grass as other tiles so shadows are then correct."* **He is right, and it is the same argument the
+       ramp itself rests on.** The remnant's floor was its own painted tile -- a different material, with
+       its own grain -- so a shaded grass tile beside it and the remnant's floor matched on VALUE (72.2)
+       and differed in TEXTURE. **A shadow that changes the material is not a shadow.** Now the remnant
+       draws the same grass as everything else and takes the deepest wash, so the plateau is one ground
+       and the only thing that varies is how much shade is on it. */
+    if (!USE_PAINTED_SHADE && (key === 'shade1' || key === 'shade2' || key === 'forest')) key = 'grass';
     var vk = key === 'water' ? 1 : (1 + Math.floor(jit(c, r, 37) * 3));
     /* AND IF THE VARIANT THIS TILE HASHED TO IS NOT IN THE PACK, TAKE _v1 RATHER THAN NOTHING.
        Found 2026-10-06 by the page gate, which had been reporting it for two days as *"the tile
@@ -8178,8 +8187,11 @@ var SPR = (function () {
        So the three alphas are 0.031 / 0.061 / 0.093, which lands shade1 at 77.2, shade2 at 74.7
        and forest at **72.2 -- the same value as the remnant's own floor.** A shaded grass tile and
        a remnant tile now read as the same ground, which is the rule the whole mechanic turns on. */
-    var _sh = t.ter !== 'grass' ? 0
-            : _ter === 'shade1' ? 0.031 : _ter === 'shade2' ? 0.061 : _ter === 'forest' ? 0.093 : 0;
+    /* ONE GROUND, AND THE SHADE IS THE ONLY THING THAT VARIES -- see the note on the lookup above.
+       A tile whose own terrain is forest now draws the same grass and takes the deepest wash, so a
+       remnant tile and a three-neighbour grass tile are identical BY CONSTRUCTION rather than by two
+       numbers happening to match. */
+    var _sh = _ter === 'shade1' ? 0.031 : _ter === 'shade2' ? 0.061 : _ter === 'forest' ? 0.093 : 0;
     if (_sh > 0) {
       ctx.save();
       tilePath(c, r, z, TILE_K, TILE_F);
