@@ -2889,12 +2889,19 @@ function clearAt(c, r) {
    which is the same shape as the signpost, the jetty and the seep — a tap that does nothing and says
    nothing reads as a broken game, not as a rule.
    Returns null when the tile IS fine, so the caller can fall through to the real attempt. */
-function whyNotHere(c, r) {
+function whyNotHere(c, r, tool) {
   var t = cell(c, r);
   if (!t) return 'That is off the hillside.';
   if (t.obj) return 'Something is standing there.';
   if (t.ter === 'water') return 'That is the stream.';
-  if (t.ter === 'bank') return 'That is the wet bank, one tile out from the water.';
+  /* THE ARUM WANTS THE BANK, AND THIS REFUSED IT BEFORE placeDecor() EVER RAN.
+     Owner, 2026-10-06: *"arum is too big and still cant be placed on river bank."* -- **the placement
+     rule was right and it was unreachable.** `act()` asks `whyNotHere()` BEFORE it calls `placeDecor()`,
+     and this function refused the bank for everything, so the wet rule in `placeDecor` was dead code.
+     **`tool` is optional and defaults to nothing, so a TREE still gets the refusal** -- wet ground cannot
+     hold one, which is the honest reason the toad's seep is safe. */
+  if (t.ter === 'bank' && !(tool && DECOR[tool] && DECOR[tool].wet))
+    return 'That is the wet bank, one tile out from the water.';
   if (t.ter === 'forest') return 'That is the old forest remnant. It is already the thing you are building.';
   if (t.ter === 'plantation') return 'That is not your land.';
   if (t.alien) return 'There is an alien on that tile. Cut it first, then plant.';
@@ -6824,7 +6831,7 @@ function act(c, r) {
            'nursery in the village.', 'warn');
       return;
     }
-    var whyD = whyNotHere(c, r);
+    var whyD = whyNotHere(c, r, tool);
     if (whyD) { note(whyD, 'warn'); return; }
     if (placeDecor(c, r, tool)) { saveLocal(); renderHud(); }
     return;
@@ -7753,6 +7760,11 @@ var SPR = (function () {
      tree. A per-ID multiplier rather than a family one, because the whole point is that the family
      shares a cell and must not share a size. */
   var SIZE = {
+    /* THE ARUM DREW A THIRD TALLER THAN EVERY OTHER DECORATION, because the scale comes from the CELL
+       and its cell is 360 x 470 against the bench's 350 x 350. Owner: *"arum is too big."* At the
+       decor scale that is 65 world px against the bench's 49. 0.72 brings it to 47 -- the same size as
+       everything else on the shelf, which is what a decoration should be. */
+    obj_arum: 0.72,
     alien_pine: 1.65,      /* Pinus patula, 20-30 m — a plantation pine is TALLER than the natives */
     /* THE BLOCK'S PINE IS THE SAME TREE AT THE SAME SIZE. `alien_pine_b` is a repaint, not a second
        species, so it must measure identically here or the stage floor would be computed against a
