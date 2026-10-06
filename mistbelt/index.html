@@ -855,7 +855,17 @@ var DECOR = {
   hydrangea:{ name: 'Hydrangea', cost: 1, token: 'rain' },
   birdbath: { name: 'Bird bath', cost: 1, token: 'rain' },
   sign:     { name: 'Signpost',  cost: 1, token: 'mist' },
-  hide:     { name: 'Bird hide', cost: 4, token: 'mist' },
+  /* THE BIRD HIDE BECOMES A BEEHIVE, AND THE KEY STAYS `hide`.
+     Owner, 2026-10-06: *"how is it a bird hide if its on the ground anyway? looks like a bee hive.
+     maybe we should make it a beehive. a bird hide needs to be up in a tree or on a pole."*
+     **He is right on both counts.** A hide is a raised structure -- on a pole or in a tree -- and this
+     one sits on the grass and reads as a box with a hole. **And a hive is the better object for this
+     hillside anyway: the hide's whole problem was that it looked like it should bring birds, and the
+     player is told a parrot needs a DEAD TREE. A hive promises nothing it cannot keep.**
+     **THE KEY STAYS `hide`** because a save stores a decoration as its POSITION in DECOR_KEYS, so
+     renaming the key would either shift the list or orphan every hide already standing. Only the name
+     the player reads changes. */
+  hide:     { name: 'Beehive', cost: 4, token: 'mist' },
   lantern:  { name: 'Lantern',   cost: 1, token: 'sun' },
   /* THE ARUM LILY, AND ITS RULE IS THE ONE FACT ABOUT IT.
      Owner, 2026-10-05: *"arum lilies often act like aggressive, invasive weeds in Hogsback's specific
@@ -7776,6 +7786,13 @@ var SPR = (function () {
   drawDecorSprite = function (kind, cx, base, s, c, r) {
     var id = 'obj_' + kind;
     var e = rec[id];
+    /* THE BEEHIVE IS THE HIDE SLOT, RENAMED -- and the save key cannot change, so the sprite is looked
+       up under the new name first and the old one second. **Art can deliver `obj_beehive` whenever it
+       comes; until then the standing art is used rather than nothing.** */
+    if (kind === 'hide') {
+      var beehive = rec['obj_beehive'];
+      if (beehive && beehive.img && beehive.img.width) { id = 'obj_beehive'; e = beehive; }
+    }
     if (!(on && ready && e && e.img && e.img.width)) return false;
     var H = (e.cell[1] / PPWW) * (s / sRef(e.family));
     if (!(H > 1)) return false;
