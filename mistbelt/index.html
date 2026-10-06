@@ -6441,6 +6441,18 @@ function pickSprite(x, y, c, r) {
        tile the finger is not over. */
     t = cell(h.c, h.r);
     if (t && t.alien && !t.obj && tool === 'cut') return h;
+    /* AND A TILE A BUILDING STANDS ON, WHICH IS THE SAME PROBLEM AT A LARGER SCALE.
+       Owner, 2026-10-06: *"first one or 2 clicks on the house show your last action, 'you dont
+       have stock of x' or 'cutting x costs x' then eventually opens house menu."*
+       **The tap was not showing a stale toast -- it was doing NOTHING, and the old toast was
+       still on screen.** A cottage is 207 world px tall and now covers SIX tiles, so a tap on
+       its roof inverse-projects two or three tiles BEHIND it, where there is nothing, and
+       `tileWantsTap` is false. Only the anchor tile worked, which is why it took a few tries.
+       **Safe where the old version was not:** the comment below warns that accepting any object
+       made tapping bare ground behind the BIN empty it -- but the bin is 1x1, so `blockAt` on
+       the ground behind it is null. **Only a multi-tile building can be reached this way**, and
+       only on tiles it actually reserves. */
+    if (t && !t.obj && blockAt(h.c, h.r)) return h;
   }
   return { c: c, r: r };
 }
@@ -6577,12 +6589,15 @@ function act(c, r) {
   /* Captured before anything can spend it, so apWatch() can tell "this tap emptied the budget" from
      "the budget was already empty". */
   var apBefore = state.ap;
-  if (t.obj === 'bin') {
+  /* THE BUILDING IS RESOLVED FROM THE BLOCK, because a tap on a cottage's roof lands on a tile
+     the cottage reserves but does not own. `t.obj` is only set on the anchor -- see blockAt(). */
+  var _obj = t.obj || blockAt(c, r);
+  if (_obj === 'bin') {
     if (recycle()) { saveLocal(); renderHud(); renderBoard(); }
     return;
   }
-  if (t.obj === 'nursery') { renderShop(); showModal(els.mShop); return; }
-  if (t.obj === 'house') { renderBoard(); showModal(els.mBoard); return; }
+  if (_obj === 'nursery') { renderShop(); showModal(els.mShop); return; }
+  if (_obj === 'house') { renderBoard(); showModal(els.mBoard); return; }
   /* PICK IT UP. Only decor — see pickUpDecor(). A tap on the bin, the nursery, the house or the jetty
      is handled above this and never reaches here. */
   if (t.obj && DECOR[t.obj]) {
