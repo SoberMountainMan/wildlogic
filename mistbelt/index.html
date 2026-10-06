@@ -5713,7 +5713,14 @@ function drawTileProp(c, r) {
      three stages since the beginning (0.26 / 0.56 / 1); the weeds never got them.
      `astage` runs 1, 2, 3 and is treated as 3 when absent, so every save written before this change
      draws exactly as it did. */
-  if (t.alien) drawAlien(t.alien, tx, tb, s * (ALIEN_SCALE[t.alien] || 1), t.astage, t.ter);
+  /* `c` AND `r` COME ALONG, BECAUSE THE WRAPPER CANNOT SEE THEM.
+     **The wrapper is a different function in a different closure.** `c` is in scope HERE -- this line
+     sits inside the tile loop -- and `c` inside `drawAlien` is a different, undefined name. I checked
+     the call site, saw `c` was defined, and concluded the wrapper could see it. **It cannot, and the
+     game showed an `Uncaught ReferenceError: c is not defined` banner to the player.**
+     The mound's variant is hashed off the tile's own coordinates so it is stable per tile, and the
+     coordinates have to be handed over for that to work. */
+  if (t.alien) drawAlien(t.alien, tx, tb, s * (ALIEN_SCALE[t.alien] || 1), t.astage, t.ter, c, r);
   else if (t.sp) {
     /* A DEAD TREE IS DRAWN AS A BARE STANDING TRUNK, and that is the whole point of the mechanic:
        the player has to be able to SEE the thing a parrot nests in. There is no painted snag in the
@@ -8653,8 +8660,15 @@ var SPR = (function () {
      species' own full size -- a bramble is small, so it simply has less room to grow and its stages
      are closer together. The result: every sprout is at least ALIEN_MIN_PX tall and therefore
      identifiable, and none of them is full grown. */
-  drawAlien = function (kind, cx, base, s, stage, ter) {
-    var st = stage || 3;
+  drawAlien = function (kind, cx, base, s, stage, ter, tc, tr) {
+    /* `stage || 3` WAS THE LAST `||` LEFT, AND IT WAS THE ONE THAT DRAWS.
+       **I added `alienStage()` for the growth, encode and decode paths and wrote a comment saying
+       *"`0 || 3` is 3, so a mound would draw as a full-grown tree"* -- and then left the `||` in the
+       line that does the drawing.** The mechanics were all correct: germination set 0, growth walked
+       0->1->2->3, and the save round-tripped. **The only thing wrong was the pixels, which is the only
+       thing the player sees.** The owner caught it in one look at a screenshot I had already called
+       done. */
+    var st = (stage === undefined || stage === null) ? 3 : stage;
     /* THE BLOCK'S PINE IS A DIFFERENT PAINTING, AND THE SAME TREE.
        Art derived `alien_pine_b` from `alien_pine` with the canopy regraded colder and bluer and the
        bark left byte-identical, on purpose: the tell of a plantation is identical crowns in rows, so
@@ -8670,12 +8684,19 @@ var SPR = (function () {
        applying the floor would inflate it to a sprout's size and lose the whole point of the stage. */
     if (st === 0) {
       /* ART'S OWN CALL, COPIED RATHER THAN REINVENTED. The brief's correction carries the line they
-         sized the sprite against -- \ -- and
-         it is in the DECOR family at half the decor scale, not the weed scale. **The mound is the same
-         size whatever is under it**, which is the point of a species-agnostic stage: the player is not
-         meant to know yet. **Sizing it off the alien's own  would have made a pine's mound three
-         times a bramble's and given the game away.** */
-      var mv = 1 + (Math.abs((c * 7919 + r * 104729)) % 3);
+         sized the sprite against -- `prop('obj_mound_v' + n, cx, base, TW * 0.98 / 2, 'decor')` -- and it
+         is in the DECOR family at half the decor scale, not the weed scale. **The mound is the same size
+         whatever is under it**, which is the point of a species-agnostic stage: the player is not meant
+         to know yet. **Sizing it off the alien's own `s` would have made a pine's mound three times a
+         bramble's and given the game away.**
+         **`c` and `r` come from the tile loop at the call site** (index.html 5716 is inside
+         `for (c = c0; c <= c1; c++)`), so the variant is stable per tile and does not change as the
+         camera pans. **Hashing on screen coordinates instead would have flickered while scrolling.** */
+      /* Absent coordinates (the shop icon path) fall back to variant 1 rather than to NaN, which would
+         produce `obj_mound_vNaN` and silently drop to the code-art fallback -- a failure that looks
+         like art never shipped. */
+      var mv = (tc === undefined || tr === undefined) ? 1
+             : 1 + (Math.abs((tc * 7919 + tr * 104729)) % 3);
       if (prop('obj_mound_v' + mv, cx, base, TW * 0.98 / 2, 'decor')) return;
       _alien.call(null, kind, cx, base, s * 0.30);
       return;
