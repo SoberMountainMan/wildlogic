@@ -2900,8 +2900,14 @@ function whyNotHere(c, r, tool) {
      and this function refused the bank for everything, so the wet rule in `placeDecor` was dead code.
      **`tool` is optional and defaults to nothing, so a TREE still gets the refusal** -- wet ground cannot
      hold one, which is the honest reason the toad's seep is safe. */
-  if (t.ter === 'bank' && !(tool && DECOR[tool] && DECOR[tool].wet))
+  var _wettool = tool && DECOR[tool] && DECOR[tool].wet;
+  if (t.ter === 'bank' && !_wettool)
     return 'That is the wet bank, one tile out from the water.';
+  /* AND THE OTHER WAY ROUND: THE ARUM WANTS THE BANK AND WILL NOT TAKE THE GRASS.
+     A refusal has to say what the tile IS, not just that it is wrong -- the player is holding a lily and
+     the game should tell them where lilies go. */
+  if (_wettool && t.ter !== 'bank')
+    return 'An arum lily only grows in the wet ground at the water\u2019s edge.';
   if (t.ter === 'forest') return 'That is the old forest remnant. It is already the thing you are building.';
   if (t.ter === 'plantation') return 'That is not your land.';
   if (t.alien) return 'There is an alien on that tile. Cut it first, then plant.';
@@ -2996,7 +3002,14 @@ function placeDecor(c, r, key) {
      tree stand in a bog and take the toad's seep with it -- so it still refuses banks, correctly. Only
      decorations come through here, so this is the only place the rule can safely live. */
   var _wet = DECOR[key] && DECOR[key].wet;
-  if (_wet) { if (t.ter !== 'bank' && t.ter !== 'grass') return false; }
+  /* THE ARUM IS BANK-ONLY, AND IT WAS ALLOWED ON DRY GRASS FOR AN HOUR.
+     Owner, 2026-10-06: *"arum can be placed anywhere?"* -- **not anywhere, but it could go on dry
+     grass, and that is the wrong half.** Art's note on the plant: *"it stands in wet pebbly ground with
+     the soil glossing... it only stays evergreen where the water is."* **A lily that only stays
+     evergreen where the water is has no business standing on the plateau.** The bank is wet ground a tree
+     cannot use, so this makes the arum THE decoration for the water's edge -- a niche, which is what a
+     decoration should have. */
+  if (_wet) { if (t.ter !== 'bank') return false; }
   else if (!plantable(c, r)) return false;
   if (!DECOR[key] || !(state.decor[key] > 0)) return false;
   state.decor[key] -= 1;
