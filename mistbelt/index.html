@@ -1911,7 +1911,7 @@ function tickDay(w) {
            as before) and only closes where the card says it closes: three. */
         var shade = matureAround(c, r);
         var chance = shade >= SHADE_CLOSES_SEED ? 0 : Math.max(0.2, 0.55 - 0.12 * shade);
-        if (Math.random() < chance) { t.alien = pickAlien(t); t.astage = 1; t.seeds -= 1; sprouted++; }
+        if (Math.random() < chance) { t.alien = pickAlien(t, c, r); t.astage = 1; t.seeds -= 1; sprouted++; }
       }
       if (t.alien && Math.random() < 0.10 && t.seeds < 6) t.seeds += 1;
       /* AND IT GROWS UP. A weed that sprouted yesterday is a seedling today and a bush the day
@@ -2121,7 +2121,7 @@ function tickDay(w) {
   return line;
 }
 
-function pickAlien(t) {
+function pickAlien(t, c, r) {
   if (t.lastAlien) return t.lastAlien;
   /* THE PLANTATION RESEEDS ITSELF WITH PINE, AND ONLY PINE.
      A block of forestry pine is a seed source; that is the whole reason it is hard to be rid of. A
@@ -2133,9 +2133,39 @@ function pickAlien(t) {
      be. Once it is here it is the only weed that ANSWERS the axe, because `t.lastAlien` means a cut
      tile regrows the SAME species: cut a blackwood and a blackwood comes back, on top of the
      suckers it just put in the eight tiles around it. */
-  var roll = Math.random();
-  if (roll < 0.08) return 'blackwood';
-  return roll < 0.45 ? 'wattle' : roll < 0.68 ? 'pine' : roll < 0.87 ? 'bugweed' : 'bramble';
+  /* THE SEED THAT WINS IS USUALLY THE ONE WITH THE MOST PARENTS NEARBY.
+     Owner, 2026-10-06: *"things should be able to change, bramble spreads like a virus, probably
+     has a better chance of taking a neighbouring empty tile than what was cut there?"*
+     **Before this, the winner was a GLOBAL WEIGHTED ROLL** -- blackwood 8 / wattle 37 / pine 23 /
+     bugweed 19 / bramble 13 -- **so a tile ringed by bramble could sprout a pine, and the tile's own
+     surroundings had no say at all.** The only thing the tile's history did was repeat itself after
+     a cut, through `lastAlien`.
+     **Now the global roll is the PRIOR and the eight neighbours pull it.** Each mature neighbour
+     adds weight to its own species, so a bramble thicket mostly makes more bramble and a lone
+     sprout on open ground is still whatever the roll says. **That is a real competition, and it is
+     the owner's own note from 2026-10-03 -- *"would be cool if the aliens spread from their own
+     kind better"* -- applied to germination rather than only to spread.**
+     **The pull is bounded on purpose.** `PULL` is the weight one neighbour adds against a prior of
+     1.0, so with eight of one species the odds go to about 4:1 for it and never to certainty: **a
+     thicket that could only ever make itself would be a wall, and the hillside still has to be able
+     to surprise the player.** */
+  var PULL = 0.55;
+  var w = { blackwood: 0.08, wattle: 0.37, pine: 0.23, bugweed: 0.19, bramble: 0.13 };
+  var dc, dr, nb, nt;
+  for (dr = -1; dr <= 1; dr++) {
+    for (dc = -1; dc <= 1; dc++) {
+      if (!dc && !dr) continue;
+      nt = cell(c + dc, r + dr);
+      if (!nt || !nt.alien) continue;
+      nb = nt.alien;
+      if (w[nb] !== undefined) w[nb] += PULL;
+    }
+  }
+  var total = 0, k;
+  for (k in w) total += w[k];
+  var roll = Math.random() * total, acc = 0;
+  for (k in w) { acc += w[k]; if (roll < acc) return k; }
+  return 'wattle';
 }
 
 function fruitingIndigenous() {
@@ -8686,6 +8716,10 @@ var SPR = (function () {
        differ exactly when a file is in the manifest but did not decode, which is the failure that
        otherwise looks like a map. */
     groundTileId: function (c, r) { return groundTileId(c, r); },
+    /* WHICH SPECIES A SEEDING TILE WOULD GERMINATE, given its neighbours -- exported so the
+       competition is TESTABLE. **A rule nothing can ask about is a rule that drifts**, and this one
+       is arithmetic over eight neighbours that no screenshot can show. */
+    pickAlien: function (t, c, r) { return pickAlien(t, c, r); },
     /* THE PAINTED DECOR, for the tile loop -- see the note on drawDecorSprite. */
     decorSprite: function (kind, cx, base, s, c, r) {
       return drawDecorSprite ? drawDecorSprite(kind, cx, base, s, c, r) : false;
