@@ -7345,12 +7345,32 @@ function boot() {
   if (!state) {
     try {
       var _live = localStorage.getItem(SAVE_KEY);
-      if (_live && decodeSave(_live)) {
-        var _r1 = localStorage.getItem(SAVE_KEY + '-prev');
-        var _r2 = localStorage.getItem(SAVE_KEY + '-prev2');
-        if (_r2) { try { localStorage.setItem(SAVE_KEY + '-prev3', _r2); } catch (e3) {} }
-        if (_r1) { try { localStorage.setItem(SAVE_KEY + '-prev2', _r1); } catch (e2) {} }
-        localStorage.setItem(SAVE_KEY + '-prev', _live);
+      var _ld = _live ? decodeSave(_live) : null;
+      if (_ld) {
+        /* THE RING KEEPS THE FURTHEST-ALONG SAVES, NOT THE MOST RECENT ONES.
+           **A plain rotation has a hole and it is the hole that matters.** It moves the live save
+           in every boot -- so if the live save has become a DAY 1 NEW GAME, three reloads fill the
+           ring with day 1 games and the recovery is worthless. **The thing that causes the loss is
+           also the thing that would overwrite the cure.**
+           **So the ring is sorted by day and keeps the highest three.** A day-1 game cannot displace
+           a day-40 one, which is exactly right: the player can always start again, and they cannot
+           always get back. An EXPLICIT new game still clears the ring, so this never resurrects a
+           game the player asked to be rid of. */
+        var _cand = [_live], _sl = ['-prev', '-prev2', '-prev3'], _i;
+        for (_i = 0; _i < _sl.length; _i++) {
+          var _v = localStorage.getItem(SAVE_KEY + _sl[_i]);
+          if (_v) _cand.push(_v);
+        }
+        _cand.sort(function (a, b) {
+          var da = decodeSave(a), db = decodeSave(b);
+          return (db && db.day ? db.day : 0) - (da && da.day ? da.day : 0);
+        });
+        for (_i = 0; _i < _sl.length; _i++) {
+          try {
+            if (_cand[_i]) localStorage.setItem(SAVE_KEY + _sl[_i], _cand[_i]);
+            else localStorage.removeItem(SAVE_KEY + _sl[_i]);
+          } catch (e3) {}
+        }
       }
     } catch (e) {}
     state = loadLocal();
