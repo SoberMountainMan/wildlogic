@@ -8132,10 +8132,15 @@ var SPR = (function () {
   function sRef(f) { return REF[f] || TW * 0.78; }
 
   /* Draw one sprite so its base_point lands exactly on (cx, base). */
-  function put(e, cx, base, s, f) {
+  function put(e, cx, base, s, f, stretchY) {
     if (!e || !e.img || !e.img.width) return false;
     var H = (e.cell[1] / PPWW) * (s / sRef(f || e.family));
     if (!(H > 1)) return false;
+    /* A HEIGHT-ONLY STRETCH, FOR A SPRITE PAINTED AT THE WRONG HEIGHT.
+       **`W` is derived from `H`, so scaling `s` makes a tree FAT as well as tall** -- which is why the
+       variant-height problem could not be fixed by passing a bigger number. **The foot stays on the
+       ground either way**, because the base offset is computed from the stretched `H`. */
+    if (stretchY) H *= stretchY;
     var W = H * (e.cell[0] / e.cell[1]);
     ctx.drawImage(e.img, cx - (e.base[0] / e.cell[0]) * W, base - (e.base[1] / e.cell[1]) * H, W, H);
     return true;
@@ -8143,8 +8148,8 @@ var SPR = (function () {
 
   /* The per-species size multiplier rides on `s`, so sRef() stays the family's authored scale and
      the override is per ID — see SIZE above for why the family scale is not enough. */
-  function prop(id, cx, base, s, f) {
-    return on && ready && put(rec[id], cx, base, s * (SIZE[id] || 1), f);
+  function prop(id, cx, base, s, f, stretchY) {
+    return on && ready && put(rec[id], cx, base, s * (SIZE[id] || 1), f, stretchY);
   }
 
   /* THE DECOR SPRITES, AND THE ONE THAT NEEDS TINTING.
@@ -8590,8 +8595,29 @@ var SPR = (function () {
          hashed from the tile's own seed (drawTileProp passes `c * 31 + r`), so it is stable frame to
          frame and varies across the map, and it falls through to the single mature sprite if the
          variant is missing. Only mature — a sapling is a stick and has nothing to vary. */
+      /* THE `_b` VARIANTS ARE PAINTED SHORTER THAN THE TREES THEY REPLACE.
+         Owner, 2026-10-06: *"full grown knobwood looks small."*
+         **He is right, and it is every variant, not the knobwood.** Measured on the installed sprites,
+         ink height against the tree each one replaces:
+
+             wildpeach  -24.5%    whitepair  -16.3%    stinkwood   -9.9%    ironwood   -9.3%
+             knobwood    -8.9%    yellowwood  -2.0%    outeniqua    0.0%    chestnut   +4.7%
+
+         **So 45% of every mature tree on the map has drawn at the wrong height since round 4**, and the
+         knobwood is only the one he happened to be looking at. **The cell and the base point are
+         identical, so nothing in the game could tell -- the ink is simply smaller inside the same box.**
+         **AND ART'S TEST COULD NOT SEE IT.** `crown_variants.py` scores ink IoU against the pairs the
+         owner already accepted, and a crown 9% shorter on the same base still overlaps well enough to
+         score 0.650. **IoU measures OVERLAP; the complaint is about SIZE** -- the same blind spot as a
+         count that cannot see a gap.
+         **These are measured, not guessed, and they are a STOPGAP.** The right fix is eight repaints at
+         matching height and it is briefed; **this is how a painting error gets corrected today rather
+         than next round.** */
       if (st === 'mature' && seed !== undefined) {
-        if ((seed * 7919 + 13) % 100 < 45 && prop(sp + '_mature_b', cx, base, s, st)) return;
+        var _VFIX = { wildpeach: 1.325, whitepair: 1.195, stinkwood: 1.110, ironwood: 1.103,
+                      knobwood: 1.098, yellowwood: 1.021, chestnut: 0.955, outeniqua: 1.0 };
+        if ((seed * 7919 + 13) % 100 < 45 &&
+            prop(sp + '_mature_b', cx, base, s, st, _VFIX[sp] || 1)) return;
       }
       if (prop(sp + '_' + st, cx, base, s, st)) return;
     }
