@@ -8639,8 +8639,18 @@ var SPR = (function () {
          matching height and it is briefed; **this is how a painting error gets corrected today rather
          than next round.** */
       if (st === 'mature' && seed !== undefined) {
-        var _VFIX = { wildpeach: 1.325, whitepair: 1.195, stinkwood: 1.110, ironwood: 1.103,
-                      knobwood: 1.098, yellowwood: 1.021, chestnut: 0.955, outeniqua: 1.0 };
+        /* SIX OF THE EIGHT ARE REPAINTED AND NO LONGER NEED THIS. Art re-measured the delivered cells and
+           repainted whitepair (+1.4%), stinkwood (-0.2%) and knobwood (+3.8%) into tolerance, and
+           wildpeach improved from -24.8% to -8.7%. **The entries for those six came out in the same commit
+           that installed the repaints**, because a correction table that outlives its defect is a lie about
+           what the art is.
+           **TWO ARE LEFT AND THEY ARE AWAITING A RULING, NOT A FIX.** wildpeach at -8.7% and ironwood at
+           -9.3% are both inside half of what the table was built to hide, and both are stocky species
+           whose proportions the generator will not hold on request -- art measured four rolls of wildpeach
+           at aspect 0.553 / 0.735 / 0.571 / 1.180 against a target of 0.671. **The instruction moves the
+           mean and does not set the value.** See RULINGS-NEEDED-2026-10-07.html item 5: either the
+           tolerance for these two is +/-10%, or they keep the stretch and this comment says why. */
+        var _VFIX = { wildpeach: 1.095, ironwood: 1.103 };
         if ((seed * 7919 + 13) % 100 < 45 &&
             prop(sp + '_mature_b', cx, base, s, st, _VFIX[sp] || 1)) return;
       }
