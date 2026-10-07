@@ -881,7 +881,17 @@ var DECOR_SHOP = DECOR_KEYS.slice();
    even though the painted sprites have shipped. The closure assigns this on boot and the call site
    tries it first. **It returns TRUE when a sprite drew, so the primitive -- and its shadow -- is
    skipped entirely.** That matters: every primitive calls `shadow()` first and the painted sprites
-   carry none of their own, so drawing both puts two shadows under one bench. */
+   carry none of their own, so drawing both puts two shadows under one bench.
+   **AND THAT IS CORRECT, RULED BY THE OWNER ON 2026-10-07, SO IT MUST NOT BE "FIXED".**
+   *"Objects casting shadows just because they should is not a mechanic in the game that for looks only.
+   But if we did that we wouldnt know which tiles are currently affected by the indigenous mature trees
+   shadows, which is what matters in the game."*
+   **SHADE IS A MECHANIC HERE, NOT A LOOK.** A tile under a mature indigenous tree is shaded, and the
+   shade is what stops an alien seed sprouting and what makes the rare trees hard to grow. **A decorative
+   shadow is not neutral -- it dilutes the one signal the player has to read.** Drawing every object's
+   shadow would make the shaded tiles indistinguishable from the merely pretty ones, which is the whole
+   thing the shade exists to communicate.
+   **So: only the shade that changes gameplay is drawn, and painted props deliberately cast nothing.** */
 var drawDecorSprite = null;
 
 var DECOR = {
@@ -2765,10 +2775,14 @@ function voiceFor(w) {
    **Three is a quarter of the day's bin income** -- the day becomes 16 instead of 13 -- and it is
    legible as a reward rather than a windfall: **three tokens buys the cheapest tree in the nursery,
    which is a thing you can see yourself getting.**
-   THE NUANCE, LEFT ALONE DELIBERATELY: the pool mixes easy tasks (recycle 3, buy 1 -- the baseline
-   you were doing anyway) with hard ones (collect 13, clear five on a wet day), and the reward is flat.
-   **Scaling the reward per task is the better design and it is a real change, not a balance tweak** --
-   it needs its own decision, so this keeps the flat reward and fixes the number. */
+   **AND THE FLAT REWARD IS A RULING NOW, NOT AN OPEN QUESTION.** Owner, 2026-10-07: *"its not one task,
+   you have to complete all 3 for that day to get a reward. and it should be lower than the cutting work
+   for the day, its just a little bonus if you complete all tasks."*
+   **He is describing what the code already does -- `boardDone()` requires every task and pays 3 against a
+   day's ~13 from the bin -- and the note that used to sit here suggested the opposite**, that scaling the
+   reward per task would be better. **It is not better, because the board is not a wage: it is a nudge
+   toward finishing, and a nudge that pays differently per task is telling the player which task to do,
+   which is the one thing a completion bonus must not do.** */
 var BOARD_REWARD = 3;
 
 function rollBoard(w) {
@@ -8650,6 +8664,12 @@ var SPR = (function () {
            at aspect 0.553 / 0.735 / 0.571 / 1.180 against a target of 0.671. **The instruction moves the
            mean and does not set the value.** See RULINGS-NEEDED-2026-10-07.html item 5: either the
            tolerance for these two is +/-10%, or they keep the stretch and this comment says why. */
+        /* AND THE LAST TWO ARE SETTLED: +/-10% IS ACCEPTED FOR THESE AND THE STRETCH STAYS FOR BOTH.
+           Owner, 2026-10-07: *"lets go with the recommendations and ill change if needed later."*
+           Art measured that the proportion cannot be asked for -- four rolls of wildpeach at aspect
+           0.553 / 0.735 / 0.571 / 1.180 against a target of 0.671 -- **so more rolling is not the fix,
+           this is a thing the generator will not hold.** It stays until someone repaints them by hand,
+           and **it is two entries rather than eight because six were repainted.** */
         var _VFIX = { wildpeach: 1.095, ironwood: 1.103 };
         if ((seed * 7919 + 13) % 100 < 45 &&
             prop(sp + '_mature_b', cx, base, s, st, _VFIX[sp] || 1)) return;
