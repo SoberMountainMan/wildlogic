@@ -976,6 +976,9 @@ var SEASON = [
 /* ============================================================ state */
 
 var state = null, tool = 'cut', cv = null, ctx = null, els = {}, notesEl = null;
+/* WHICH TILE THE POINTER IS ON. Module scope because the pointer handlers set it and the frame loop
+   reads it -- see drawTileCursor(). */
+var hoverC = -1, hoverR = -1;
 var actors = [], parrot = null, troop = null, binItems = 0, binFlash = 0, toad = null;
 /* NUMBERS THAT RISE OFF A TILE AND FADE. The game's most important action — cutting an alien —
    banks `def.bank` lots of seed into the ground and said nothing about it, so the single mechanic
@@ -4298,6 +4301,72 @@ var TILE_K = 0.985;
 var TILE_F = 0.11;      /* how far the corners round off; the "little soft puff" */
 var CLIFF_K = 0.86;     /* narrower than the ground, so the plateau overhangs the wall */
 
+/* WHICH TILE THE PLAYER IS ON, DRAWN BEFORE THE TAP RATHER THAN AFTER IT.
+   Owner, 2026-10-08: *"if we make tiles harder to see, we may need to highlight which tile the player is
+   working on."* **He is right, and it was already true -- nothing in this game has ever drawn anything to
+   say which tile a tap is about to land on.** The grass keeps a faint diamond edge, so it went unnoticed;
+   the water no longer does, and that is what made it visible.
+   TWO COLOURS, BECAUSE THE USEFUL ANSWER IS NOT "HERE" BUT "HERE, AND YES" OR "HERE, AND NO". The outline
+   is pale when the tool in hand can act on this tile and warm when it cannot, so the refusal arrives
+   BEFORE the tap instead of as a refused one. **`canAct()` reads the same three things `act()` reads, in
+   the same order**, so the cursor cannot promise something the tap will not do -- the same reason
+   `groundKey()` is the single answer for the shade.
+   The geometry is `tilePath()`, the pack's own diamond predicate, so the outline cannot drift from the
+   tile it is outlining. */
+/* CAN THE TOOL IN HAND ACT ON THIS TILE? This mirrors `act()`'s own dispatch rather than asking
+   `whyNotHere()`, and the difference is not academic: **`whyNotHere()` is the PLANT and DECOR question,
+   and it refuses a tile that already has an alien on it** -- which for the axe is the one tile that is
+   certainly actionable. Asking it about the cut tool drew an orange "no" on the weed the axe was about to
+   fell, and the shot is what caught it.
+   **A cursor that promises the opposite of what the tap will do is worse than no cursor**, because the
+   player learns to distrust it. So this reads the same three things `act()` reads, in the same order. */
+function canCut(c, r) {
+  /* **A TEST MUST NOT DO THE THING IT IS TESTING, AND `clearAt()` DOES THE THING.**
+     It reads like a predicate and it is the ACTION: it spends the action point, increments
+     `state.cleared`, leaves the seed bank and -- for blackwood -- spreads suckers to the neighbours.
+     **The first version of `canAct()` called it, which meant the cursor FELLED a weed by hovering over
+     it.** Nothing about the screen would have said so; the player would simply have watched weeds
+     disappear as they moved the mouse.
+     It was caught by the gate check written for this cursor, and only because that check puts a weed on
+     a tile and then asks the PLANT question -- by which time the axe had already taken it off again.
+     **The check that was meant to verify a colour is what found a hover that mutates the world.**
+     So this is `clearAt()`'s guard, verbatim, with none of its consequences: the same four conditions in
+     the same order, so the two cannot drift, and nothing written down. */
+  var t = cell(c, r);
+  if (!t || !t.alien || t.obj) return false;
+  if (t.ter === 'plantation') return false;     /* a forestry pine is not a weed you pull */
+  var def = ALIENS[t.alien];
+  if (!def) return false;
+  return state.ap >= def.ap;
+}
+function canAct(c, r) {
+  var t = cell(c, r);
+  if (!t) return false;
+  var obj = t.obj || blockAt(c, r);
+  if (obj && !DECOR[obj]) return true;       /* the bin, the nursery, the house: tappable with any tool */
+  if (t.obj && DECOR[t.obj]) return true;    /* decor is picked up with any tool in hand */
+  if (tool === 'cut') return canCut(c, r);   /* NOT clearAt() -- see canCut(). A test must not act. */
+  return whyNotHere(c, r, tool) === null;
+}
+function drawTileCursor() {
+  if (hoverC < 0 || hoverR < 0) return;
+  if (!cell(hoverC, hoverR)) return;
+  var z = groundZ(hoverC, hoverR), p = project(hoverC, hoverR, z);
+  /* A stroke on an off-screen tile is a stray line at the canvas edge. */
+  if (p[0] < -TW || p[0] > W + TW || p[1] < -TH || p[1] > H + TH) return;
+  var can = canAct(hoverC, hoverR);
+  tilePath(hoverC, hoverR, z, TILE_K, TILE_F);
+  ctx.save();
+  /* A faint fill as well as the outline, because a thin line over a busy tile is easy to lose and the
+     point of this is to be unmissable. Both are translucent so the tile is still readable through them. */
+  ctx.fillStyle = can ? 'rgba(246,250,236,0.16)' : 'rgba(196,116,72,0.20)';
+  ctx.fill();
+  ctx.lineWidth = Math.max(1.7, TW * 0.05);
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = can ? 'rgba(250,253,242,0.95)' : 'rgba(226,142,84,0.95)';
+  ctx.stroke();
+  ctx.restore();
+}
 function drawGroundTile(c, r) {
   var t = cell(c, r);
   /* SHADE SPREADS BY USING THE SAME GROUND THE REMNANT USES.
@@ -6081,6 +6150,10 @@ function frame(ts) {
   blitGround();
 
   drawWorld();
+  /* ON TOP OF THE WORLD, DELIBERATELY. A tile with a tree on it is still the tile the tap will act on,
+     so the outline has to survive being partly covered -- drawing it under the props would hide it
+     exactly where the player most needs to know. */
+  drawTileCursor();
   drawActors(dt);
   drawFloats(dt);
   ctx.restore();
@@ -7802,6 +7875,18 @@ function boot() {
       return { x: (ptrs[0].x + ptrs[1].x) / 2, y: (ptrs[0].y + ptrs[1].y) / 2 };
     };
 
+    /* A MOUSE SAYS WHICH TILE IT IS ON CONTINUOUSLY; A FINGER CANNOT, so it says so for as long as it is
+       down -- which is the moment before the action fires, and the only moment that matters on a touch
+       screen. Both end up setting the same two variables that drawTileCursor() reads. */
+    cv.addEventListener('pointermove', function (ev) {
+      if (ev.pointerType === 'touch') return;         /* the press handler owns touch */
+      var p = vp(ev);
+      if (!p) { hoverC = -1; hoverR = -1; return; }
+      var hit = hitTest(p.x, p.y);
+      hoverC = hit ? hit.c : -1;
+      hoverR = hit ? hit.r : -1;
+    });
+    cv.addEventListener('pointerleave', function () { hoverC = -1; hoverR = -1; });
     cv.addEventListener('pointerdown', function (ev) {
       var p = vp(ev);
       if (!p) return;
@@ -7812,6 +7897,7 @@ function boot() {
         var hit = hitTest(p.x, p.y);
         downC = hit ? hit.c : -1;
         downR = hit ? hit.r : -1;
+        if (ev.pointerType === 'touch') { hoverC = downC; hoverR = downR; }
         downX = p.x; downY = p.y;
         if (holdT) clearTimeout(holdT);
         if (downC >= 0) {
@@ -7889,6 +7975,9 @@ function boot() {
         }
       }
       if (holdT) { clearTimeout(holdT); holdT = 0; }
+      /* A finger that has lifted is no longer pointing at anything. A mouse still is, and pointermove
+         will say where -- so only touch clears here. */
+      if (ev && ev.pointerType === 'touch') { hoverC = -1; hoverR = -1; }
       downC = -1; downR = -1;
     };
     cv.addEventListener('pointerup', lift);
@@ -9113,6 +9202,17 @@ var SPR = (function () {
        differ exactly when a file is in the manifest but did not decode, which is the failure that
        otherwise looks like a map. */
     groundTileId: function (c, r) { return groundTileId(c, r); },
+    /* WHICH TILE THE CURSOR IS ON -- readable AND settable. Readable for the same reason loadLocal is
+       exported: a rule nothing can ask about is a rule that drifts, and this one is a promise about what
+       a tap will do. Settable because a screenshot harness cannot hover, so the only way to photograph
+       the cursor -- or to gate it -- is to put it somewhere on purpose. */
+    hover: function (c, r) {
+      if (c !== undefined) { hoverC = c; hoverR = r; }
+      return { c: hoverC, r: hoverR };
+    },
+    /* AND THE SAME QUESTION THE CURSOR ASKS, so a gate can check that the colour matches what a tap
+       would actually do. A cursor that promises the opposite of the tap is worse than none. */
+    canAct: function (c, r) { return canAct(c, r); },
     /* WHICH SPECIES A SEEDING TILE WOULD GERMINATE, given its neighbours -- exported so the
        competition is TESTABLE. **A rule nothing can ask about is a rule that drifts**, and this one
        is arithmetic over eight neighbours that no screenshot can show. */
