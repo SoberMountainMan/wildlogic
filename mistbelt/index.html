@@ -698,10 +698,17 @@ var AP_MAX = 24;
    does not hand out more than the lump did -- it only removes the wall. */
 var AP_MS = 60 * 60 * 1000;
 var BIN_LOAD = 3;
-/* HOW MUCH THE BIN HOLDS. Small on purpose: the hillside starts FULL, so a free sweep of the
-   opening map is a windfall rather than a session, and a small bin is what turns that windfall into
-   a rhythm. What does not fit is lost — see clearAt(). */
-var BIN_MAX = 6;
+/* HOW MUCH THE BIN HOLDS BEFORE IT HAS TO BE EMPTIED. What does not fit is lost — see clearAt().
+   RAISED 6 -> 12 ON THE OWNER'S CALL, 2026-10-11, AND THE OLD REASONING HERE WAS WRONG.
+   It read: *"Small on purpose: the hillside starts FULL, so a free sweep of the opening map is a
+   windfall rather than a session, and a small bin is what turns that windfall into a rhythm."*
+   **The bin is not what caps the windfall — the ACTION POINTS are.** You cannot cut more than 24 in a
+   day whatever the bin holds, and the trade is a tap that sits between cuts, so the tokens come from
+   TRADING and not from holding. The owner, 2026-10-11: *"bin max doesnt stop cutting, just have to
+   exchange twice."* Measured: 24 cuts with a trade in between yield 27 tokens over NINE trades at
+   BIN_MAX 6 and the SAME 27 over TWO at BIN_MAX 12. **So the only thing the small bin bought was seven
+   extra taps a day.** 12 keeps a batch worth emptying and stops throwing taps at the player. */
+var BIN_MAX = 12;
 var binWasted = 0;   /* cuttings lost to a full bin this session; not saved, it is narration */
 
 var TOKENS = ['sun', 'mist', 'rain', 'snow'];
