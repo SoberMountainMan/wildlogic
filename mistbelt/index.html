@@ -7150,27 +7150,44 @@ function describeTile(c, r) {
     var run = seepRun(state), against = seepRunWeeds(state, run);
     L.push('A seep \u2014 wet ground where the hill keeps it damp. Nothing grows on it and nothing can ' +
            'be planted in it.');
-    L.push('An Amathole toad sits here when the ' + MB_SEEP_RUN_N() + ' grass tiles along the river ' +
-           'carry no more than ' + TOAD_RUN_WEEDS + ' weeds, ' + TOAD_HOLD_DAYS + ' wet days running. ' +
-           'That run is this tile and four either side of it, in the first grass out from the brown ' +
-           'bank \u2014 the bank itself is not part of it.');
-    /* THE NUMBER THE GATE ACTUALLY USES. This read "X of 9 are clear", which is 9 MINUS the count
-       the rule is about -- so the two numbers on this card used different criteria and sat next to
-       each other. The gate passes at FIVE WEEDS, i.e. with only four tiles clear, so "you have held it
-       5 of 5 days" can appear beside "4 of 9 are clear" and the card reads as a contradiction. The
-       owner, 2026-10-10: *"shouldnt be able to say 5 of 5 unless it was first 9 of 9 cleared?"* --
-       exactly the inference the old wording invited, and it was wrong. Show the count that decides. */
-    /* AND IT SAYS WHETHER TODAY COUNTS, WHICH IS THE ONE THING THE PLAYER NEEDS AND NOTHING SAID.
-       The hold advances only on a WET day (see tickDay), so a dry day is a day off — and the card is
-       the only place that fact can be read. */
-    var _w = state.weather, _wetToday = _w ? classify(_w, true).wet : false;
-    L.push('Right now ' + against + ' of the ' + MB_SEEP_RUN_N() + ' tiles count against you \u2014 ' +
-           TOAD_RUN_WEEDS + ' is the most you may have \u2014 and you have held it ' +
-           (state.toadHold || 0) + ' of ' + TOAD_HOLD_DAYS + ' wet days.');
-    L.push(_wetToday
-      ? 'It is raining today, so today counts.'
-      : 'It is dry today. Nothing comes up, and today does not count towards the hold.');
-    if (state.seen.toad) L.push('The toad is here.');
+    if (state.seen.toad) {
+      /* THE TOAD IS HERE, SO THE CARD SAYS SO FIRST AND STOPS SETTING A TASK.
+         Owner, 2026-10-11, after getting one: *"nothing to tell me or changes to text of the seep after
+         it arrived."* **The text DID change — but by ONE SENTENCE buried in the middle of a paragraph
+         that still opened with "an Amathole toad sits here WHEN...", as though the job were open.**
+         A card that announces a thing it has already delivered, in the middle of its own instructions,
+         reads as unchanged. **So the arrival is the headline and the requirements go past tense.**
+         AND IT SAYS THE HONEST THING ABOUT THE COUNT: once a toad has settled it does not leave, so the
+         run's number is a readout rather than a deadline. A card that kept asking for five wet days
+         after handing the animal over would be asking for something that no longer does anything. */
+      L.push('The Amathole toad is here. It lives nowhere else on earth \u2014 only the grassland of the ' +
+             'Amathole Mountains, around Hogsback \u2014 and it came for the open grass. It stays.');
+      L.push('It arrived because the ' + MB_SEEP_RUN_N() + ' grass tiles along the river carried no more ' +
+             'than ' + TOAD_RUN_WEEDS + ' weeds for ' + TOAD_HOLD_DAYS + ' wet days running. Right now ' +
+             against + ' of them count against you, and that no longer decides anything: a toad that has ' +
+             'settled does not leave.');
+    } else {
+      L.push('An Amathole toad sits here when the ' + MB_SEEP_RUN_N() + ' grass tiles along the river ' +
+             'carry no more than ' + TOAD_RUN_WEEDS + ' weeds, ' + TOAD_HOLD_DAYS + ' wet days running. ' +
+             'That run is this tile and four either side of it, in the first grass out from the brown ' +
+             'bank \u2014 the bank itself is not part of it.');
+      /* THE NUMBER THE GATE ACTUALLY USES. This read "X of 9 are clear", which is 9 MINUS the count
+         the rule is about -- so the two numbers on this card used different criteria and sat next to
+         each other. The gate passes at FIVE WEEDS, i.e. with only four tiles clear, so "you have held it
+         5 of 5 days" can appear beside "4 of 9 are clear" and the card reads as a contradiction. The
+         owner, 2026-10-10: *"shouldnt be able to say 5 of 5 unless it was first 9 of 9 cleared?"* --
+         exactly the inference the old wording invited, and it was wrong. Show the count that decides. */
+      /* AND IT SAYS WHETHER TODAY COUNTS, WHICH IS THE ONE THING THE PLAYER NEEDS AND NOTHING SAID.
+         The hold advances only on a WET day (see tickDay), so a dry day is a day off -- and the card is
+         the only place that fact can be read. */
+      var _w = state.weather, _wetToday = _w ? classify(_w, true).wet : false;
+      L.push('Right now ' + against + ' of the ' + MB_SEEP_RUN_N() + ' tiles count against you \u2014 ' +
+             TOAD_RUN_WEEDS + ' is the most you may have \u2014 and you have held it ' +
+             (state.toadHold || 0) + ' of ' + TOAD_HOLD_DAYS + ' wet days.');
+      L.push(_wetToday
+        ? 'It is raining today, so today counts.'
+        : 'It is dry today. Nothing comes up, and today does not count towards the hold.');
+    }
     /* AND THE THING THAT ACTUALLY WORKS, WHICH NOTHING SAID.
        Measured: a cleared tile gets its seed bank back the moment you cut it (see clearAt), so the run
        is a TREADMILL — nine tiles at a 0.55 sprout chance is an expected 5 weeds a day, which is
