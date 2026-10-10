@@ -708,6 +708,17 @@ var BIN_LOAD = 3;
    yellowwood costs 10 sun, which is a real cost rather than a wall. Stated ONCE here and read by
    trade(), by the shop buttons and by the refusal note, so the three cannot drift apart. */
 var TRADE_IN = 2;
+/* WHAT A PULL COSTS, AND WHY IT IS NOT THE AXE.
+   Owner, 2026-10-11: *"you actually supposed to pull sprouts not cut them, theres even a small special
+   lever tool for small trees to remove them with roots."*
+   THE TRADE-OFF IS TOKENS AGAINST GROUND, and that is the whole design:
+     AXE    -- 1 AP on a sprout, banks a CUTTING (so it pays), and the tile's seed bank RELOADS.
+     PULLER -- 2 AP on a sprout, banks NOTHING, and the tile keeps the bank it has, so it wears out.
+   **So the axe is what the baboon wants and the puller is what the ground wants.** A player who only
+   axes gets tokens and trees and a hillside that keeps coming back; one who only pulls holds ground and
+   never gets a tree. **The game's answer is shade, and shade needs tokens, and tokens need the axe** --
+   so the puller is a TARGETED tool for the tiles you cannot shade, not a better axe. */
+var PULL_COST = 2;
 /* HOW MUCH THE BIN HOLDS BEFORE IT HAS TO BE EMPTIED. What does not fit is lost — see clearAt().
    RAISED 6 -> 12 ON THE OWNER'S CALL, 2026-10-11, AND THE OLD REASONING HERE WAS WRONG.
    It read: *"Small on purpose: the hillside starts FULL, so a free sweep of the opening map is a
@@ -3034,7 +3045,7 @@ function claimBoard() {
 
 /* ============================================================ actions */
 
-function clearAt(c, r) {
+function clearAt(c, r, pull) {
   var t = cell(c, r);
   if (!t || !t.alien || t.obj) return false;
   /* A FORESTRY PINE IS NOT A WEED YOU PULL.
@@ -3049,13 +3060,21 @@ function clearAt(c, r) {
   if (t.ter === 'plantation') return false;
   var def = ALIENS[t.alien];
   var _st = alienStage(t);            /* READ BEFORE t.alien IS CLEARED — the sucker rule needs it */
-  var cost = cutCost(t);              /* a sprout is cheaper — see cutCost() */
+  /* THE PULLER ONLY TAKES SPROUTS. A lever removes a seedling with its roots; it does not remove a
+     bush, and it certainly does not remove a tree. So this refuses above stage 1, and the refusal has
+     a voice -- see act(), because a tap that does nothing and says nothing is a bug of its own. */
+  if (pull && _st > 1) return false;
+  var cost = pull ? PULL_COST : cutCost(t);   /* a sprout is cheaper than a tree — see cutCost() */
   if (state.ap < cost) return false;
   state.ap -= cost;
   var _was = t.alien;
   t.lastAlien = t.alien;
   t.alien = null;
-  t.seeds += def.bank;
+  /* A PULLED TILE KEEPS ITS BANK; A CUT ONE GETS IT BACK. This is the difference the two tools make
+     to the GROUND: cutting leaves the seed bank and the tile comes back, pulling takes the roots and
+     the bank it has left wears down instead of resetting. **Three pulls clear a tile; three axes
+     never will** -- which is the real thing, and the reason the lever exists. */
+  if (!pull) t.seeds += def.bank;
   state.cleared++;
 
   /* AND CUTTING A BLACKWOOD MAKES MORE BLACKWOOD.
@@ -3135,7 +3154,7 @@ function clearAt(c, r) {
      BIN_MAX STILL BINDS, deliberately: the bin holds six cuttings whether they are pine or bramble,
      so the benefit is real but bounded by the same "clear in batches" rule as everything else. It
      does not become a reason to rush. */
-  if (binItems < BIN_MAX) {
+  if (!pull && binItems < BIN_MAX) {   /* nothing to bank from a pull -- see PULL_COST */
     /* THE SPECIES IS READ FROM `_was`, NOT FROM THE TILE. clearAt() nulls the tile before it reaches
        the bin, so asking the tile what it was gets you a blank — the species is captured at the top
        of this function for exactly this reason. */
@@ -4510,7 +4529,7 @@ var CLIFF_K = 0.86;     /* narrower than the ground, so the plateau overhangs th
    fell, and the shot is what caught it.
    **A cursor that promises the opposite of what the tap will do is worse than no cursor**, because the
    player learns to distrust it. So this reads the same three things `act()` reads, in the same order. */
-function canCut(c, r) {
+function canCut(c, r, pull) {
   /* **A TEST MUST NOT DO THE THING IT IS TESTING, AND `clearAt()` DOES THE THING.**
      It reads like a predicate and it is the ACTION: it spends the action point, increments
      `state.cleared`, leaves the seed bank and -- for blackwood -- spreads suckers to the neighbours.
@@ -4527,7 +4546,8 @@ function canCut(c, r) {
   if (t.ter === 'plantation') return false;     /* a forestry pine is not a weed you pull */
   var def = ALIENS[t.alien];
   if (!def) return false;
-  return state.ap >= cutCost(t);      /* the SAME number clearAt() spends, or the cursor lies */
+  if (pull && alienStage(t) > 1) return false;
+  return state.ap >= (pull ? PULL_COST : cutCost(t));   /* the SAME number clearAt() spends */
 }
 function canAct(c, r) {
   var t = cell(c, r);
@@ -4535,7 +4555,7 @@ function canAct(c, r) {
   var obj = t.obj || blockAt(c, r);
   if (obj && !DECOR[obj]) return true;       /* the bin, the nursery, the house: tappable with any tool */
   if (t.obj && DECOR[t.obj]) return true;    /* decor is picked up with any tool in hand */
-  if (tool === 'cut') return canCut(c, r);   /* NOT clearAt() -- see canCut(). A test must not act. */
+  if (tool === 'cut' || tool === 'pull') return canCut(c, r, tool === 'pull');   /* NOT clearAt() -- see canCut(). A test must not act. */
   return whyNotHere(c, r, tool) === null;
 }
 function drawTileCursor() {
@@ -6669,7 +6689,8 @@ function renderDock() {
      be seen**, and the toast told the player to put it down somewhere else without saying where.
      Second place is one scroll-free tap from the left edge, and 'cut' keeps first place because it is
      the tool you use most. */
-  var wanted = ['cut'];
+  /* THE LEVER SITS BESIDE THE AXE, because the choice between them is the point. */
+  var wanted = ['cut', 'pull'];
   var i;
   for (i = 0; i < DECOR_KEYS.length; i++) if (state.decor[DECOR_KEYS[i]] > 0) wanted.push(DECOR_KEYS[i]);
   wanted = wanted.concat(SP_BY_TIER);
@@ -6686,10 +6707,10 @@ function renderDock() {
     dock.textContent = '';
     for (i = 0; i < wanted.length; i++) {
       var k = wanted[i];
-      var isCut = k === 'cut';
-      var def = isCut ? null : (SPECIES[k] || DECOR[k]);
+      var isCut = k === 'cut', isPull = k === 'pull';
+      var def = (isCut || isPull) ? null : (SPECIES[k] || DECOR[k]);
       var btn = document.createElement('button');
-      btn.className = 'dock' + (isCut ? ' cut' : '');
+      btn.className = 'dock' + (isCut || isPull ? ' cut' : '');
       btn.setAttribute('data-tool', k);
       btn.setAttribute('aria-pressed', k === tool ? 'true' : 'false');
       var stock = (state.bag && state.bag[k]) || 0;
@@ -6702,9 +6723,10 @@ function renderDock() {
          be longer, and it says the same thing — a count that happens to be zero.
          The full sentence still exists where there is room for it: the tap says it, and the
          button's own title says it. */
-      btn.appendChild(mkLabel(isCut ? 'Cut' : (def.short || def.name),
-                              isCut ? 'the aliens'
-                                    : (SPECIES[k] ? stock + ' in stock' : 'place it')));
+      btn.appendChild(mkLabel(isPull ? 'Pull' : (isCut ? 'Cut' : (def.short || def.name)),
+                              isPull ? 'sprouts'
+                                     : (isCut ? 'the aliens'
+                                              : (SPECIES[k] ? stock + ' in stock' : 'place it'))));
       /* A SLOT WITH NOTHING IN IT SELLS YOU SOME, RATHER THAN TELLING YOU TO GO AND BUY IT.
          Owner, 2026-10-06: *"maybe we need a nursery icon somewhere on screen so you dont have to scroll
          to nursery to buy something? or you think the home button is enough to jump there?"*
@@ -7053,7 +7075,7 @@ function tileWantsTap(c, r) {
   var t = cell(c, r);
   if (!t) return false;
   if (t.obj) return true;                       /* an object's own tile, including the building's */
-  if (tool === 'cut') return !!t.alien;
+  if (tool === 'cut' || tool === 'pull') return !!t.alien;
   if (SPECIES[tool]) return !t.sp && !t.alien && plantable(c, r);
   if (DECOR[tool]) return true;
   return false;
@@ -7324,8 +7346,15 @@ function act(c, r) {
      above that, so this is only reached by what is genuinely scenery. */
   if (t.obj) { toast(describeTile(c, r)); return; }
 
-  if (tool === 'cut') {
-    if (clearAt(c, r)) {
+  if (tool === 'cut' || tool === 'pull') {
+    /* A REFUSAL THAT SPEAKS. The lever cannot take a bush or a tree, and a tap that does nothing and
+       says nothing reads as four different bugs. */
+    var _pt = cell(c, r);
+    if (tool === 'pull' && _pt && _pt.alien && alienStage(_pt) > 1) {
+      note('A sprout comes out on a lever. That one is past pulling \u2014 it wants the axe.', 'warn');
+      return;
+    }
+    if (clearAt(c, r, tool === 'pull')) {
       boardProgress('cuts', 1);
       spawnCritter(c, r);
       /* Check straight away, not just on the day roll: the toad is the reward for opening the
