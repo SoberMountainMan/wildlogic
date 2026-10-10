@@ -698,6 +698,16 @@ var AP_MAX = 24;
    does not hand out more than the lump did -- it only removes the wall. */
 var AP_MS = 60 * 60 * 1000;
 var BIN_LOAD = 3;
+/* THE EXCHANGE RATE, AND IT WAS 3 UNTIL 2026-10-11.
+   Owner: *"15 sun tokens for a yellowwood seems high."* It was: a yellowwood costs 5 MIST, and on a sun
+   day you had to trade 3 sun for 1 mist — FIFTEEN sun tokens for one tree, against a day's income of
+   about 24. **The typing is ecologically true** — the day's weather decides what the nursery will sell
+   you: sun for the light-demanding pioneers, rain for the moisture-loving mid-story, mist for the
+   mistbelt yellowwoods, snow for the hardy ones — **and that lesson is the point, so the fix is not to
+   mix the tokens, it is to stop punishing the player for wanting a different one.** At 2 the same
+   yellowwood costs 10 sun, which is a real cost rather than a wall. Stated ONCE here and read by
+   trade(), by the shop buttons and by the refusal note, so the three cannot drift apart. */
+var TRADE_IN = 2;
 /* HOW MUCH THE BIN HOLDS BEFORE IT HAS TO BE EMPTIED. What does not fit is lost — see clearAt().
    RAISED 6 -> 12 ON THE OWNER'S CALL, 2026-10-11, AND THE OLD REASONING HERE WAS WRONG.
    It read: *"Small on purpose: the hillside starts FULL, so a free sweep of the opening map is a
@@ -857,7 +867,7 @@ var SP_KEYS = ['yellowwood', 'stinkwood', 'chestnut', 'knobwood',
                'outeniqua', 'ironwood', 'wildpeach', 'whitepair'];
 var SPECIES = {
   yellowwood: { name: 'Real yellowwood',       short: 'Yellowwood',  tier: TIER_OLDGROWTH,
-                sci: 'Podocarpus latifolius',  cost: 5, token: 'mist', slow: true,  fruit: true,  hollow: true,
+                sci: 'Podocarpus latifolius',  cost: 4, token: 'mist', slow: true,  fruit: true,  hollow: true,
                 leaf: '#163a1c', dark: '#0f2c15', tall: 1.06, form: 'dense',
                 note: 'Slow, and it lives for centuries. The old ones grow hollow, and that hollow is ' +
                       'where a parrot nests.' },
@@ -875,14 +885,23 @@ var SPECIES = {
                 leaf: '#3d8558', dark: '#2d6a45', tall: 0.88, form: 'knobbly',
                 note: 'Thorny, and the seed is worth cracking open.' },
   outeniqua:  { name: 'Outeniqua yellowwood',  short: 'Outeniqua',   tier: TIER_OLDGROWTH,
-                sci: 'Afrocarpus falcatus',    cost: 5, token: 'mist', slow: true,  fruit: true,  hollow: true,
+                sci: 'Afrocarpus falcatus',    cost: 4, token: 'mist', slow: true,  fruit: true,  hollow: true,
                 leaf: '#0e332e', dark: '#08241f', tall: 1.20, form: 'emergent',
                 note: 'The Amathole mistbelt forest is built around this one \u2014 the tallest trees ' +
                       'in it are all Outeniqua yellowwoods. It fruits, and the parrots come for it.' },
+  /* IRONWOOD MOVES TO SNOW, AND THAT IS A BALANCE FIX RATHER THAN AN ECOLOGICAL ONE.
+     Owner, 2026-10-11: *"one pioneer is sun other is rain and one mid story is rain other becomes sun
+     to mix it up."* The counts were **sun 2, rain 2, mist 3, snow 1** — a snow day offered exactly ONE
+     tree, which is not a choice. Moving the ironwood balances it to **2 / 2 / 2 / 2** and gives snow a
+     mid-story AND an old-growth. **The honest story for it is hardiness:** the ironwood is the tough
+     one of these forests, and it is what stands through a Hogsback winter. **Mist keeps the two
+     yellowwoods, which is the one place the doubling is right** — the Amathole mistbelt forest IS a
+     yellowwood forest, so a misty day offering only yellowwoods is the lesson working, not a gap. */
   ironwood:   { name: 'Ironwood',              short: 'Ironwood',    tier: TIER_OLDGROWTH,
-                sci: 'Olea capensis',          cost: 4, token: 'mist', slow: true,  fruit: false, hollow: false,
+                sci: 'Olea capensis',          cost: 3, token: 'snow', slow: true,  fruit: false, hollow: false,
                 leaf: '#5e7a6a', dark: '#2a3d31', tall: 1.10, form: 'rounded',
-                note: 'One of the common trees of these forests. Slow, and it lives long.' },
+                note: 'One of the common trees of these forests, and the tough one — it stands through ' +
+                      'a Hogsback winter. Slow, and it lives long.' },
   wildpeach:  { name: 'Wild peach',            short: 'Wild peach',  tier: TIER_NURSE,
                 sci: 'Kiggelaria africana',    cost: 2, token: 'sun',  slow: false, fruit: false, hollow: false,
                 leaf: '#6aa872', dark: '#548a5c', tall: 0.86, form: 'spreading',
@@ -963,7 +982,12 @@ var DECOR = {
      **THE KEY STAYS `hide`** because a save stores a decoration as its POSITION in DECOR_KEYS, so
      renaming the key would either shift the list or orphan every hide already standing. Only the name
      the player reads changes. */
-  hide:     { name: 'Beehive', cost: 4, token: 'mist' },
+  /* AND IT IS ONE TOKEN, LIKE EVERY OTHER DECORATION. Owner, 2026-10-11: *"beehive is 1."*
+     It was 4 — four times the whole shelf — and the note above admits it has no mechanic at all.
+     **A decoration with no benefit cannot also be the most expensive thing on the shelf**; that is
+     not a trap, it is a mistake the player pays for. If the hive ever earns — honey is the obvious
+     one, and it is in the ideas bank — the price can go back up WITH the benefit. */
+  hide:     { name: 'Beehive', cost: 1, token: 'mist' },
   lantern:  { name: 'Lantern',   cost: 1, token: 'sun' },
   /* THE ARUM LILY, AND ITS RULE IS THE ONE FACT ABOUT IT.
      Owner, 2026-10-05: *"arum lilies often act like aggressive, invasive weeds in Hogsback's specific
@@ -3382,8 +3406,8 @@ function buy(key, qty) {
 }
 
 function trade(from, to) {
-  if (from === to || !state.tokens[from] || state.tokens[from] < 3) return false;
-  state.tokens[from] -= 3;
+  if (from === to || !state.tokens[from] || state.tokens[from] < TRADE_IN) return false;
+  state.tokens[from] -= TRADE_IN;
   state.tokens[to] += 1;
   return true;
 }
@@ -6827,7 +6851,7 @@ function renderShop() {
       for (i = 0; i < TOKENS.length; i++) {
         if (TOKENS[i] === want) continue;        /* you cannot give the token you are buying */
         var have = state.tokens[TOKENS[i]] || 0;
-        var can = have >= 3;
+        var can = have >= TRADE_IN;
         html += '<button data-trade="' + TOKENS[i] + '"' + (can ? '' : ' class="dim"') +
                 ' title="' + (can ? 'Give 3 ' + TOKENS[i] + ', get 1 ' + want
                                  : 'Needs 3 ' + TOKENS[i] + ' and you have ' + have) + '">' +
@@ -7932,8 +7956,8 @@ function boot() {
       note('You already have ' + state.tokens[give] + ' ' + give + ', and that is what this tree costs.', 'warn');
       return;
     }
-    if ((state.tokens[give] || 0) < 3) {
-      note('A trade needs 3 ' + give + ' and you have ' + (state.tokens[give] || 0) + '.', 'warn');
+    if ((state.tokens[give] || 0) < TRADE_IN) {
+      note('A trade needs ' + TRADE_IN + ' ' + give + ' and you have ' + (state.tokens[give] || 0) + '.', 'warn');
       return;
     }
     if (trade(give, def.token)) {
