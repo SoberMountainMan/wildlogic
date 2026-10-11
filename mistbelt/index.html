@@ -6904,8 +6904,17 @@ function renderShop() {
     var tdef = state.pick ? (SPECIES[state.pick] || DECOR[state.pick] || {}) : null;
     var want = tdef ? tdef.token : null;
     var html = want
+      /* THE RATE IS A CONSTANT AND THIS COPY WAS A LITERAL, SO THE ROW SAID 3 WHILE THE BUTTONS
+         SPENT 2. `TRADE_IN` went 3 -> 2 on 2026-10-11 and four sites were updated -- `trade()`, the
+         can-trade test, the refusal note, and this label's own title attributes were NOT among them.
+         **A player was told to give three and charged two, which is the worst direction for a
+         mismatch to run: it understates the price of the thing they are buying.**
+         FOUND BY RUNNING THE PAGE GATE, not by reading: it prints the trade row's label verbatim and
+         the literal was sitting in the output. The main gate's rate check passed the whole time
+         because it counted USES OF THE IDENTIFIER (4) rather than looking for a remaining literal --
+         **it asked whether the constant was read, never whether it was the only source.** */
       ? '<span class="tlab">Short of ' + TOKEN_ICON[want] + ' ' + want +
-        '? Trade 3 of another token for 1:</span>'
+        '? Trade ' + TRADE_IN + ' of another token for 1:</span>'
       : '<span class="tlab">Pick a tree above first \u2014 a trade gives you the token THAT tree costs.</span>';
     if (want) {
       var i;
@@ -6914,8 +6923,8 @@ function renderShop() {
         var have = state.tokens[TOKENS[i]] || 0;
         var can = have >= TRADE_IN;
         html += '<button data-trade="' + TOKENS[i] + '"' + (can ? '' : ' class="dim"') +
-                ' title="' + (can ? 'Give 3 ' + TOKENS[i] + ', get 1 ' + want
-                                 : 'Needs 3 ' + TOKENS[i] + ' and you have ' + have) + '">' +
+                ' title="' + (can ? 'Give ' + TRADE_IN + ' ' + TOKENS[i] + ', get 1 ' + want
+                                 : 'Needs ' + TRADE_IN + ' ' + TOKENS[i] + ' and you have ' + have) + '">' +
                 TOKEN_ICON[TOKENS[i]] + ' ' + TOKENS[i] + ' <b>' + have + '</b></button>';
       }
     }
