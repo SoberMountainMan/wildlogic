@@ -32,3 +32,7 @@ admin/
 # Local scratch
 mistbelt/_harness.html
 *.bak-*
+
+# Dated backups the pack-install pipeline writes inside mistbelt/ (see 2026-10-06 memory).
+# They are a rollback convenience, not part of the site.
+mistbelt/_bak_*/
