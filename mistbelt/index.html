@@ -2788,7 +2788,16 @@ var TOAD_RUN = 9;          /* tiles in the run, measured along the stream */
    at a 0.55 sprout chance is an EXPECTED five weeds a day — an allowance of four sits BELOW the
    average regrowth, which turns a skill test into a lottery (about 1 in 77 per five-day window).
    Five sits above it, so a diligent player reliably wins and a careless one still does not. */
-var TOAD_RUN_WEEDS = 5;
+/* THE ALLOWANCE MOVES 5 -> 6 BECAUSE THE DENOMINATOR DID, 2026-10-11.
+   `seepRunWeeds()` now counts ALL NINE tiles including the seep, where it used to score only the
+   clearable grass around the chair. The measured consequence, and the reason 6 is the number:
+     - a player who ONLY CLEARS brought the toad on DAY 5 under the old rule. Under the new rule at
+       allowance 6 they bring it on DAY 14, and at allowance 5 they do not bring it in 120 days.
+     - a player who PLANTS THE SHADE still brings it on DAY 5 at allowance 6, unchanged.
+   So 6 is the value at which the tightening bites the player who was getting it for nothing and does
+   NOT bite the player who did the thing the game teaches. Below it the gate locks; above it the
+   tightening is undone (8 of 9 with allowance 8 is the old giveaway again, in new clothes). */
+var TOAD_RUN_WEEDS = 6;
 var TOAD_HOLD_DAYS = 5;
 
 /* THE RUN, as a list of tiles. It follows the stream as it wiggles, because `streamC` moves with r —
@@ -2804,8 +2813,27 @@ function seepRun(s) {
   return out;
 }
 
-/* HOW MANY OF THE RUN'S TILES ARE NOT CLEAR GRASS. A tile that is not grass, or that has a tree on
-   it, counts — the toad wants open ground, so a planted tile is a failure exactly like a weedy one. */
+/* HOW MANY OF THE RUN'S TILES ARE NOT CLEAR GRASS, OUT OF ALL NINE.
+   THE RULE CHANGE, 2026-10-11. Owner: *"toad is too easy, make it wet days."*
+   What he was describing is not the hold -- that is `TOAD_HOLD_DAYS`, and it was already five WET
+   days (see tickDay). What made the toad easy was THE COUNT, and the count was lenient in a way
+   nothing on screen said: it asked "how many of the nine are not CLEAR GRASS", and a tile was
+   EXEMPT if it was water or bank (wrong terrain), and the one tile the whole mechanic rests on --
+   the seep -- is never counted here because this function was written to score the RUN AROUND the
+   chair. So a player defended a number smaller than the length the card advertised, and the
+   allowance was measured against a moving denominator.
+   NOW EVERY ONE OF THE NINE COUNTS. The seep is a member of the run (measured: on 60 of 60 maps),
+   it is the tile the animal lands on, it can NEVER be cleared or planted, and it therefore counts
+   against the player as a permanent one. That is honest: the run is nine tiles of riverbank and
+   the player's job is to keep six of them clear.
+   AND THE ALLOWANCE MOVES 5 -> 6 TO PAY FOR IT, which is not a fudge -- it is what keeps the rule
+   reachable. The run is SEEDED at placement to `TOAD_RUN_WEEDS + 2` aliens, so the new rule starts
+   at 8 of 9 rather than the old 7 of 9, and an allowance of 5 against a denominator that now
+   includes an uncleareable tile is a gate no player can pass: MEASURED, a player who only ever
+   clears never brings the toad in 120 days at allowance 5, and brings it on day 85 in the best
+   case. At 6 the same clearing-only player brings it on DAY 14, against DAY 5 under the old rule
+   -- the easy giveaway is gone -- while a player who plants the shade beside the run still brings
+   it on day 5, which is the lesson the game is built on and must not be defeated by its own gate. */
 function seepRunWeeds(s, tiles) {
   var n = 0, i, t;
   for (i = 0; i < tiles.length; i++) {
@@ -2814,7 +2842,12 @@ function seepRunWeeds(s, tiles) {
        `toadCheck()` refuses while the SEEP TILE has an `obj` on it, and this function -- the one the
        card's number comes from -- did not look at `obj` at all. So a decorative object on the run read
        as CLEAR: the card said "9 of 9 are clear" while the gate refused, and the hold climbed past its
-       cap printing "6 of 5". One definition of a run that is in a bad state, used by both. */
+       cap printing "6 of 5". One definition of a run that is in a bad state, used by both.
+       AND NOW THE SEEP TILE IS INCLUDED BY NAME. It is in `tiles` because seepRun() walks the whole
+       run, and it fails the `ter !== 'grass'`-style test below for the honest reason: nothing can be
+       made to grow on it and nothing may be planted on it, so it is never clear grass. Counting it
+       is what makes the denominator the real nine. */
+    if (s.seep && tiles[i][0] === s.seep.c && tiles[i][1] === s.seep.r) { n++; continue; }
     if (!t || t.ter !== 'grass' || t.alien || t.sp || t.obj) n++;
   }
   return n;
@@ -2897,7 +2930,12 @@ function placeSeep(s) {
   /* AND THE SEEDING. Walk the run and put a weed on the bare tiles until it carries
      `TOAD_RUN_WEEDS + 2` of them, skipping the seep's own tile — that one never sprouts and is where
      the toad will sit. Pine, because the block reseeds pine and a bank run next to a plantation would
-     honestly be pine; the species does not matter to the rule, only the count. */
+     honestly be pine; the species does not matter to the rule, only the count.
+     AND THE COUNT IS NOW READ OUT OF NINE, SEEP INCLUDED. The seeding puts `TOAD_RUN_WEEDS` weeds on
+     the eight clearable tiles (it wants `+2`, but the seep is skipped and the eighth is usually a
+     tree), and `seepRunWeeds` adds the seep — so a fresh run reads 8 of 9 under the new definition,
+     MEASURED constant across 60 maps. The allowance is 6, so the player is asked to move three tiles
+     into the clear while keeping the tile they cannot touch. */
   var want = TOAD_RUN_WEEDS + 2, have = 0, i;
   var tiles = [];
   for (r = pick.r0; r < pick.r0 + K; r++) tiles.push([streamC(r) + pick.side * 3, r]);
@@ -3367,6 +3405,35 @@ function plantAt(c, r, spKey) {
       }
     }
   }
+  return true;
+}
+
+/* LIFTING A SAPLING BACK OUT — `clearAt`'s twin, for the other thing on the hillside with a stage.
+   Owner, 2026-10-11: *"maybe a new indigenous can be moved, but once it hits next stage it cant?"*
+   **The WINDOW, not a price ladder** — see DESIGN-indigenous-removal-2026-10-11.md. A stage-1
+   sapling comes out on the lever and returns to the bag; from stage 2 it has taken and it stays.
+   WHY THIS IS NOT A NEW RULE, WHICH IS WHY IT IS CHEAP TO LEARN: the lever ALREADY draws exactly
+   this line. It takes weed sprouts and refuses a weed bush, because a lever lifts a seedling with
+   its roots and does not lift a bush. **A sapling is the same object as a weed sprout** — a thing a
+   lever lifts — so this is the existing rule applied to the other thing on the map that has a stage,
+   not a second rule with its own table of prices.
+   AND THE WINDOW IS LONGER THAN IT LOOKS: `t.age` only advances on days the tree actually GROWS
+   (`if (g > 0)` in tickDay, and `age >= 2` promotes it), so in a dry spell a sapling can sit in
+   stage 1 for a week. That is the right shape for the mistake it fixes: you plant, you look at it,
+   you change your mind — and you are still inside the window.
+   THE COST IS THE LEVER'S OWN PRICE, and the tree comes BACK, so a mistake costs the work and not
+   the tokens. The BANK IS LEFT AT ZERO, which is where plantAt() left it, so a dug tile is clean
+   ground — you have not made the tile worse by having planted on it (which matters: `plantAt`
+   spends `t.seeds`, so the ground under a planting is already cleaner than the field around it). */
+function digAt(c, r) {
+  var t = cell(c, r);
+  if (!t || !t.sp || t.stage !== 1) return false;
+  if (state.ap < PULL_COST) return false;
+  state.ap -= PULL_COST;
+  var spKey = t.sp;
+  state.bag[spKey] = (state.bag[spKey] || 0) + 1;
+  t.sp = null; t.stage = 0; t.age = 0;
+  addFloat(c, r, 'lifted ' + ((SPECIES[spKey] && SPECIES[spKey].short) || spKey), FLOAT_C.gain);
   return true;
 }
 
@@ -4594,6 +4661,10 @@ function canAct(c, r) {
   var obj = t.obj || blockAt(c, r);
   if (obj && !DECOR[obj]) return true;       /* the bin, the nursery, the house: tappable with any tool */
   if (t.obj && DECOR[t.obj]) return true;    /* decor is picked up with any tool in hand */
+  /* THE LEVER OVER YOUR OWN SAPLING IS A LEGAL TAP, and the cursor has to say so before the tap —
+     a tile that lights up and then refuses is the same lie as one that stays dark and then works.
+     See digAt(): stage 1 only, and only for the lever. */
+  if (tool === 'pull' && t.sp && t.stage === 1) return state.ap >= PULL_COST;
   if (tool === 'cut' || tool === 'pull') return canCut(c, r, tool === 'pull');   /* NOT clearAt() -- see canCut(). A test must not act. */
   return whyNotHere(c, r, tool) === null;
 }
@@ -6701,8 +6772,18 @@ function renderHud() {
     var _w = state.weather;
     var _wetToday = _w ? classify(_w, true).wet : false;
     els.dayPill.textContent = _wetToday ? 'Wet day' : 'Dry day';
+    /* THE PILL DOES NOT SAY 'THE SEEP RUN'. Owner, 2026-10-11, on the word reaching a player who has
+       never tapped the seep: the pill is on screen from the first minute, and 'seep' is defined in
+       exactly one place -- the seep's own card, which the player may not have found. Every piece of
+       toad text avoids the word and says 'the grass tiles along the river' instead, so the pill and
+       the card were describing one thing in two vocabularies. The pill now uses the card's language,
+       and drops the clause entirely once the toad has arrived -- a requirement that has been met
+       does not belong in a daily tooltip. */
+    var _toadHere = !!(state.seen && state.seen.toad);
     els.dayPill.title = _wetToday
-      ? 'It is raining today. Weeds come up, the seep run will need clearing, and today counts towards the toad.'
+      ? ('It is raining today. Weeds come up' +
+         (_toadHere ? '.' : ', the grass tiles along the river will need clearing,') +
+         ' and today counts towards the toad.')
       : 'It is dry today. Nothing sprouts, and today does not count towards the toad hold.';
   }
   /* SHOW THE CAP, not just the count. The bin holds BIN_MAX and what does not fit is lost, so
@@ -7236,18 +7317,31 @@ function describeTile(c, r) {
          it is -- but it is named LAST, as the seat rather than the subject. */
       L.push('The Amathole toad is here. It lives nowhere else on earth \u2014 only the grassland of the ' +
              'Amathole Mountains, around Hogsback \u2014 and it came for the open grass. It stays.');
-      L.push('It arrived because the ' + MB_SEEP_RUN_N() + ' grass tiles along the river carried no more ' +
-             'than ' + TOAD_RUN_WEEDS + ' weeds for ' + TOAD_HOLD_DAYS + ' wet days running \u2014 this ' +
-             'tile and four either side of it.');
+      /* THE 'IT ARRIVED BECAUSE' LINE IS GONE. Owner, 2026-10-11: *"Frog can stay. the explanation
+         about 'it arrived here because you kept 5 tiles blah blah' is unnecessary."*
+         **He is right, and the reason is that it was a RECEIPT rather than a fact about the animal.**
+         Once the toad has settled, the player cannot act on how it got there -- `seen.toad` is
+         permanent and the hold freezes -- so restating the arithmetic under a creature that has
+         already arrived is bookkeeping where the card should be natural history. It also dragged
+         two live constants (`TOAD_RUN_WEEDS`, `TOAD_HOLD_DAYS`) onto a card whose numbers can never
+         change again, which is how a card acquires figures that disagree with the game.
+         The card keeps the two lines that are TRUE of the animal wherever it is found: what it is,
+         and the wet ground it is sitting on. */
       L.push('The tile it sits on is a seep: wet ground where the hill keeps it damp. Nothing grows on ' +
              'it and nothing can be planted in it.');
     } else {
       L.push('A seep \u2014 wet ground where the hill keeps it damp. Nothing grows on it and nothing can ' +
              'be planted in it.');
-      L.push('An Amathole toad sits here when the ' + MB_SEEP_RUN_N() + ' grass tiles along the river ' +
-             'carry no more than ' + TOAD_RUN_WEEDS + ' weeds, ' + TOAD_HOLD_DAYS + ' wet days running. ' +
-             'That run is this tile and four either side of it, in the first grass out from the brown ' +
-             'bank \u2014 the bank itself is not part of it.');
+      L.push('An Amathole toad sits here when the ' + MB_SEEP_RUN_N() + ' tiles along the river carry ' +
+             'no more than ' + TOAD_RUN_WEEDS + ' weeds between them, for ' + TOAD_HOLD_DAYS +
+             ' wet days running. That run is this tile and four either side of it.');
+      /* EVERY TILE COUNTS, AND THE CARD HAS TO SAY SO OR THE NUMBER ON IT IS A SURPRISE.
+         Owner, 2026-10-11: *"toad is too easy."* The count now reads all nine -- this seep included,
+         which can never be cleared or planted -- so 'X of 9' is the whole run and not a subset of it.
+         THE OLD WORDING SAID THE BANK WAS 'NOT PART OF IT', which was true when the count exempted
+         non-grass terrain and is now wrong in the other direction: the run is nine tiles of riverbank
+         and every one of them is against you until it is clear. The number below is the number the
+         gate uses, so the card and the animal cannot disagree. */
       /* THE NUMBER THE GATE ACTUALLY USES. This read "X of 9 are clear", which is 9 MINUS the count
          the rule is about -- so the two numbers on this card used different criteria and sat next to
          each other. The gate passes at FIVE WEEDS, i.e. with only four tiles clear, so "you have held it
@@ -7407,6 +7501,26 @@ function act(c, r) {
     /* A REFUSAL THAT SPEAKS. The lever cannot take a bush or a tree, and a tap that does nothing and
        says nothing reads as four different bugs. */
     var _pt = cell(c, r);
+    /* THE LEVER ALSO LIFTS A SAPLING — see digAt(). It comes BEFORE the alien branch because it is
+       the other thing with a stage, and it answers to the same tool for the same reason: a lever
+       lifts a seedling with its roots, and a sapling is a seedling.
+       AND THE REFUSAL FOR A TAKEN TREE IS IN THE SAME VOICE as the weed refusal below, because it is
+       the same fact: the lever lifts what it can lift, and that one has roots. */
+    if (tool === 'pull' && _pt && _pt.sp && _pt.stage === 1) {
+      if (digAt(c, r)) {
+        note('Lifted. A sapling comes out on a lever \u2014 it is back in your stock.', 'good');
+        saveLocal(); renderHud(); renderBoard();
+      } else {
+        /* the only other reason digAt() refuses is the action points */
+        note('That needs ' + PULL_COST + ' action points and you have ' + state.ap +
+             '. One comes back every hour.', 'warn');
+      }
+      return;
+    }
+    if (tool === 'pull' && _pt && _pt.sp && _pt.stage > 1) {
+      note('A lever lifts what it can lift. That one has taken \u2014 it will stand.', 'warn');
+      return;
+    }
     if (tool === 'pull' && _pt && _pt.alien && alienStage(_pt) > 1) {
       note('A sprout comes out on a lever. That one is past pulling \u2014 it wants the axe.', 'warn');
       return;
@@ -8506,6 +8620,9 @@ var API = {
   newState: newState, getState: function () { return state; }, setState: function (s) { state = s; },
   setTool: function (t) { tool = t; }, terrainAt: terrainAt,
   tickDay: tickDay, clearAt: clearAt, plantAt: plantAt, placeDecor: placeDecor, pickUpDecor: pickUpDecor,
+  /* `digAt` is exported for the lever's own gate: the rule is that a SAPLING can be lifted and a
+     TAKEN tree cannot, and a check cannot see that without calling the function that does it. */
+  digAt: digAt, PULL_COST: PULL_COST,
   /* `act` is the TAP — the one entry point a finger actually reaches. It is exported because the
      three actions above it are the *decision* and `act` is the *reply*: a gate that only calls
      clearAt() can prove the weed was not cut, but not that the player was left in silence. Owner,
@@ -8526,6 +8643,11 @@ var API = {
      is a property of the GRID, not of anything on screen, so a check has to ask the grid. */
   brambleAround: brambleAround, brambleSpriteId: brambleSpriteId,
   stats: stats, hitTest: hitTest, drawWorld: drawWorld,
+  /* WHAT A TAP WOULD DO, WITHOUT DOING IT. Exported for the cursor-vs-tap contract: the cursor
+     promises with a colour what the tap will actually perform, so a check has to be able to ask the
+     same question the cursor asks. `canAct()` is deliberately a TEST and never an action — see its
+     own note, and the hover that used to fell a weed by calling clearAt(). */
+  canAct: function (c, r) { return canAct(c, r); },
   STREAM: STREAM, streamC: streamC, streamDist: streamDist, isWaterfall: isWaterfall,
   /* THE DRAWERS, exported so a reference image can be rendered from the SAME code the game draws
      with. Owner, 2026-09-18: "they need a visual." A field guide that re-implements the tree art is
