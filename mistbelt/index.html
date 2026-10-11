@@ -7218,25 +7218,32 @@ function describeTile(c, r) {
        AND IT SHOWS WHERE THEY ARE, because a requirement you cannot measure is a requirement you
        cannot act on. The run and the hold are both live numbers. */
     var run = seepRun(state), against = seepRunWeeds(state, run);
-    L.push('A seep \u2014 wet ground where the hill keeps it damp. Nothing grows on it and nothing can ' +
-           'be planted in it.');
     if (state.seen.toad) {
-      /* THE TOAD IS HERE, SO THE CARD SAYS SO FIRST AND STOPS SETTING A TASK.
-         Owner, 2026-10-11, after getting one: *"nothing to tell me or changes to text of the seep after
-         it arrived."* **The text DID change — but by ONE SENTENCE buried in the middle of a paragraph
-         that still opened with "an Amathole toad sits here WHEN...", as though the job were open.**
-         A card that announces a thing it has already delivered, in the middle of its own instructions,
-         reads as unchanged. **So the arrival is the headline and the requirements go past tense.**
-         AND IT SAYS THE HONEST THING ABOUT THE COUNT: once a toad has settled it does not leave, so the
-         run's number is a readout rather than a deadline. A card that kept asking for five wet days
-         after handing the animal over would be asking for something that no longer does anything. */
+      /* WHEN THE TOAD IS ON IT, THE CARD IS ABOUT THE TOAD.
+         Owner, 2026-10-11: *"the seeps tap card pops up for seep, but thats also where the toad is. so
+         tapping seep is tapping toad. so toad needs to move off the seep or the seep card needs to
+         change when it has a toad on it."*
+         **He is describing a card that was branching correctly and leading with the wrong subject.**
+         The branch has been here since the arrival fix, but the SEEP DEFINITION sat above it and ran
+         unconditionally -- so tapping the toad opened with *"A seep - wet ground where the hill keeps
+         it damp"*, and the animal was the second thing you read on its own tile.
+         AND THE REST OF THE CARD WAS STALE, which is the half that mattered more. The progress count,
+         the wet/dry line and the shade advice all explain HOW TO EARN the toad. Once it has settled,
+         `seen.toad` is permanent and the hold freezes -- so every one of those lines was describing a
+         task that no longer exists. **A trophy that still reads as a checklist is not a trophy.**
+         So the toad card is now three lines: what arrived, why, and what it is sitting on. The seep
+         is still NAMED, because the player should be able to tap this tile in a month and learn what
+         it is -- but it is named LAST, as the seat rather than the subject. */
       L.push('The Amathole toad is here. It lives nowhere else on earth \u2014 only the grassland of the ' +
              'Amathole Mountains, around Hogsback \u2014 and it came for the open grass. It stays.');
       L.push('It arrived because the ' + MB_SEEP_RUN_N() + ' grass tiles along the river carried no more ' +
-             'than ' + TOAD_RUN_WEEDS + ' weeds for ' + TOAD_HOLD_DAYS + ' wet days running. Right now ' +
-             against + ' of them count against you, and that no longer decides anything: a toad that has ' +
-             'settled does not leave.');
+             'than ' + TOAD_RUN_WEEDS + ' weeds for ' + TOAD_HOLD_DAYS + ' wet days running \u2014 this ' +
+             'tile and four either side of it.');
+      L.push('The tile it sits on is a seep: wet ground where the hill keeps it damp. Nothing grows on ' +
+             'it and nothing can be planted in it.');
     } else {
+      L.push('A seep \u2014 wet ground where the hill keeps it damp. Nothing grows on it and nothing can ' +
+             'be planted in it.');
       L.push('An Amathole toad sits here when the ' + MB_SEEP_RUN_N() + ' grass tiles along the river ' +
              'carry no more than ' + TOAD_RUN_WEEDS + ' weeds, ' + TOAD_HOLD_DAYS + ' wet days running. ' +
              'That run is this tile and four either side of it, in the first grass out from the brown ' +
@@ -7257,19 +7264,21 @@ function describeTile(c, r) {
       L.push(_wetToday
         ? 'It is raining today, so today counts.'
         : 'It is dry today. Nothing comes up, and today does not count towards the hold.');
+      /* AND THE THING THAT ACTUALLY WORKS, WHICH NOTHING SAID.
+         Measured: a cleared tile gets its seed bank back the moment you cut it (see clearAt), so the run
+         is a TREADMILL -- nine tiles at a 0.55 sprout chance is an expected 5 weeds a day, which is
+         ABOVE the allowance of four. **Clearing alone therefore makes the toad a lottery: about a 1-in-77
+         chance of any given five-day window, and the gate measured a map that took 59 days.** The thing
+         that works is SHADE: three mature trees around a run tile and its sprout chance is zero, which
+         is the same rule the rest of the game runs on. A player who only ever cleared could hold that
+         run for a season and never once see the animal.
+         AND IT LIVES IN THIS BRANCH, not below it -- it is advice about EARNING the toad, so it belongs
+         with the requirement and not on the card that says the animal is already here. */
+      L.push('Cutting holds it a wet day at a time \u2014 the seed comes back. Shade is what holds it for ' +
+             'good: plant mature trees in the grass BESIDE those tiles, never on them. A tree standing ' +
+             'on the run counts against you exactly like a weed, so the row to plant is the one just ' +
+             'inland of it. Three mature trees touching a tile and nothing comes up on it at all.');
     }
-    /* AND THE THING THAT ACTUALLY WORKS, WHICH NOTHING SAID.
-       Measured: a cleared tile gets its seed bank back the moment you cut it (see clearAt), so the run
-       is a TREADMILL — nine tiles at a 0.55 sprout chance is an expected 5 weeds a day, which is
-       ABOVE the allowance of four. **Clearing alone therefore makes the toad a lottery: about a 1-in-77
-       chance of any given five-day window, and the gate measured a map that took 59 days.** The thing
-       that works is SHADE: three mature trees around a run tile and its sprout chance is zero, which
-       is the same rule the rest of the game runs on. A player who only ever cleared could hold that
-       run for a season and never once see the animal. */
-    L.push('Cutting holds it a wet day at a time \u2014 the seed comes back. Shade is what holds it for ' +
-           'good: plant mature trees in the grass BESIDE those tiles, never on them. A tree standing ' +
-           'on the run counts against you exactly like a weed, so the row to plant is the one just ' +
-           'inland of it. Three mature trees touching a tile and nothing comes up on it at all.');
   }
   if (toad && toad.c === c && toad.r === r) L.push('The Amathole toad.');
   /* THEN WHAT IS STANDING ON IT. */
