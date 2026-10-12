@@ -849,6 +849,28 @@ var ALIEN_STAGE_DAYS = 1;
    size either. Measured: a pine is 102 px at full size and a bramble 20, so the floor bites hardest
    on the smallest weed, which is correct. */
 var ALIEN_MIN_PX = 15;
+/* AND THE LARGEST, WHICH IS THE OTHER HALF AND WAS MISSING.
+   Owner, 2026-10-11: *"the baby pines and black wood are too big in comparison to the rest. they fill
+   a whole tile?"* -- and they did, measurably. The stage scale is a percentage of the species' ADULT
+   height, so a tower species gets a tower seedling: pine full = 102 px and blackwood 108.5, against a
+   tile only 31 px tall, so a stage-1 sprout inherited the adult's tower and drew taller than its own
+   tile while a bramble sprout drew a tenth of that.
+   **The floor has never been the problem; it only ever clamped the small species UP.** A ceiling is the
+   symmetric rule, and it states the thing the floor already implies: A SPROUT IS A SPROUT, WHATEVER THE
+   ADULT WILL BE.
+   IT IS A FRACTION OF THE TILE, NOT OF THE SPECIES -- and that is the whole correction. A per-species
+   ceiling (`cap / full`) does not compose with the per-species floor: the floor lifts a pine to 15 px,
+   then the ceiling drags it back under, and the biggest weeds come out the SMALLEST sprouts in the game.
+   Measured 2026-10-12 off the shipped drawAlien, blackwood went 16.8 -> 8.8 px and pine 17.5 -> 9.7 px,
+   both BELOW the 15 px the floor exists to guarantee, while bugweed stayed at 29.4. Expressing both
+   bounds against the tile makes them one rule.
+   **AND THE FRACTION IS SET FROM THE MEASURED DRAWN HEIGHT, NOT THE FORMULA.** `full * sc` is NOT the
+   pixels that land: measured, the code art draws 0.52x-2.15x of it depending on the species (pine 0.57,
+   blackwood 0.52, bramble 1.53, bugweed 2.15). A first pass at `0.75` of a tile *predicted* 23.3 px and
+   DREW 13.3 -- still under the floor. Solving against the drawn number gives a full tile: at `1.0` the
+   biggest sprout draws 17.5 px and the smallest species' spread falls 2.45x -> 1.88x, with no further
+   gain above it (the natural 0.30 takes over). See CALIBRATION-sprout-size-2026-10-12.md. */
+var ALIEN_SPROUT_MAX_TILE = 1.0;
 
 /* The Amathole forest is not a yellowwood plantation, it is an indigenous forest with layers in
    it, and the layers go in in an order. The pioneers take the open ground and make the shade; the
@@ -8651,8 +8673,19 @@ var API = {
   STREAM: STREAM, streamC: streamC, streamDist: streamDist, isWaterfall: isWaterfall,
   /* THE DRAWERS, exported so a reference image can be rendered from the SAME code the game draws
      with. Owner, 2026-09-18: "they need a visual." A field guide that re-implements the tree art is
-     a guide to something the game does not draw, and it drifts the first time the art changes. */
-  drawShopIcon: drawShopIcon, drawTree: drawTree, drawAlien: drawAlien, drawDecor: drawDecor,
+     a guide to something the game does not draw, and it drifts the first time the art changes.
+     **THEY ARE GETTERS, AND THAT IS NOT A STYLE CHOICE — IT IS THE WHOLE POINT.**
+     `API` is built at line ~8581 and assigned to `globalThis.__MB` at ~8710, but `drawAlien`,
+     `drawTree` and `drawDecor` are all REASSIGNED to their stage-aware wrappers LATER (drawAlien at
+     ~9337, drawTree at ~9273, drawDecor at ~9521). A plain property captures the binding at
+     export time, so `MB.drawAlien` was the PRE-CLAMP original: measured 2026-10-12, it drew a pine
+     sprout at 58.4 px where the game drew 17.5, and the field guide — which the comment above says
+     must show "the SAME code the game draws with" — rendered every weed at the wrong size. A getter
+     reads the CURRENT binding, so the export cannot fall behind the wrapper again. */
+  get drawShopIcon() { return drawShopIcon; },
+  get drawTree() { return drawTree; },
+  get drawAlien() { return drawAlien; },
+  get drawDecor() { return drawDecor; },
   /* The guide is exported so a gate can open it and count what it actually built. A guide that is
      only reachable by a finger is a guide no check can see. */
   renderGuide: renderGuide,
@@ -9369,6 +9402,24 @@ var SPR = (function () {
          15 px guarantee where 15 px is possible, and gives the bramble a real sprout where it is not.** */
       var floorPx = Math.min(st === 1 ? ALIEN_MIN_PX : ALIEN_MIN_PX * 1.5, full * 0.55);
       var sc = Math.min(1, Math.max(pct, floorPx / full));
+      /* THE CEILING IS A SPROUT CEILING, IN TILES, NOT IN SPECIES.
+         `s` arrives already carrying the scatter and the world scale, so the drawn height of this
+         species at sc = 1 is `full` px -- and the ceiling wants "at most this fraction of a TILE",
+         which is a constant independent of the species. Both bounds are now the same kind of number.
+         Stage 2 is a half-grown TREE and keeps its percentage; only the day-one seedling is clamped
+         (capping stage 2 as well drew a half-grown pine at 25.5 px -- a sprout with brown leaves). */
+      if (st === 1) {
+        var ceilPx = TH * ALIEN_SPROUT_MAX_TILE;
+        sc = Math.min(sc, ceilPx / full);
+        /* AND THE FLOOR IS RE-APPLIED AFTERWARDS, WHICH IS THE BUG THIS FIXES.
+           Applied first and capped by the ceiling, the floor loses: a pine was lifted to 15 px and
+           then dragged to 8.8. A guaranteed minimum must be allowed to lift a ceiling -- that is what
+           "an alien sprout is never smaller than ALIEN_MIN_PX" means. Only when the two genuinely
+           cannot both hold (a species whose 55%-of-full is under the floor, i.e. the bramble) does the
+           fraction cap win, and there it is the honest answer. */
+        sc = Math.max(sc, Math.min(ALIEN_MIN_PX, full * 0.55) / full);
+        sc = Math.min(sc, 1);
+      }
       s = s * sc;
       /* THE PAINTED JUVENILE, IF ART HAS DELIVERED ONE FOR THIS RUNG.
          THE STAGE SUFFIX RESOLVES OFF `kind`, NOT `aid` -- and that is not a style choice. `aid` is
