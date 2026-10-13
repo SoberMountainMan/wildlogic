@@ -3228,7 +3228,20 @@ function clearAt(c, r, pull) {
      tile would overprint. The cutting leads because it is what the player got; the seed follows, in
      amber, with no sign, because it is what the ground kept. */
   var _cutMsg = [];
-  _cutMsg.push(def.bank + ' seed' + (def.bank === 1 ? '' : 's') + ' in the soil');
+  /* A PULL IS NOT A CUT, AND NONE OF THE CUT-ONLY BOOKKEEPING BELOW APPLIES TO IT.
+     The lever takes the whole plant out WITH ITS ROOTS, so there is no cutting for the bin and no
+     seed left behind — `t.seeds` is deliberately not touched above. But this block was written for
+     the axe and `pull` was bolted on afterwards, so a pull ran the cut-only lines anyway:
+       - it announced "N seeds in the soil" as a GAIN it never made, and
+       - because `!pull` was the FIRST half of the bin test, a pull fell straight through to the
+         bin-full branch and said "bin full — lost" with an EMPTY bin.
+     Owner, 2026-10-13: *"Pull still says the bin is full when it isnt"*. Both lines are now gated on
+     the tool, and a pull's float says only what a pull does. */
+  if (pull) {
+    _cutMsg.push('pulled \u2014 roots and all');
+  } else {
+    _cutMsg.push(def.bank + ' seed' + (def.bank === 1 ? '' : 's') + ' in the soil');
+  }
 
   /* THE BIN IS SMALL AND WHAT DOES NOT FIT IS LOST — and that is the whole consequence.
      The hillside starts FULL, which is the one thing this game has that a blank-map game does not:
@@ -3253,7 +3266,10 @@ function clearAt(c, r, pull) {
      BIN_MAX STILL BINDS, deliberately: the bin holds six cuttings whether they are pine or bramble,
      so the benefit is real but bounded by the same "clear in batches" rule as everything else. It
      does not become a reason to rush. */
-  if (!pull && binItems < BIN_MAX) {   /* nothing to bank from a pull -- see PULL_COST */
+  if (pull) {
+    /* NOTHING TO BANK AND NOTHING WASTED — the branch that used to catch every pull and call it a
+       full bin. See the note at `_cutMsg` above. */
+  } else if (binItems < BIN_MAX) {
     /* THE SPECIES IS READ FROM `_was`, NOT FROM THE TILE. clearAt() nulls the tile before it reaches
        the bin, so asking the tile what it was gets you a blank — the species is captured at the top
        of this function for exactly this reason. */
@@ -3291,10 +3307,19 @@ function clearAt(c, r, pull) {
 
   if (!state.seen.seedbank) {
     state.seen.seedbank = true;
+    /* THE LESSON IS TRUE FOR THE TOOL THAT WAS USED. This card teaches the seed-bank rule, and on a
+       CUT that rule is "you left seed behind and the cuttings go in the bin". On a PULL none of it
+       happened: no seed was added (`t.seeds` is untouched) and there is no cutting — so the same
+       words told a puller that their pull had dropped seed and filled a bin. Third instance of the
+       cut-only text running on the lever, found by the new gate check rather than by the eye. */
     card('The seed stays behind',
-      def.name + ' (' + def.sci + ') is cut, and its seed is already in the ground — this one ' +
-      'leaves ' + def.bank + ' lots of it. ' + def.note + ' Rain brings it up again. ' +
-      'The cuttings go in the bin.', null);
+      pull
+        ? def.name + ' (' + def.sci + ') came out by the roots, so this one left no cutting and no ' +
+          'new seed — the bank in this tile is whatever it already had. ' + def.note +
+          ' The lever wears a bank down; it is the axe that reloads it.'
+        : def.name + ' (' + def.sci + ') is cut, and its seed is already in the ground — this one ' +
+          'leaves ' + def.bank + ' lots of it. ' + def.note + ' Rain brings it up again. ' +
+          'The cuttings go in the bin.', null);
   }
 
   /* AND WHAT THE SHADE IS FOR. This is the only permanent progress in the game — everything else
@@ -3304,7 +3329,8 @@ function clearAt(c, r, pull) {
   if (t.seeds >= 3 && matureAround(c, r) < SHADE_CLOSES_SEED && !state.seen.needshade) {
     state.seen.needshade = true;
     card('Three trees close a patch',
-      'That one left ' + t.seeds + ' lots of seed in this tile, and it will keep coming back. ' +
+      (pull ? 'This tile holds ' : 'That one left ') + t.seeds +
+      ' lots of seed, and it will keep coming back. ' +
       'It stops when ' + SHADE_CLOSES_SEED + ' MATURE trees stand in the eight tiles around it — ' +
       'not saplings, not half-grown ones, mature. The shade shuts the seed bank — it does not destroy ' +
       'the seed, and it holds while the trees stand. So the way to beat this hillside is not to keep ' +
@@ -7565,12 +7591,20 @@ function act(c, r) {
          shown over it. A first version of this toasted its own message and wiped the name off the
          last cut of every day; the canvas gate caught it, not the eye. */
       var lastOfDay = apBefore > 0 && state.ap <= 0;
+      /* AND IT SAYS WHAT THE TOOL ACTUALLY DID. The lever and the axe are different jobs with
+         different costs, and this toast called both of them "Cut" and charged both of them the
+         species' AXE cost — so pulling a sprout told the player it cost 1 AP when it had spent
+         PULL_COST, and claimed seed was left in the soil that the pull had not left. */
+      var _pulled = tool === 'pull';
+      var _spent = _pulled ? PULL_COST : cd.ap;
       if (cd && state.seen.seedbank) {
         /* "1 action points" was live for a few minutes on 2026-09-21 — bugweed and bramble both
            cost 1 AP, and the string was hardcoded plural. The probe caught it, not the eye. */
-        toast('Cut ' + cd.name + ' \u2014 ' + cd.ap + ' action point' + (cd.ap === 1 ? '' : 's') +
-              '. ' + cd.bank + ' lot' + (cd.bank === 1 ? '' : 's') +
-              ' of seed left in the soil.' + (lastOfDay ? ' ' + dayDoneLine() : ''), 'good');
+        toast((_pulled ? 'Pulled ' : 'Cut ') + cd.name + ' \u2014 ' + _spent + ' action point' +
+              (_spent === 1 ? '' : 's') + '. ' +
+              (_pulled ? 'It came out with its roots, so this tile keeps whatever seed it already had.'
+                       : cd.bank + ' lot' + (cd.bank === 1 ? '' : 's') + ' of seed left in the soil.') +
+              (lastOfDay ? ' ' + dayDoneLine() : ''), 'good');
       } else if (lastOfDay) {
         toast(dayDoneLine(), 'warn');
       }
