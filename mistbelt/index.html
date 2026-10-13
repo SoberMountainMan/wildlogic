@@ -2213,7 +2213,21 @@ function tickDay(w) {
         var chance = shade >= SHADE_CLOSES_SEED ? 0 : Math.max(0.2, 0.55 - 0.12 * shade);
         /* IT COMES UP AS A MOUND FIRST. The alien is set immediately -- so the tile is claimed, the shade rules
      apply and the seed bank is consumed -- but what the player sees for the first day is broken ground. */
-      if (Math.random() < chance) { t.alien = pickAlien(t, c, r); t.astage = 0; t.seeds -= 1; sprouted++; }
+      if (Math.random() < chance) {
+        t.alien = pickAlien(t, c, r); t.astage = 0; t.seeds -= 1; sprouted++;
+        /* AND `aage` STARTS AT -1, NOT 0, WHICH IS THE WHOLE FIX.
+           The growth block below runs in THIS SAME PASS over the tiles -- there is one `for r / for c`
+           loop and both blocks are inside it. So a tile that had just come up as a mound reached that
+           block with `aage` 0 (or absent), took it to 1, met `1 >= ALIEN_STAGE_DAYS` (which is 1) and
+           grew straight to a sprout IN THE SAME TICK. The mound was set and grown past before a single
+           frame was drawn, so it was never on screen -- which is exactly what the owner reported:
+           *"im yet to see a mound in the game"*. The mechanics were right, the pixels never happened.
+           Starting the counter at -1 means this tick takes it to 0, which is under the threshold, and
+           the NEXT day roll takes it to 1 and grows it. The mound stands for the day the comment above
+           promises. `aage` is not in the save format, but that is harmless here: it is read as 0 when
+           absent, so a reload lands in the same state this line leaves it in. */
+        t.aage = -1;
+      }
       }
       if (t.alien && Math.random() < 0.10 && t.seeds < 6) t.seeds += 1;
       /* AND IT GROWS UP. A weed that sprouted yesterday is a seedling today and a bush the day
