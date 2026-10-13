@@ -1612,7 +1612,7 @@ function newState() {
     tiles: t, weather: null, lastDayKey: dayKey(new Date()), lastTickAt: Date.now(),
     seen: { seedbank: false, baboon: false, parrot: false, shade: false,
             toad: false, binbaboon: false, needshade: false, parrotwait: false, intro: false,
-            binwaste: false, shadeclosed: false, planted1: false,
+            binwaste: false, shadeclosed: false, planted1: false, lever: false,
             rolled1: false },
     log: [], cleared: 0, planted: 0, bought: 0, recycled: 0,
     /* Parrots resident in the forest. A count, not a flag — see parrotCapacity(). */
@@ -4703,7 +4703,11 @@ function canCut(c, r, pull) {
   if (pull && alienStage(t) > 1) return false;
   return state.ap >= (pull ? PULL_COST : cutCost(t));   /* the SAME number clearAt() spends */
 }
-function canAct(c, r) {
+/* `asTool` LETS THE CURSOR ASK ABOUT A TOOL OTHER THAN THE ONE IN HAND — see drawTileCursor's third
+   state. It is a PARAMETER rather than a temporary swap of the module-level `tool`, because a function
+   that reads a global it does not own cannot be asked a hypothetical question safely. */
+function canAct(c, r, asTool) {
+  var tk = asTool || tool;
   var t = cell(c, r);
   if (!t) return false;
   var obj = t.obj || blockAt(c, r);
@@ -4712,9 +4716,9 @@ function canAct(c, r) {
   /* THE LEVER OVER YOUR OWN SAPLING IS A LEGAL TAP, and the cursor has to say so before the tap —
      a tile that lights up and then refuses is the same lie as one that stays dark and then works.
      See digAt(): stage 1 only, and only for the lever. */
-  if (tool === 'pull' && t.sp && t.stage === 1) return state.ap >= PULL_COST;
-  if (tool === 'cut' || tool === 'pull') return canCut(c, r, tool === 'pull');   /* NOT clearAt() -- see canCut(). A test must not act. */
-  return whyNotHere(c, r, tool) === null;
+  if (tk === 'pull' && t.sp && t.stage === 1) return state.ap >= PULL_COST;
+  if (tk === 'cut' || tk === 'pull') return canCut(c, r, tk === 'pull');   /* NOT clearAt() -- see canCut(). A test must not act. */
+  return whyNotHere(c, r, tk) === null;
 }
 function drawTileCursor() {
   if (hoverC < 0 || hoverR < 0) return;
@@ -4723,15 +4727,28 @@ function drawTileCursor() {
   /* A stroke on an off-screen tile is a stray line at the canvas edge. */
   if (p[0] < -TW || p[0] > W + TW || p[1] < -TH || p[1] > H + TH) return;
   var can = canAct(hoverC, hoverR);
+  /* A THIRD ANSWER, BECAUSE "NO" WAS NOT THE USEFUL ONE.
+     Owner, 2026-10-13: the pull-vs-axe rule is unclear and the player will guess by size — which cannot
+     work (a pullable blackwood sprout is 30.6 px, a full-grown bramble that needs the axe is 19.6). The
+     cursor already knew the answer for the tool IN HAND; it just could not say "you are holding the
+     wrong one". So a tile the OTHER tool would take is its own colour: cream = this tool works,
+     TEAL = the other one does, orange = neither. That turns a refused tap into a pre-tap answer, and
+     the lever's first-use card names all three so the colour is not a private language. */
+  var _other = tool === 'pull' ? 'cut' : (tool === 'cut' ? 'pull' : null);
+  var swap = !can && _other ? canAct(hoverC, hoverR, _other) : false;
   tilePath(hoverC, hoverR, z, TILE_K, TILE_F);
   ctx.save();
   /* A faint fill as well as the outline, because a thin line over a busy tile is easy to lose and the
      point of this is to be unmissable. Both are translucent so the tile is still readable through them. */
-  ctx.fillStyle = can ? 'rgba(246,250,236,0.16)' : 'rgba(196,116,72,0.20)';
+  ctx.fillStyle = can ? 'rgba(246,250,236,0.16)'
+                : swap ? 'rgba(93,202,165,0.22)'
+                       : 'rgba(196,116,72,0.20)';
   ctx.fill();
   ctx.lineWidth = Math.max(1.7, TW * 0.05);
   ctx.lineJoin = 'round';
-  ctx.strokeStyle = can ? 'rgba(250,253,242,0.95)' : 'rgba(226,142,84,0.95)';
+  ctx.strokeStyle = can ? 'rgba(250,253,242,0.95)'
+                  : swap ? 'rgba(120,224,190,0.95)'
+                         : 'rgba(226,142,84,0.95)';
   ctx.stroke();
   ctx.restore();
 }
@@ -6937,7 +6954,29 @@ function mkLabel(a, b) {
   frag.appendChild(e1); frag.appendChild(e2);
   return frag;
 }
-function mkPicker(k) { return function () { tool = k; renderHud(); }; }
+/* PICKING UP A TOOL IS THE MOMENT TO SAY WHAT IT IS FOR, AND THE LEVER IS THE ONE THAT NEEDS IT.
+   Owner, 2026-10-13: *"still not entirely clear what qualifies for pull vs axe. the player is going to
+   assume by size, but not everything is correct size in comparison."* He is right, and size CANNOT be
+   the cue -- measured on the shipped sprites, a pullable blackwood sprout draws 30.6 px while a
+   FULL-GROWN bramble, which needs the axe, draws 19.6. The rule is the STAGE (the lever lifts stage 1,
+   the axe takes any stage), and there is no way to read a stage off a height.
+   SO THE RULE IS STATED ONCE, and the cursor carries it from then on (see drawTileCursor): the card
+   says the rule AND the three colours, so the two arrive together rather than the colour being a
+   private language the player has to reverse-engineer. */
+function chooseTool(k) {
+  tool = k;
+  if (k === 'pull' && state && state.seen && !state.seen.lever) {
+    state.seen.lever = true;
+    card('The lever and the axe',
+      'The lever lifts seedlings \u2014 a weed that has only just come up, or a sapling of your own. ' +
+      'The axe takes anything green that is not yours, at any size. ' +
+      'Size will not tell you which: a blackwood sprout stands taller than a full-grown bramble, and ' +
+      'only one of those wants the axe. Hold a tool over a tile and the outline answers before you tap ' +
+      '\u2014 cream means this tool will work, teal means the other one will, orange means neither.', null);
+    saveLocal();
+  }
+}
+function mkPicker(k) { return function () { chooseTool(k); renderHud(); }; }
 
 function renderBoard() {
   if (!els.boardList) return;
@@ -8674,7 +8713,7 @@ var API = {
   patchAround: patchAround, isNestSite: isNestSite, SNAG_DAYS: SNAG_DAYS, SNAG_RATE: SNAG_RATE,
   PARROT_R: PARROT_R, PARROT_PATCH_TREES: PARROT_PATCH_TREES, PARROT_PATCH_SPECIES: PARROT_PATCH_SPECIES,
   newState: newState, getState: function () { return state; }, setState: function (s) { state = s; },
-  setTool: function (t) { tool = t; }, terrainAt: terrainAt,
+  setTool: function (t) { chooseTool(t); }, terrainAt: terrainAt,
   tickDay: tickDay, clearAt: clearAt, plantAt: plantAt, placeDecor: placeDecor, pickUpDecor: pickUpDecor,
   /* `digAt` is exported for the lever's own gate: the rule is that a SAPLING can be lifted and a
      TAKEN tree cannot, and a check cannot see that without calling the function that does it. */
@@ -8703,7 +8742,7 @@ var API = {
      promises with a colour what the tap will actually perform, so a check has to be able to ask the
      same question the cursor asks. `canAct()` is deliberately a TEST and never an action — see its
      own note, and the hover that used to fell a weed by calling clearAt(). */
-  canAct: function (c, r) { return canAct(c, r); },
+  canAct: function (c, r, asTool) { return canAct(c, r, asTool); },
   STREAM: STREAM, streamC: streamC, streamDist: streamDist, isWaterfall: isWaterfall,
   /* THE DRAWERS, exported so a reference image can be rendered from the SAME code the game draws
      with. Owner, 2026-09-18: "they need a visual." A field guide that re-implements the tree art is
@@ -9834,7 +9873,7 @@ var SPR = (function () {
     },
     /* AND THE SAME QUESTION THE CURSOR ASKS, so a gate can check that the colour matches what a tap
        would actually do. A cursor that promises the opposite of the tap is worse than none. */
-    canAct: function (c, r) { return canAct(c, r); },
+    canAct: function (c, r, asTool) { return canAct(c, r, asTool); },
     /* WHICH SPECIES A SEEDING TILE WOULD GERMINATE, given its neighbours -- exported so the
        competition is TESTABLE. **A rule nothing can ask about is a rule that drifts**, and this one
        is arithmetic over eight neighbours that no screenshot can show. */
