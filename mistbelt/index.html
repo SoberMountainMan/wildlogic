@@ -1854,6 +1854,27 @@ function tokenOf(w) {
   return 'sun';
 }
 
+/* IS THE PAYING WEATHER A REAL OBSERVATION, OR A GUESS?
+   `fallbackFor` is the season average, and it is used for BOTH the deliberate offline model AND a
+   forecast that has not landed yet (or one whose fetch failed). A fallback day has never been
+   confirmed against the sky, so it must not mint the premium tokens (rain / mist / snow) that buy a
+   canopy -- and October's average reads 'rain', which is exactly the farmable token the tester was
+   printing without a refresh. Every payout path asks this one question through here. */
+function isFallbackWeather() {
+  return !!(state && state.weather && state.weather.fallback);
+}
+
+/* THE TOKEN A DAY ACTUALLY PAYS. A confirmed forecast pays its own token. A GUESS -- the season
+   average before a real forecast lands, or after a fetch failed -- pays only the base 'sun': it must
+   never hand out the premium token it is guessing, which is the farmable rain the tester printed
+   without refreshing. One function, so the bin, the board, the token pill and the "today pays in…"
+   copy can never disagree about what an unconfirmed day is worth -- and offline play still works,
+   because a guessed day is not a frozen day. */
+function payToken() {
+  if (isFallbackWeather()) return 'sun';
+  return tokenOf(state.weather || fallbackFor(new Date().getMonth()));
+}
+
 function weatherWord(w) {
   var k = classify(w);
   if (k.snow) return 'Snow';
@@ -1866,16 +1887,48 @@ function weatherWord(w) {
   return 'Clear';
 }
 
+/* A HUNG FETCH MUST RESOLVE TO A REASON, NOT TO SILENCE.
+   DISPATCH-MISTBELT-02 found the weather exploit; -03 instruments WHY the fetch fails, because the
+   owner's open question is "is the tester on bad internet, or are we hitting Open-Meteo too hard?"
+   Without a timeout a stalled request never rejects, so the catch never ran and no reason was ever
+   recorded. WEATHER_TIMEOUT_MS bounds the wait; the reason is tagged onto the season-average result
+   as `fetchFail` ('timeout' | 'http_<status>' | 'network' | 'payload' | 'no_fetch') and echoed to
+   the console. An 'http_429' is Open-Meteo rate-limiting us; a 'network' or 'timeout' is the device. */
+var WEATHER_TIMEOUT_MS = 8000;
 function fetchForecast(month) {
   var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + SPOT.lat +
     '&longitude=' + SPOT.lon +
     '&current=temperature_2m,precipitation,cloud_cover,wind_speed_10m,weather_code' +
     '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_speed_10m_max,sunrise,sunset' +
     '&timezone=Africa%2FJohannesburg&forecast_days=1';
-  if (typeof fetch !== 'function') return Promise.resolve(fallbackFor(month));
-  return fetch(url).then(function (r) { return r.json(); })
-    .then(function (j) { return weatherFrom(j, month) || fallbackFor(month); })
-    .catch(function () { return fallbackFor(month); });
+  var fail = function (reason) {
+    var f = fallbackFor(month);
+    f.fetchFail = reason;
+    if (typeof console !== 'undefined' && console.log) console.log('[mistbelt weather] fetch failed: ' + reason);
+    return f;
+  };
+  if (typeof fetch !== 'function') return Promise.resolve(fail('no_fetch'));
+  var ctrl = (typeof AbortController === 'function') ? new AbortController() : null;
+  var timer = (ctrl && typeof setTimeout === 'function')
+    ? setTimeout(function () { try { ctrl.abort(); } catch (e) {} }, WEATHER_TIMEOUT_MS)
+    : null;
+  var clear = function () { if (timer && typeof clearTimeout === 'function') clearTimeout(timer); };
+  return fetch(url, ctrl ? { signal: ctrl.signal } : undefined)
+    .then(function (r) {
+      clear();
+      if (!r.ok) { var he = new Error('http'); he.httpStatus = r.status; throw he; }
+      return r.json();
+    })
+    .then(function (j) { var w = weatherFrom(j, month); if (!w) { var pe = new Error('payload'); throw pe; } return w; })
+    .catch(function (e) {
+      clear();
+      var reason;
+      if (e && e.httpStatus) reason = 'http_' + e.httpStatus;        /* 429 here = Open-Meteo throttling */
+      else if (e && (e.name === 'AbortError' || /abort/i.test(String(e && e.message)))) reason = 'timeout';
+      else if (e && /payload/i.test(String(e && e.message))) reason = 'payload';
+      else reason = 'network';                                        /* DNS / offline / CORS / refused */
+      return fail(reason);
+    });
 }
 
 /* ============================================================ the day */
@@ -2408,7 +2461,7 @@ function tickDay(w) {
          contradiction unless you already know the mechanic, and it never said the one thing that follows
          from it: what to DO today. `k0.wet` is the same flag the card already used for its first line,
          so the advice cannot disagree with the weather it is describing. */
-      + 'Today the hillside pays in ' + tokenOf(w) + ' tokens, so the trees that cost ' + tokenOf(w) +
+      + 'Today the hillside pays in ' + payToken() + ' tokens, so the trees that cost ' + payToken() +
         ' are the ones you can afford. Tomorrow it pays a different one. '
       + (k0.wet
           ? 'A wet day pays rain or mist \u2014 the two that buy the trees that close a canopy. '
@@ -3148,7 +3201,8 @@ function boardProgress(metric, n) {
 }
 function claimBoard() {
   if (!state.board || state.board.claimed || !boardDone()) return false;
-  var tk = tokenOf(state.weather || fallbackFor(new Date().getMonth()));
+  /* A GUESSED DAY PAYS SUN, NOT THE PREMIUM TOKEN IT IS GUESSING (DISPATCH-MISTBELT-03). */
+  var tk = payToken();
   state.board.claimed = true;
   state.tokens[tk] += state.board.reward;
   boardProgress('tokens', state.board.reward);
@@ -3558,7 +3612,8 @@ function recycle() {
   if (binItems < BIN_LOAD) return false;
   var loads = Math.floor(binItems / BIN_LOAD);
   var items = loads * BIN_LOAD;
-  var tk = tokenOf(state.weather || fallbackFor(new Date().getMonth()));
+  /* A GUESSED DAY PAYS SUN, NOT THE PREMIUM TOKEN IT IS GUESSING (DISPATCH-MISTBELT-03). */
+  var tk = payToken();
   binItems -= items;
   state.tokens[tk] += items;
   state.recycled += items;
@@ -6719,7 +6774,7 @@ function renderTokens() {
      and the token pill marked nothing, which is exactly what he saw.
      **The probe tested the branch that worked.** A check that seeds the state it is testing cannot
      find a bug that only exists in the state it did not seed. */
-  var today = tokenOf(state.weather || fallbackFor(new Date().getMonth()));
+  var today = payToken();
   /* THE SAME FALLBACK renderHud() USES, spelled out here because 'w' is local to that function.
      Without it a cold load has state.weather === null, the pill shows a season, and this pill
      marked nothing -- which is what he saw. */
@@ -6778,10 +6833,18 @@ function renderHud() {
             : _ph < 0.375 ? "\u25D0"
             : _ph < 0.625 ? "\u25CB"
             : "\u25D1";
-  if (els.wxIcon) els.wxIcon.textContent = _night ? _moon : "\u2600";
-  if (els.wxText) {
-    els.wxText.textContent = Math.round(w.temp) + "\u00b0C \u00b7 " +
-      Math.round(w.wind) + " km/h \u00b7 " + weatherWord(w) + " \u00b7 " + _clock;
+  if (isFallbackWeather()) {
+    /* THE SKY IS NOT READ YET (DISPATCH-MISTBELT-03). The season-average temp/wind/word below are a
+       guess, so showing them is the lie that let a player farm a guessed rain day. Say plainly that
+       the weather is still arriving; the clock beside it is real time, so it stays. */
+    if (els.wxIcon) els.wxIcon.textContent = "\u23F3";
+    if (els.wxText) els.wxText.textContent = "reading the sky\u2026 \u00b7 " + _clock;
+  } else {
+    if (els.wxIcon) els.wxIcon.textContent = _night ? _moon : "\u2600";
+    if (els.wxText) {
+      els.wxText.textContent = Math.round(w.temp) + "\u00b0C \u00b7 " +
+        Math.round(w.wind) + " km/h \u00b7 " + weatherWord(w) + " \u00b7 " + _clock;
+    }
   }
   renderTokens();
   /* The day's other budget, and the one thing on the HUD that changes what the player can DO. */
@@ -6850,6 +6913,13 @@ function renderHud() {
   if (els.dayPill) {
     var _w = state.weather;
     var _wetToday = _w ? classify(_w, true).wet : false;
+    if (isFallbackWeather()) {
+      /* The toad hold advances on a WET day, so this pill asserts whether today counts -- and on a
+         guess that assertion is the same lie the weather pill was. Say the sky is not read yet. */
+      els.dayPill.textContent = 'reading the sky';
+      els.dayPill.title = 'The real forecast has not arrived, so the day is not being counted. ' +
+        'Nothing pays until it does.';
+    } else {
     els.dayPill.textContent = _wetToday ? 'Wet day' : 'Dry day';
     /* THE PILL DOES NOT SAY 'THE SEEP RUN'. Owner, 2026-10-11, on the word reaching a player who has
        never tapped the seep: the pill is on screen from the first minute, and 'seep' is defined in
@@ -6864,6 +6934,7 @@ function renderHud() {
          (_toadHere ? '.' : ', the grass tiles along the river will need clearing,') +
          ' and today counts towards the toad.')
       : 'It is dry today. Nothing sprouts, and today does not count towards the toad hold.';
+    }
   }
   /* SHOW THE CAP, not just the count. The bin holds BIN_MAX and what does not fit is lost, so
        '4' is not the same information as '4/6' — the player has to be able to see it filling up. */
@@ -7026,7 +7097,7 @@ function renderBoard() {
      which is why "all ticked and nothing happened" looked like a bug in the tasks rather than a
      missing control. */
   if (els.boardClaim) {
-    var tk = tokenOf(state.weather || fallbackFor(new Date().getMonth()));
+    var tk = payToken();
     var amt = state.board ? state.board.reward : 10;
     var paid = !!(state.board && state.board.claimed);
     var ready = !paid && boardDone();
@@ -7942,7 +8013,7 @@ function boot() {
       if (dueDays() >= 1) {
         fetchForecast(new Date().getMonth()).then(function (w) {
           state.weather = w;
-          weatherAt = Date.now();
+          if (!w.fallback) weatherAt = Date.now();   /* a failed fetch must not freeze the clock */
           var n = rollDueDays(w);
           if (n > 1) note(n + ' days passed while you were away.', 'warn');
           saveLocal(); renderHud(); renderBoard(); renderShop();
@@ -7958,7 +8029,7 @@ function boot() {
         fetchForecast(new Date().getMonth()).then(function (w) {
           if (!state) return;
           state.weather = w;
-          weatherAt = Date.now();
+          if (!w.fallback) weatherAt = Date.now();   /* retry until a real forecast lands */
           renderHud();
         });
       }
@@ -7981,7 +8052,7 @@ function boot() {
       fetchForecast(new Date().getMonth()).then(function (w) {
         if (!state) return;
         state.weather = w;
-        weatherAt = Date.now();
+        if (!w.fallback) weatherAt = Date.now();   /* a sleeping phone that wakes must retry on failure */
         renderHud();
       });
     });
@@ -8145,7 +8216,7 @@ function boot() {
      actual rain. Offline, fetchForecast resolves to the same season average, so this still runs. */
   fetchForecast(month).then(function (w) {
     state.weather = w;
-    weatherAt = Date.now();
+    if (!w.fallback) weatherAt = Date.now();   /* a failed first fetch stays retryable, not frozen for an hour */
     if (newDay) {
       /* THE AP IS NOT REFILLED HERE, AND THAT WAS A REAL BUG.
          tickDay()'s own note says the day roll no longer touches AP, because an hourly trickle PLUS
@@ -8745,6 +8816,12 @@ var API = {
      a test rather than an assumption. */
   dueDays: dueDays, rollDueDays: rollDueDays, TICK_MS: TICK_MS, MAX_CATCHUP_DAYS: MAX_CATCHUP_DAYS,
   weatherFrom: weatherFrom, fallbackFor: fallbackFor, classify: classify,
+  /* DISPATCH-MISTBELT-03 surface. `isFallbackWeather` is the one question every payout path asks, so
+     the gate must be able to ask it too; `weatherAt` is exported so a check can prove the clock is
+     NOT stamped on a failed fetch (the bug that froze the wrong day for an hour); `fetchForecast`
+     lets a check drive the failure-reason path directly with a stubbed fetch. */
+  isFallbackWeather: isFallbackWeather, payToken: payToken, weatherAt: function () { return weatherAt; },
+  fetchForecast: fetchForecast, WEATHER_TIMEOUT_MS: WEATHER_TIMEOUT_MS,
   weatherWord: weatherWord, tokenOf: tokenOf, skyKey: skyKey,
   baboonPass: baboonPass, parrotCheck: parrotCheck, toadCheck: toadCheck,
   fruitingIndigenous: fruitingIndigenous, matureAround: matureAround, plantable: plantable,
