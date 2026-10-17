@@ -8155,7 +8155,7 @@ function boot() {
            in every boot -- so if the live save has become a DAY 1 NEW GAME, three reloads fill the
            ring with day 1 games and the recovery is worthless. **The thing that causes the loss is
            also the thing that would overwrite the cure.**
-           **So the ring is sorted by day and keeps the highest three.** A day-1 game cannot displace
+           **So the ring is sorted by progress and keeps the furthest-along three.** A day-1 game cannot displace
            a day-40 one, which is exactly right: the player can always start again, and they cannot
            always get back. An EXPLICIT new game still clears the ring, so this never resurrects a
            game the player asked to be rid of. */
@@ -8164,9 +8164,19 @@ function boot() {
           var _v = localStorage.getItem(SAVE_KEY + _sl[_i]);
           if (_v) _cand.push(_v);
         }
+        /* RANKED BY PROGRESS, NOT BY DAY ALONE.
+           **Day alone has a hole: two copies can be the same day and one can be further along.**
+           The old day-only sort gave them no tiebreak, so the furthest-along copy of equal day was
+           not promoted and could be dropped. **Progress = day first, then tiles cleared + planted**,
+           which keeps the genuinely furthest-along save when days tie. Nothing else changes: same
+           three slots, same rotation, same decode reads; only the ranking is finer. */
         _cand.sort(function (a, b) {
           var da = decodeSave(a), db = decodeSave(b);
-          return (db && db.day ? db.day : 0) - (da && da.day ? da.day : 0);
+          var ya = da && da.day ? da.day : 0, yb = db && db.day ? db.day : 0;
+          if (yb !== ya) return yb - ya;
+          var pa = da ? (da.cleared || 0) + (da.planted || 0) : 0;
+          var pb = db ? (db.cleared || 0) + (db.planted || 0) : 0;
+          return pb - pa;
         });
         for (_i = 0; _i < _sl.length; _i++) {
           try {
@@ -8278,6 +8288,20 @@ function boot() {
       openIntro();
       saveLocal();
     }
+
+    /* ONE-TIME BACKUP NUDGE AT A MILESTONE.
+       The auto-save lives only on this device, so a player who reaches day 3 and never exports is
+       one cleared-app or one iOS eviction away from day 1 and has no idea. Say it ONCE, when they
+       get here, and never again -- this is a pointer, not a nag.
+       It marks itself shown in its OWN localStorage key, not the seen bitmask and not the save
+       codec, so it cannot change what an old save code decodes to and old saves still load. */
+    try {
+      if (state.day >= 3 && typeof localStorage !== 'undefined' &&
+          localStorage.getItem('mistbelt.backupNudge') !== '1') {
+        localStorage.setItem('mistbelt.backupNudge', '1');
+        note('Back up your game: it lives only on this device. Open Field notes and copy your save code, or tap Share, to restore it on another phone.', 'warn');
+      }
+    } catch (eNudge) {}
   });
 
   /* COLLECT THE DAY'S REWARD. claimBoard() has existed since the board was written and was never
