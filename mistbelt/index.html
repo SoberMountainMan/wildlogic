@@ -2215,6 +2215,11 @@ function msToNextDay() {
    the clock's own readout and it is exported, so a check can ask the clock rather than read the HUD. */
 
 function tickDay(w) {
+  /* SAFETY NET (Q-50 C): a day roll ends any troop still on screen. A phone can background
+     mid-crossing and miss the wall-clock despawn above, so each roll clears the visual here.
+     baboonPass() at the end of this function may then spawn a fresh one on the days it passes.
+     Purely visual -- the troop holds no game state and the seed drop is synchronous at spawn. */
+  troop = null;
   /* THE DAY, NOT THE MINUTE -- see classify(). This is the whole of the 2026-10-03 regression. */
   var k = classify(w, true);
   var line = [], r, c, t, i;
@@ -2571,7 +2576,7 @@ function baboonPass() {
     var t = cell(c, r);
     if (t && t.ter === 'grass' && !t.obj && t.seeds < 9 && (t.alien || !t.sp)) { t.seeds += 1; placed++; }
   }
-  troop = { c: 0, r: r, dc: 1, dr: 0, u: 0, len: COLS, t: 0 };
+  troop = { c: 0, r: r, dc: 1, dr: 0, u: 0, len: COLS, t: 0, spawnAt: Date.now(), life: 7000 };
   if (!state.seen.baboon) {
     state.seen.baboon = true;
     card('A troop came through',
@@ -6418,9 +6423,18 @@ function drawActors(dt) {
     ctx.globalAlpha = 1;
   }
   if (troop) {
-    troop.t += dt;
-    troop.u += 0.000055 * dt;
-    if (troop.u > troop.len + 1.4) troop = null;
+    /* CROSSING AND DESPAWN RUN OFF WALL-CLOCK, NOT FRAME-COUNTED u (Q-50 A+B).
+       The old `troop.u += 0.000055 * dt` advanced only while frames ran, and dt is clamped to 60ms,
+       so a phone backgrounded or with its screen off (which runs almost no frames) left the troop
+       stalled in the forest indefinitely -- the Q-47 bug. The speed was also ~2 orders too slow:
+       ~12.5 min of foreground frames to cross. u is now computed from the real time since spawn, so a
+       tab that slept resumes to the right place or past the end and leaves on its lifetime however
+       few frames it saw. Purely visual: the alien-seed drop already happened synchronously at spawn
+       and the troop holds no game state. */
+    var _troopAge = Date.now() - troop.spawnAt;
+    troop.t = _troopAge;
+    troop.u = (_troopAge / troop.life) * (troop.len + 1.4);
+    if (_troopAge > troop.life) troop = null;
     else {
       for (i = 0; i < 4; i++) {
         uu = troop.u - i * 0.05;
