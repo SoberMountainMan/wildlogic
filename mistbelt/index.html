@@ -7055,6 +7055,17 @@ function chooseTool(k) {
     card('The lever and the axe',
       'The lever lifts seedlings \u2014 a weed that has only just come up, or a sapling of your own. ' +
       'The axe takes anything green that is not yours, at any size. ' +
+      /* AND WHAT EACH ONE COSTS, WHICH IS THE ACTUAL CHOICE AND WAS THE ONE THING THE CARD LEFT OUT.
+         Owner, 2026-10-17: *"fix the lever card so it explains no cuttings less seeds"* — he had just
+         walked into that gap himself: pulled a sprout, got no tokens, and asked whether that was a
+         feature. It is, and the game never said so where it mattered. Measured: a sprout cut banks a
+         cutting AND pushes the tile's seed bank 2 -> 5 (wattle) / 6 (blackwood); a pull banks nothing
+         and leaves the bank at 2. **So the lever is not a worse axe, it is the other half of a trade:
+         no tokens, no worse ground.** A card that explains only WHAT each tool takes leaves the player
+         to discover the price by accident. */
+      'They are paid differently, and that is the choice. The lever banks NO CUTTINGS \u2014 so no ' +
+      'tokens \u2014 but it leaves the ground as it found it. The axe banks a cutting, two for pine, ' +
+      'and drops that plant\u2019s seed back into the tile every time, so that patch comes back harder. ' +
       'Size will not tell you which: a blackwood sprout stands taller than a full-grown bramble, and ' +
       'only one of those wants the axe. Hold a tool over a tile and the outline answers before you tap ' +
       '\u2014 cream means this tool will work, teal means the other one will, orange means neither.', null);
