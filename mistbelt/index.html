@@ -8320,6 +8320,41 @@ function boot() {
         note('Back up your game: it lives only on this device. Open Field notes and copy your save code, or tap Share, to restore it on another phone.', 'warn');
       }
     } catch (eNudge) {}
+
+    /* OPTION 4: STORAGE PERSISTENCE DETECT-AND-ADVISE (Q-48).
+       The whole game lives in localStorage, and localStorage is NOT guaranteed to survive: a private
+       tab can refuse writes outright, and the OS can evict a backgrounded one. We can only DETECT and
+       ADVISE here. **We never grade storage safe or unsafe** -- a write that succeeds right now does
+       not prove it survives the night, and crying wolf would train the player to ignore the one warning
+       that matters. So the rule is narrow and honest: (1) best-effort ask for persistent storage via
+       navigator.storage.persist(), ignored whichever way it answers -- a denial there is normal and is
+       NOT treated as danger; (2) a WRITE-PROBE: put a sentinel in, read it back, clear it. Only if the
+       probe itself throws or does not read back is storage *verified* non-persistent, and only then does
+       ONE soft line appear. It uses its own throwaway key and removes it, so it touches nothing else:
+       not SAVE_KEY, not the codec, not the backup ring, not the seen flags, not '.new', no server. */
+    try {
+      if (typeof navigator !== 'undefined' && navigator.storage &&
+          typeof navigator.storage.persist === 'function') {
+        try {
+          var _persistReq = navigator.storage.persist();
+          if (_persistReq && typeof _persistReq.then === 'function') {
+            _persistReq.then(function () {}, function () {});
+          }
+        } catch (ePersist) {}
+      }
+      var _probeKey = 'mistbelt.storageProbe', _probeVal = 'p' + Date.now();
+      var _writable = false;
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(_probeKey, _probeVal);
+          _writable = (localStorage.getItem(_probeKey) === _probeVal);
+          try { localStorage.removeItem(_probeKey); } catch (eRm) {}
+        }
+      } catch (eProbe) { _writable = false; }
+      if (!_writable) {
+        note('This browser is not keeping your game safely. In a private tab, or after the phone sleeps, your progress can disappear. Open Field notes and copy your save code so you can restore it anywhere.', 'warn');
+      }
+    } catch (eStorage) {}
   });
 
   /* COLLECT THE DAY'S REWARD. claimBoard() has existed since the board was written and was never
