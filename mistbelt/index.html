@@ -7697,6 +7697,17 @@ function act(c, r) {
       note('A sprout comes out on a lever. That one is past pulling \u2014 it wants the axe.', 'warn');
       return;
     }
+    /* WHAT THIS TAP WILL ACTUALLY COST, READ BEFORE clearAt() DESTROYS THE EVIDENCE.
+       `cutCost()` reads the tile's species AND its stage, and clearAt() nulls both — so the toast
+       below could not ask afterwards, and fell back to `cd.ap`, the species' ADULT price, on every
+       stage. Measured: a wattle sprout costs **1 AP** and the toast said **2**; a blackwood sprout
+       costs **1** and the toast said **3**.
+       Owner, 2026-10-17: *"whys wattle sprout pull 2AP vs 1 to cut?"* — **he was comparing the lever
+       against a number the game had invented.** Cut a sprout and the toast says 2 AP; pull one and it
+       says 2 AP; so the two tools looked identically priced and the lever looked arbitrary. The cut
+       was never 2. This is the same shape as every other defect this fortnight: the mechanic was
+       right and the message was wrong. */
+    var _costNow = (tool === 'pull') ? PULL_COST : cutCost(_pt);
     if (clearAt(c, r, tool === 'pull')) {
       boardProgress('cuts', 1);
       spawnCritter(c, r);
@@ -7720,14 +7731,20 @@ function act(c, r) {
          species' AXE cost — so pulling a sprout told the player it cost 1 AP when it had spent
          PULL_COST, and claimed seed was left in the soil that the pull had not left. */
       var _pulled = tool === 'pull';
-      var _spent = _pulled ? PULL_COST : cd.ap;
+      var _spent = _costNow;
       if (cd && state.seen.seedbank) {
         /* "1 action points" was live for a few minutes on 2026-09-21 — bugweed and bramble both
            cost 1 AP, and the string was hardcoded plural. The probe caught it, not the eye. */
+        /* AND THE SEED FIGURE IS THE TILE'S TOTAL, NOT WHAT THE CUT JUST ADDED.
+           This read `cd.bank + ' lots of seed left in the soil'` — the amount added — so a tile
+           holding **5** lots after a wattle cut was reported as holding **3**, and a blackwood's
+           **6** was reported as **4**. The player's whole problem is the pile under the tile; a line
+           that understates it by the amount it just grew is worse than silence. Measured in the same
+           probe that caught the price. */
         toast((_pulled ? 'Pulled ' : 'Cut ') + cd.name + ' \u2014 ' + _spent + ' action point' +
               (_spent === 1 ? '' : 's') + '. ' +
               (_pulled ? 'It came out with its roots, so this tile keeps whatever seed it already had.'
-                       : cd.bank + ' lot' + (cd.bank === 1 ? '' : 's') + ' of seed left in the soil.') +
+                       : t.seeds + ' lot' + (t.seeds === 1 ? '' : 's') + ' of seed in this tile now.') +
               (lastOfDay ? ' ' + dayDoneLine() : ''), 'good');
       } else if (lastOfDay) {
         toast(dayDoneLine(), 'warn');
