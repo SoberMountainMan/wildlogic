@@ -8155,7 +8155,7 @@ function boot() {
            in every boot -- so if the live save has become a DAY 1 NEW GAME, three reloads fill the
            ring with day 1 games and the recovery is worthless. **The thing that causes the loss is
            also the thing that would overwrite the cure.**
-           **So the ring is sorted by progress and keeps the furthest-along three.** A day-1 game cannot displace
+           **So the ring is sorted by progress and keeps the furthest-along DISTINCT three.** A day-1 game cannot displace
            a day-40 one, which is exactly right: the player can always start again, and they cannot
            always get back. An EXPLICIT new game still clears the ring, so this never resurrects a
            game the player asked to be rid of. */
@@ -8178,9 +8178,27 @@ function boot() {
           var pb = db ? (db.cleared || 0) + (db.planted || 0) : 0;
           return pb - pa;
         });
+        /* KEEP DISTINCT STATES, NOT JUST TOP-3-BY-PROGRESS (Q-46A).
+           **Three copies of the same (day, cleared, planted) state still bury older distinct
+           saves.** The owner's phone showed the ring holding "Day 11 - 90 cleared - 21 planted"
+           three times: progress-rank alone is not enough, because identical copies are the same
+           progress and they fill all three slots. So after ranking, collapse identical states --
+           keep the best (first) of each and let the next-best DISTINCT one take the slot. If fewer
+           than three distinct states exist the ring holds fewer; it is never padded with a dupe. */
+        var _seen = {}, _dis = [];
+        for (_i = 0; _i < _cand.length; _i++) {
+          var _dd = decodeSave(_cand[_i]);
+          var _dk = _dd
+            ? (_dd.day + '|' + (_dd.cleared || 0) + '|' + (_dd.planted || 0))
+            : ('raw:' + _cand[_i]);
+          if (_seen[_dk]) continue;
+          _seen[_dk] = 1;
+          _dis.push(_cand[_i]);
+          if (_dis.length === _sl.length) break;
+        }
         for (_i = 0; _i < _sl.length; _i++) {
           try {
-            if (_cand[_i]) localStorage.setItem(SAVE_KEY + _sl[_i], _cand[_i]);
+            if (_dis[_i]) localStorage.setItem(SAVE_KEY + _sl[_i], _dis[_i]);
             else localStorage.removeItem(SAVE_KEY + _sl[_i]);
           } catch (e3) {}
         }
