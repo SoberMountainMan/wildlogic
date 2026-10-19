@@ -1759,6 +1759,22 @@ function num(a, i) {
 function weatherFrom(payload, month) {
   if (!payload || !payload.current || !payload.daily) return null;
   var d = payload.daily, c = payload.current;
+  /* THE CURRENT HOUR'S HOURLY RAINFALL, NOT THE 15-MINUTE SAMPLE. The 10:45 case Q-83 found: a real
+     rain day (26 mm total, weather_code 61) read `current.precipitation` = 0.40 mm, which is below the
+     daily-scale >=1mm wet threshold, so the game called it mist mid-rain. The hourly figure for THIS
+     hour is the right scale for that threshold, and a short lookback over the last few hours is the
+     hysteresis that stops one quiet quarter-hour flipping a raining stretch to mist. Absent hourly
+     (an offline day, or a withheld field) these stay null and classify() falls back as before. */
+  var hourNow, hourRecentMax, _nowH = (typeof c.time === 'string') ? c.time.slice(0, 13) : '';
+  if (payload.hourly && payload.hourly.time && payload.hourly.precipitation) {
+    var _ht = payload.hourly.time, _hp = payload.hourly.precipitation, _i = -1, _k;
+    for (_k = 0; _k < _ht.length; _k++) if (_ht[_k] && String(_ht[_k]).slice(0, 13) === _nowH) { _i = _k; break; }
+    if (_i >= 0) {
+      hourNow = num(_hp, _i);
+      hourRecentMax = hourNow;
+      for (_k = _i - 1; _k >= 0 && _k >= _i - 2; _k--) hourRecentMax = Math.max(hourRecentMax, num(_hp, _k));
+    }
+  }
   return { tmax: num(d.temperature_2m_max, 0), tmin: num(d.temperature_2m_min, 0),
            rain: num(d.precipitation_sum, 0), snow: num(d.snowfall_sum, 0),
            wind: num(d.wind_speed_10m_max, 0), cloud: one(c.cloud_cover),
@@ -1772,6 +1788,8 @@ function weatherFrom(payload, month) {
               the sky, the rain, the weather pill and the day's token now read. */
            nowRain: num(c.precipitation, 0), nowTemp: one(c.temperature_2m),
            nowCloud: one(c.cloud_cover), nowWind: one(c.wind_speed_10m),
+           /* The hourly figure classify() now reads for the NOW state (null when hourly is absent). */
+           hourNow: (hourNow == null ? null : hourNow), hourRecentMax: (hourRecentMax == null ? null : hourRecentMax),
            /* THE REAL HORIZON, not a fixed six and six. */
            sunrise: hourFrac(one(d.sunrise)), sunset: hourFrac(one(d.sunset)) };
 }
@@ -1815,6 +1833,19 @@ function fallbackFor(month, when) {
            nowRain: rain, nowTemp: (s.tmax + s.tmin) / 2, nowCloud: cloud, nowWind: wind };
 }
 
+/* THE WMO CODES THAT MEAN IT IS RAINING NOW: drizzle (51-57), rain (61-67), showers (80-82). A
+   current sample with one of these codes is wet even when the instantaneous amount is tiny -- this is
+   the Q-83 finding that a real rain day was reading mist. */
+var RAIN_CODES = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82];
+/* The NOW rainfall at the scale the wet/heavy thresholds were calibrated for: the current HOUR, with a
+   short lookback so one quiet 15-minute interval cannot drop a raining stretch to mist. Falls back to
+   the 15-min sample, then the day total, when no hourly figure arrived (offline / withheld field). */
+function nowRainRate(w) {
+  if (w.hourRecentMax != null) return w.hourRecentMax;
+  if (w.hourNow != null) return w.hourNow;
+  if (w.nowRain != null) return w.nowRain;
+  return w.rain;
+}
 /* WHAT THE WEATHER IS DOING, NOT WHAT TODAY ADDS UP TO.
    Owner, 2026-10-03: "do it. b makes sense. pay for the current weather on load."
    Every field below used to be the DAY's figure -- the minimum temperature, the day's total rain,
@@ -1838,12 +1869,15 @@ function classify(w, day) {
      fires on load when the tab was closed, so opening the game in the rain bought a wet day.
      The DAY fields are the ones the API already returns: `rain` (precipitation_sum), `tmin` (the
      day's minimum, which is what a frost is), `cloud` and `wind` (the day's figures). */
-  var rain = day ? w.rain : ((w.nowRain != null) ? w.nowRain : w.rain);
+  var rain = day ? w.rain : nowRainRate(w);
   var temp = day ? w.tmin : ((w.nowTemp != null) ? w.nowTemp : w.tmin);
   var cloud = day ? w.cloud : ((w.nowCloud != null) ? w.nowCloud : w.cloud);
   var wind = day ? w.wind : ((w.nowWind != null) ? w.nowWind : w.wind);
-  return { wet: rain >= 1, heavy: rain >= 5, frost: temp <= 2,
-           mist: cloud >= 85 && wind < 16 && rain < 1,
+  /* A WMO rain code right now is wet regardless of the tiny interval amount (Q-83/Q-85); the DAY branch
+     keeps reading the day's total, so growth is unchanged. */
+  var wet = (rain >= 1) || (!day && RAIN_CODES.indexOf(w.code) >= 0);
+  return { wet: wet, heavy: rain >= 5, frost: temp <= 2,
+           mist: cloud >= 85 && wind < 16 && !wet,
            berg: wind >= 35, snow: w.snow > 0 };
 }
 
@@ -1900,6 +1934,10 @@ function fetchForecast(month) {
   var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + SPOT.lat +
     '&longitude=' + SPOT.lon +
     '&current=temperature_2m,precipitation,cloud_cover,wind_speed_10m,weather_code' +
+    /* Q-85: the NOW wet/mist decision reads the HOURLY precipitation, not the 15-minute `current`
+       sample (the daily-scale >=1mm threshold was being applied to a quarter-hour value). One extra
+       field on the same call; the classifier still falls back gracefully if the API withholds it. */
+    '&hourly=precipitation' +
     '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,snowfall_sum,wind_speed_10m_max,sunrise,sunset' +
     '&timezone=Africa%2FJohannesburg&forecast_days=1';
   var fail = function (reason) {
