@@ -181,10 +181,41 @@ export function layMud(p, x, y, h) {
  * Lay one fence tile. Same connectivity rule as track, except a fence may also start
  * off an existing track — you fence up to the road you already have.
  */
+/* ---- demolition: pulling up your own work (owner live play 10-28: "theres no easy
+   way to demolish a misplaced fence or road") ------------------------------------
+   FREE, stated plainly: a misplaced tile is corrected, not billed twice. No refund
+   either — the tile was bought, the labour was spent. Removal can strand a run (the
+   rest of the run no longer connects from the gate); nothing re-checks, the same
+   TT freedom the drag verbs have. Repricing any of this is an owner call, not mine. */
+
+/** Pull up one fence post. */
+export function removeFence(p, x, y, h) {
+  initWorks(p);
+  if (!fenceAt(p, x, y)) return err('there is no fence on that tile');
+  p.fence = p.fence.filter((f) => !(f.x === x && f.y === y));
+  if (h) h.log.push({ day: h.day, text: 'Fence post pulled up. No charge, no refund.' });
+  return ok('fence removed', { x, y, tiles: p.fence.length });
+}
+
+/** Pull up one track tile (dirt or gravel — the gravel comes up as readily as it went
+    down). Mud is not removed here: the weather lays and dries it, so the player just
+    tracks over it instead. */
+export function removeTrack(p, x, y, h) {
+  initWorks(p);
+  if (!trackAt(p, x, y)) return err('there is no track on that tile');
+  p.track = p.track.filter((t) => !(t.x === x && t.y === y));
+  if (h) h.log.push({ day: h.day, text: 'Track pulled up. No charge, no refund.' });
+  return ok('track removed', { x, y, tiles: p.track.length });
+}
+
 export function layFence(p, x, y, h) {
   initWorks(p);
   if (!inBounds(p, x, y)) return err('off the plot');
   if (groundAt(p, x, y) === 'water') return err('a fence in the stream is a fence the river takes');
+  // The gate tile is a CONNECT point, never a placeable one (owner live play 10-28: a
+  // fence could be laid over the gate). fenceConnects counts it so runs can begin here;
+  // the placement itself would bar the only road in.
+  if (isGate(p, x, y)) return err('that is the gate — a fence across it bars the only road in');
   if (fenceAt(p, x, y)) return err('there is already a fence on that tile');
   if (!fenceConnects(p, x, y)) {
     return err('a fence has to run from the gate or from fence you have already set — that tile touches neither');

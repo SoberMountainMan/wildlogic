@@ -202,6 +202,35 @@ export function waterOk(h) {
 
 /* ---------------- actions ---------------- */
 
+/** First free, dry, flat, clear 1x1 tile for a yard building (the tank), spiralling out
+ *  from the plot's middle. Deterministic; null when no such tile exists. The same shape
+ *  as tourism's freeFacilityTile, local because homestead cannot import tourism (the
+ *  sim's no-cycle rule). */
+function freeYardTile(h) {
+  const p = h.plot;
+  if (!p || !p.ground) return null;
+  const ax = Math.floor(p.w / 2), ay = Math.floor(p.h / 2);
+  const taken = new Set();
+  for (const b of p.buildings || []) taken.add(b.x + ',' + b.y);
+  for (const t of p.trees || []) taken.add(t.x + ',' + t.y);
+  for (const b of h.beds || []) taken.add(b.x + ',' + b.y);
+  for (const v of h.hives || []) taken.add(v.x + ',' + v.y);
+  for (const f of p.fence || []) taken.add(f.x + ',' + f.y);
+  const free = (x, y) => x >= 1 && y >= 1 && x < p.w - 1 && y < p.h - 1
+    && p.ground[y * p.w + x] !== 'water' && p.ground[y * p.w + x] !== 'rock'
+    && !taken.has(x + ',' + y) && tileFlat(p, x, y);
+  const R = Math.max(p.w, p.h);
+  for (let r = 0; r <= R; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (const dy of (r === 0 ? [0] : [-r, r])) if (free(ax + dx, ay + dy)) return { x: ax + dx, y: ay + dy };
+    }
+    for (let dy = -r + 1; dy <= r - 1; dy++) {
+      for (const dx of [-r, r]) if (free(ax + dx, ay + dy)) return { x: ax + dx, y: ay + dy };
+    }
+  }
+  return null;
+}
+
 export function buildTank(h) {
   if (h.water.tank) return err('you already have a tank');
   const base = TANK.cost + TANK.delivery;
@@ -214,16 +243,25 @@ export function buildTank(h) {
   h.water.tank = true;
   h.water.store = WATER.capL;          // the delivery includes a fill
   h.water.thirst = 0;                  // a full tank is water, same as a delivery
-  note(h, lumber.used
+  // Owner live play 10-28: "cant see water tank or how to place it". The tank was a
+  // boolean — the painted sprite and the renderer's tank5000 path have existed since
+  // T15, but the sim never stood one up, so H$5,400 bought nothing the eye could find.
+  // The delivery now stands the tank in the yard: first free, dry, flat, clear tile
+  // from the plot's middle. plot.buildings is outside snap()'s whitelist, so no golden
+  // moves (the scripts buy the tank; only the ground record changes).
+  const site = freeYardTile(h);
+  if (site) h.plot.buildings.push({ kind: 'tank5000', x: site.x, y: site.y });
+  note(h, (lumber.used
     ? `Bought a 5 000 L tank — your own pine lumber took ${money(lumber.off)} off the cash. −${money(cost)}`
-    : `Bought a 5 000 L tank and paid the delivery. −${money(cost)}`);
+    : `Bought a 5 000 L tank and paid the delivery. −${money(cost)}`)
+    + (site ? ' It stands in the yard.' : ' The yard has no clear flat tile, so it works from behind the scenes.'));
   // BUG-007 (playtest 10-26): the WHAT NOW card only refreshed on End Day, so buying the
   // tank cleared the alarm but left "Get water onto the plot" unchecked until the player
   // spent a day they did not have to spend. tickGoals is idempotent (skips done, no RNG) and
   // writes only to h.goals.done and the log — neither in snap(), so no golden moves. The same
   // one-line refresh goes at the end of every verb that satisfies a goal immediately.
   tickGoals(h);
-  return ok('tank built', { cost, lumberUsed: lumber.used });
+  return ok('tank built', { cost, lumberUsed: lumber.used, site });
 }
 
 /** Emergency water: a neighbour with a bakkie and a jojo on the back. */

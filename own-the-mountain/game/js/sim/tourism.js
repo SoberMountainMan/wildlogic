@@ -169,16 +169,25 @@ export const UNLISTED_ON_BUILD = new Set(['camp', 'caravan', 'house']);
  *  except wifi, which is a line rental every month. */
 export const FACILITY = {
   ablution: { label: 'Ablution block', cost: 12000, buildDays: 2 },
-  braai:    { label: 'Braai',           cost: 3500,  buildDays: 1 },
+  // `where` (owner live play 10-28: "click braai or generator etc and it says going up
+  // but where"): the unsited facilities put nothing on the map, so the log line is the
+  // only place the purchase can say what the money became. Sited kinds (ablution) need
+  // no where — the block stands where FACILITY_SITE put it.
+  braai:    { label: 'Braai',           cost: 3500,  buildDays: 1,
+              where: 'a stone braai and a bench go up in the camp yard, where the guests sit' },
   driveway: { label: 'Driveway',        cost: 9000,  buildDays: 3 },
-  fire:     { label: 'Fireplace',       cost: 1800,  buildDays: 1 },
-  wifi:     { label: 'Wifi line',       cost: 2500,  buildDays: 1, monthly: 400 },
+  fire:     { label: 'Fireplace',       cost: 1800,  buildDays: 1,
+              where: 'a fire circle in the camp yard, beside the braai' },
+  wifi:     { label: 'Wifi line',       cost: 2500,  buildDays: 1, monthly: 400,
+              where: 'a line rental — nothing stands on the plot; the village exchange switches it on' },
   // Power, two ways (GUEST-LADDER.md, "Power: generator vs solar"): the generator is
   // cheap and trips; solar is silent and never does. Both hold the lights on.
   // The generator also DRINKS (owner, 2026-10-21): "generators cost fuel to run". It is
   // cheap to buy and expensive to keep — the bill is the other half of the trade.
-  generator: { label: 'Generator',      cost: 8000,  buildDays: 1, fuelPerDay: 45 },
-  power:    { label: 'Solar power',     cost: 35000, buildDays: 7 },
+  generator: { label: 'Generator',      cost: 8000,  buildDays: 1, fuelPerDay: 45,
+              where: 'in the shed by the yard — you will hear it, and pay for its fuel every day' },
+  power:    { label: 'Solar power',     cost: 35000, buildDays: 7,
+              where: 'panels on the open ground by the yard — silent, and it never trips' },
 };
 export const FACILITY_KINDS = Object.keys(FACILITY);
 
@@ -542,7 +551,8 @@ export function buildFacility(h, kind) {
     x: site ? site.x : null, y: site ? site.y : null,
     fw: fp ? fp[0] : 1, fh: fp ? fp[1] : 1,
   });
-  h.log.push({ day: h.day, text: `${def.label} started. Ready in ${def.buildDays} day${def.buildDays === 1 ? '' : 's'}. −${money(def.cost)}` });
+  h.log.push({ day: h.day, text: `${def.label} started. Ready in ${def.buildDays} day${def.buildDays === 1 ? '' : 's'}. −${money(def.cost)}`
+    + (def.where ? ` ${def.where}.` : '') });
   return ok('facility started', { kind, cost: def.cost, doneDay: h.day + def.buildDays, site });
 }
 
@@ -899,6 +909,14 @@ export function buildAccom(h, kind, x, y) {
   h.accom.push(unit);
   const paidNote = lumber.used ? ` −${money(cost)} (mill lumber covered ${lumber.used} units, −${money(lumber.off)})` : ` −${money(cost)}`;
   h.log.push({ day: h.day, text: `${def.label} started. Ready in ${def.buildDays} days.${paidNote}` });
+  // Owner live play 10-28: "nothing stops you placing camp site without ablution block".
+  // The let-side gate exists (tickTourism hard-blocks a camp with no ablution, tests/33),
+  // but it speaks only when the first guest is turned away. The buyer hears it at BUY
+  // time now, while there is still money in the plan for the bathroom.
+  if (kind === 'camp' && !h.facilities.ablution
+      && !(h.facilityBuilds || []).some((b) => b.kind === 'ablution' && !b.built)) {
+    h.log.push({ day: h.day, text: 'No ablution block yet — the camp will take no guests until it is built (H$12,000, under Farm).' });
+  }
   if (surcharge > 0) {
     h.log.push({ day: h.day, text: `Driveway to the site: ${drivewayTiles(h.plot, x, y)} tiles from the gate, +${money(surcharge)}.` });
   } else if (tracked) {
