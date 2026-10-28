@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Own The Mountain — choose a life</title>
+<!-- no favicon art yet: an empty icon stops every page load logging a 404 (see plot.html) -->
+<link rel="icon" href="data:,">
+<style>
+  /* UI-DESIGN-v1 (A7): the three lives wear plot.html's chrome — status bar, menu bar
+     with dropdowns, window-shaped panels. The tokens are copied, not imported: these
+     pages are standalone and plot.html loads no shared stylesheet. Structure, not skin:
+     same palette, same bevels, same small-caps title bars. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  /* `min-height` on a flex COLUMN container does not hand free space to `main{flex:1}` —
+     the body has to have a real height for the growth to resolve, or the page ends where
+     its content does and the rest of the viewport is dead background (VIS-09's void,
+     which was only half-cured by centring the stage). */
+  html { height: 100%; }
+  body { margin: 0; height: 100%; min-height: 100vh; display: flex; flex-direction: column;
+    background: #0e1411; color: #e9e6db;
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+  /* ---------- A · status bar ---------- */
+  header { display: flex; align-items: center; gap: 12px; padding: 6px 12px;
+    border-bottom: 1px solid #243026; background: #131b16; flex-wrap: wrap;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }
+  header h1 { margin: 0; font-size: 14px; font-weight: 500; letter-spacing: .2px; }
+  header a { font-size: 12px; color: #7f8d7b; text-decoration: none;
+    border: 1px solid #2b3a30; padding: 3px 9px; border-radius: 99px; }
+  header a:hover { color: #d8e2d4; border-color: #4e7a5b; }
+  header .spacer { flex: 1; }
+  .stat { font-size: 11px; color: #93a08f; line-height: 1.25; padding: 0 10px;
+    border-left: 1px solid #243026; }
+  .stat b { display: block; font-size: 14px; color: #f0ecdf; font-weight: 500;
+    font-variant-numeric: tabular-nums; }
+
+  /* ---------- B · menu bar ---------- */
+  #menubar { display: flex; align-items: stretch; gap: 2px; padding: 3px 8px;
+    background: #101812; border-bottom: 1px solid #243026; position: relative; z-index: 40; }
+  .mbtn { position: relative; }
+  #menubar .mbtn > button { width: auto; margin: 0; background: none; border: none;
+    color: #c7cfc4; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+  #menubar .mbtn > button:hover, .mbtn.open > button { background: #1c2a22; color: #f0ecdf; }
+  #menubar .mbtn > button.active { background: #2e4a37; border: 1px solid #5f9e6d; }
+  .dropdown { display: none; position: absolute; top: 100%; left: 0; min-width: 265px;
+    background: #17211b; border: 1px solid #2f3f34; border-radius: 8px; padding: 5px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.5); z-index: 50; }
+  .mbtn.open .dropdown { display: block; }
+  .dropdown .dlink, .dropdown button { display: block; width: 100%; padding: 6px 9px; margin: 0;
+    border-radius: 6px; color: #d6ddd2; font: inherit; text-decoration: none; border: none;
+    background: none; text-align: left; cursor: pointer; }
+  .dropdown .dlink:hover, .dropdown button:hover { background: #24382c; }
+  .dropdown .note { font-size: 11px; color: #6f7d6c; padding: 4px 9px 2px; line-height: 1.4; }
+  .msep { width: 1px; background: #243026; margin: 4px 6px; }
+  #menubar .mbtn.winbtn > button { color: #9aa79a; }
+  #menubar .mbtn.winbtn > button:hover { color: #f0ecdf; }
+
+  /* ---------- main ---------- */
+  main { flex: 1; display: flex; min-height: 0; gap: 16px; padding: 18px 16px 22px;
+    align-items: center; }
+  /* VIS-09 (playtest 10-25): "a large dead black void above the headline". It was
+     `align-items: center` on this row: #stage shrank to its content and floated in the
+     middle of the page, so the space landed ABOVE the headline and read as a missing
+     image rather than as margin. The stage now fills the height and centres its own
+     contents, which puts the same space above and below the block — margin, not a hole. */
+  #stage { flex: 1; min-width: 0; display: flex; flex-direction: column;
+    align-self: stretch; justify-content: center; }
+  /* the docked panels sit on the same optical line as the doors, not above them */
+  aside { align-self: center; }
+  #lede { margin: 0 0 18px; }
+  #lede h2 { margin: 0 0 6px; font-size: 27px; font-weight: 500; letter-spacing: -.2px;
+    color: #f2eee1; }
+  #lede p { margin: 0; color: #97a394; font-size: 14.5px; }
+
+  /* ---------- the three lives ---------- */
+  .doors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 1180px) { .doors { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 900px) { .doors { grid-template-columns: 1fr; } }
+
+  .life { background: #131b16; border: 1px solid #2f3f34; border-radius: 10px;
+    overflow: hidden; display: flex; flex-direction: column; cursor: pointer;
+    transition: border-color .15s, box-shadow .15s, transform .15s; }
+  .life:hover, .life:focus-visible, .life.active { border-color: #5f9e6d;
+    box-shadow: 0 10px 30px rgba(0,0,0,.45), 0 0 0 1px rgba(95,158,109,.25);
+    outline: none; transform: translateY(-2px); }
+  .life .tbar { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    background: #1c2a22; border-bottom: 1px solid #2f3f34; }
+  .life .tbar b { font-size: 11px; font-weight: 500; letter-spacing: .07em;
+    text-transform: uppercase; color: #d9c9a0; }
+  .life .tbar .tag { margin-left: auto; font-size: 10px; letter-spacing: .05em;
+    text-transform: uppercase; color: #93a08f; border: 1px solid #2b3a30;
+    border-radius: 99px; padding: 1px 7px; }
+  .crest { width: 24px; height: 24px; border-radius: 6px; display: grid;
+    place-items: center; font-size: 12px; font-weight: 600; flex: none; }
+  .d1 .crest { background: #2b2114; color: #e0b878; border: 1px solid #5a4526; }
+  .d2 .crest { background: #16232b; color: #8fc4dd; border: 1px solid #2e4a5a; }
+  .d3 .crest { background: #1d2417; color: #b6c98a; border: 1px solid #3d4a2c; }
+  .life .body { padding: 11px 12px 4px; flex: 1; }
+  .life .role { color: #8d9a89; font-size: 12px; margin-bottom: 9px; }
+  .situation { font-size: 12.5px; color: #d8d4c7; margin: 0 0 10px; }
+  .first { font-size: 11.5px; color: #c8b48a; background: #1a1710;
+    border-left: 2px solid #6b5426; padding: 6px 9px; border-radius: 0 6px 6px 0;
+    margin-bottom: 11px; }
+  .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 0 0 11px; }
+  .fact { font-size: 11px; color: #7f8d7b; }
+  .fact b { display: block; font-size: 13px; color: #f0ecdf; font-weight: 500;
+    font-variant-numeric: tabular-nums; }
+  .fact.debt b { color: #e08a6a; }
+  .verbs { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+  .verbs span { font-size: 10.5px; color: #9fb0a0; border: 1px solid #2b3a30;
+    border-radius: 99px; padding: 1px 8px; }
+  .life .foot { padding: 10px 12px 12px; }
+  /* VIS-09: "the primary CTA buttons are dark green on near-black — they read as
+     disabled". #1e3327 on a #131b16 card is a 2-step value change on a dark screen, which
+     is exactly what a disabled control looks like. The one action on this page is PLAY,
+     so it gets the page's only warm fill: the ochre of the earth band, dark text on it,
+     and a filled shadow. Everything else on the screen stays green and quiet. */
+  .life .foot button { width: 100%; padding: 11px 10px; border-radius: 7px; cursor: pointer;
+    border: 1px solid #a8732a; background: #c9923c; color: #1a1206; font: inherit;
+    font-weight: 600; letter-spacing: .2px; text-align: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 2px 8px rgba(0,0,0,.35); }
+  .life:hover .foot button, .life.active .foot button { background: #dfa849;
+    border-color: #e8b662; }
+  .life:hover { transform: translateY(-2px); }
+  #stage footer { margin-top: 16px; color: #63705f; font-size: 12px; }
+
+  /* ---------- docked panels (window chrome, in flow) ---------- */
+  aside { width: 320px; flex: none; display: flex; flex-direction: column; gap: 10px; }
+  .win { background: #131b16; border: 1px solid #2f3f34; border-radius: 10px;
+    overflow: hidden; box-shadow: 0 10px 34px rgba(0,0,0,.45); }
+  .win.docked { position: static; width: auto; display: block; }
+  .win .tbar { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    background: #1c2a22; border-bottom: 1px solid #2f3f34; cursor: grab; user-select: none; }
+  .win .tbar b { font-size: 11px; font-weight: 500; letter-spacing: .07em;
+    text-transform: uppercase; color: #d9c9a0; }
+  .win .tbar .x { width: auto; margin: 0 0 0 auto; padding: 0 4px; border: none;
+    background: none; color: #7f8d7b; font-size: 15px; cursor: pointer; }
+  .win .tbar .x:hover { color: #e08a6a; background: none; }
+  .win .wbody { padding: 10px; }
+  .win .wbody p { margin: 0 0 8px; font-size: 12.5px; color: #b9c4b3; }
+  .win .wbody p:last-child { margin-bottom: 0; }
+  .win .wbody .dlink { display: block; font-size: 12.5px; color: #9fd0a8;
+    text-decoration: none; padding: 3px 0; }
+  .win .wbody .dlink:hover { color: #cfe6d2; }
+
+  /* floating window (the "what this is" help) */
+  .win.float { position: fixed; top: 96px; right: 24px; width: 340px; z-index: 70;
+    display: none; box-shadow: 0 12px 40px rgba(0,0,0,.6); }
+  .win.float.show { display: block; }
+
+  .card { background: #17211b; border: 1px solid #243026; border-radius: 8px;
+    padding: 9px 11px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px;
+    padding: 1px 0; }
+  .row span:last-child { color: #f0ecdf; font-variant-numeric: tabular-nums; }
+  .row.muted span { color: #8d9a89; }
+
+  #playername, #placename { width: 100%; background: #101a14; border: 1px solid #2b3a30;
+    border-radius: 8px; color: #e9e6db; font: inherit; padding: 8px 11px; }
+  #playername:focus, #placename:focus { outline: none; border-color: #4e7a5b; }
+  .note { font-size: 11px; color: #6f7d6c; margin-top: 7px; line-height: 1.45; }
+
+  @media (max-width: 900px) {
+    main { flex-direction: column; align-items: stretch; padding: 14px 12px 20px; }
+    /* the aside is centred against the doors on a wide screen; stacked, it is a full-width
+       column and must stretch, or `align-self: center` shrinks it to its text */
+    aside { width: 100%; align-self: stretch; }
+    header { gap: 8px; padding: 6px 10px; }
+    .stat b { font-size: 12px; }
+    .stat { font-size: 10px; padding: 0 7px; }
+    .win.float { left: 8px; right: 8px; width: auto; top: auto; bottom: 16px; }
+  }
+  @media (max-width: 560px) {
+    .stat:nth-of-type(n+3) { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Own The Mountain</h1>
+  <div class="stat"><b>Hogsback</b>Amatola</div>
+  <div class="stat"><b id="v-lives">3</b>lives</div>
+  <div class="stat"><b id="v-plots">—</b>plots off the map</div>
+  <div class="spacer"></div>
+  <a href="valley.html">the road in</a>
+</header>
+<nav id="menubar">
+  <div class="mbtn" data-menu>
+    <button>Lives ▾</button>
+    <div class="dropdown" id="lifemenu"></div>
+  </div>
+  <div class="mbtn" data-menu>
+    <button>The mountain ▾</button>
+    <div class="dropdown">
+      <a class="dlink" href="valley.html">Land on the mountain</a>
+      <button data-win="win-what">What this is</button>
+    </div>
+  </div>
+  <div class="msep"></div>
+  <div class="mbtn winbtn"><button data-win="win-what">What this is</button></div>
+</nav>
+<main>
+  <div id="stage">
+    <div id="lede">
+      <h2>Who do you want to play as?</h2>
+      <p>Three ways to arrive in Hogsback. None of them is the easy one.</p>
+    </div>
+    <div class="doors" id="doors"></div>
+    <footer>No win condition. You can lose your money, and you can lose the place.</footer>
+  </div>
+  <aside>
+    <div class="win docked">
+      <div class="tbar"><b>You and your place</b></div>
+      <div class="wbody">
+        <input id="playername" maxlength="20" autocomplete="off" spellcheck="false"
+          placeholder="Your name (optional)" aria-label="Your name (optional)">
+        <div class="note">The mountain does not need it. Leave it blank and the story stays
+          second person.</div>
+        <input id="placename" maxlength="24" autocomplete="off" spellcheck="false"
+          placeholder="Name your place (optional)" aria-label="Name your place (optional)"
+          style="margin-top:9px">
+        <div class="note">The game never names your land — that would be naming somebody
+          else's. Call it what you like; you can change it later from the Game menu.</div>
+      </div>
+    </div>
+    <div class="win docked">
+      <div class="tbar"><b>The mountain</b></div>
+      <div class="wbody">
+        <div class="row"><span>Land off the map</span><span id="v-sites">—</span></div>
+        <div class="row muted"><span>Workable ground</span><span id="v-good">—</span></div>
+        <div class="row muted"><span>Rough ground</span><span id="v-rough">—</span></div>
+        <a class="dlink" href="valley.html">See the ground →</a>
+      </div>
+    </div>
+  </aside>
+  <div class="win float" id="win-what">
+    <div class="tbar"><b>What this is</b><button class="x" data-close="win-what">×</button></div>
+    <div class="wbody">
+      <p>Pick a life. Each one starts on different ground, with different money and a
+        different first problem — the mountain itself does not change.</p>
+      <p>You can buy other ground off the map from <a class="dlink" href="valley.html"
+        style="display:inline;padding:0">the road in</a>, on a 15% deposit and eight years
+        of bond.</p>
+      <p>Money is <b>H$</b>. There is no win condition: you can lose your money, and you can
+        lose the place.</p>
+    </div>
+  </div>
+</main>
+<script type="module">
+import { START_OPTIONS, startPlan } from './js/sim/plotmap.js';
+import { SITES } from './js/sim/sites.js';
+// U10b: the grouping rule lives in js/sim/fmt.js — one formatter, shared by the sim, this
+// page and valley.html (see the header there for why it is a leaf module).
+import { money } from './js/sim/fmt.js';
+// The three states a life can be in (never played / a run in progress / a run that ended) are
+// read through the SAME key rule plot.html writes with, so a card that says "Continue" always
+// finds the save behind it. See js/ui/saves.js.
+import { lifeStatus } from './js/ui/saves.js';
+
+// The compact band on the catalog footer ("24 · H$257k-H$829k") is a DIFFERENT rule — a
+// read-at-a-glance magnitude, not an amount — and fmt.js does not export one yet, so this
+// page keeps the only copy of it. A Request is on the board to move it into fmt.js next to
+// money(), because company.js:220 already types its own "H$26k" and that is two again.
+const short = (n) => 'H$' + Math.floor(n / 1000) + 'k';   // catalog bands only: prices, never a debt
+
+const $ = (id) => document.getElementById(id);
+const doors = $('doors');
+
+const waterLabel = (w) => (w === 'stream' ? 'Stream' : w === 'dam-site' ? 'Dam site' : 'Dry — 3 days');
+const TERMS = { cash: 'bought outright', bond: 'on a bond', family: 'a family share' };
+
+/* A returning player sees what they chose last time, so "rename" is an edit, not a retype. */
+for (const [id, key] of [['playername', 'otm.playerName'], ['placename', 'otm.plotName']]) {
+  try {
+    const v = localStorage.getItem(key);
+    if (v && $(id)) $(id).value = v;
+  } catch { /* private mode */ }
+}
+
+/* The status bar tells the truth about the mountain: the catalog is read, never typed. */
+const good = SITES.filter((s) => s.tier === 'good');
+const rough = SITES.filter((s) => s.tier === 'rough');
+$('v-lives').textContent = START_OPTIONS.length;
+$('v-plots').textContent = SITES.length;
+$('v-sites').textContent = SITES.length + ' plots';
+$('v-good').textContent = good.length + ' · ' + short(Math.min(...good.map((s) => s.price)))
+  + '–' + short(Math.max(...good.map((s) => s.price)));
+$('v-rough').textContent = rough.length + ' · ' + short(Math.min(...rough.map((s) => s.price)))
+  + '–' + short(Math.max(...rough.map((s) => s.price)));
+
+const cards = [];
+START_OPTIONS.forEach((o, i) => {
+  const p = startPlan(o.plot, o.mode);
+  const water = o.plot.water;
+  const st = lifeStatus(o.key);
+  const who = o.name.replace(/^The /, 'the ');
+  /* The owner's ruling on the labels: say what the card will actually do. "Play as" on a life
+     with a run in progress was a lie twice over - it resumed, and it did not start. A dead run
+     gets "Restart", which is the one card that clears anything, and it clears only its own
+     life (plot.html, ?retry=1). */
+  const action = st.status === 'living' ? `Continue as ${who}`
+    : st.status === 'dead' ? `Restart ${who}` : `Play as ${who}`;
+  const runote = st.status === 'living'
+    ? `a run here already - day ${st.day}, ${money(st.cash)} in hand`
+    : st.status === 'dead' ? `a run ended here on day ${st.day}` : '';
+  const el = document.createElement('div');
+  el.className = `life d${i + 1}`;
+  el.tabIndex = 0;
+  el.setAttribute('role', 'button');
+  el.setAttribute('aria-label', action);
+  el.dataset.life = o.key;
+  el.innerHTML = `
+    <div class="tbar">
+      <span class="crest">${o.mark}</span>
+      <b>${o.name}</b>
+      <span class="tag">${TERMS[o.mode] || o.mode}</span>
+    </div>
+    <div class="body">
+      <div class="role">${o.role}</div>
+      <p class="situation">${o.situation}</p>
+      <div class="first">First problem: ${o.firstProblem}</div>
+      <div class="facts">
+        <div class="fact"><b>${o.plot.ha} ha</b>land</div>
+        <div class="fact"><b>${waterLabel(water)}</b>water</div>
+        <div class="fact"><b>${money(p.cashLeft)}</b>in hand</div>
+        <div class="fact ${p.monthly ? 'debt' : ''}"><b>${p.monthly ? money(p.monthly) + '/mo' : 'None'}</b>debt</div>
+        <div class="fact"><b>${o.plot.kmFromShop} km</b>to the shop</div>
+        <div class="fact"><b>${o.plot.slope}%</b>slope</div>
+      </div>
+      <div class="verbs">${o.verbs.map((v) => `<span>${v}</span>`).join('')}</div>
+    </div>
+    <div class="foot">${runote ? `<div class="note" data-run="${st.status}">${runote}</div>` : ''}<button type="button" tabindex="-1">${action}</button></div>
+  `;
+  // owner ruling 2026-10-19 (NARRATIVE-BIBLE §12): the player names themselves. The name
+  // lives in localStorage only — the household never sees it, golden hashes are untouched.
+  // owner ruling 2026-10-22: the player names the PLACE too. The game will not name a
+  // property, because every name it could invent is either somebody's real farm or a lie
+  // about where the land is. Both keys are display-side only.
+  const keep = (id, key, cap) => {
+    const v = (document.getElementById(id)?.value || '').trim().slice(0, cap);
+    try {
+      if (v) localStorage.setItem(key, v);
+      else localStorage.removeItem(key);
+    } catch { /* private mode */ }
+  };
+  const go = () => {
+    keep('playername', 'otm.playerName', 20);
+    keep('placename', 'otm.plotName', 24);
+    // A living run resumes untouched; a dead one asks plot.html to clear THIS life's runs
+    // first, which is what the "Restart" label promised. Choosing another life never touches
+    // this one's save either way.
+    location.href = 'plot.html?start=' + encodeURIComponent(o.key)
+      + (st.status === 'dead' ? '&retry=1' : '');
+  };
+  el.addEventListener('click', go);
+  el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  doors.appendChild(el);
+  cards.push(el);
+
+  // the menu bar carries the same three lives (TT's redundant entry, one implementation)
+  const mi = document.createElement('button');
+  mi.innerHTML = `${i + 1} · ${o.name}<span class="note" style="display:block;padding:0">${o.role}</span>`;
+  mi.addEventListener('click', () => pick(i));
+  $('lifemenu').appendChild(mi);
+});
+const menunote = document.createElement('div');
+menunote.className = 'note';
+menunote.textContent = 'Or click a card. Enter plays the card you are on.';
+$('lifemenu').appendChild(menunote);
+
+function pick(i) {
+  cards.forEach((c, k) => c.classList.toggle('active', k === i));
+  cards[i].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  cards[i].focus({ preventScroll: true });
+}
+
+/* ---------------- chrome: menus, windows, keys ---------------- */
+const menus = [...document.querySelectorAll('#menubar .mbtn[data-menu]')];
+const closeMenus = () => menus.forEach((m) => m.classList.remove('open'));
+menus.forEach((m) => {
+  m.querySelector(':scope > button').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const was = m.classList.contains('open');
+    closeMenus();
+    m.classList.toggle('open', !was);
+  });
+  m.querySelector('.dropdown').addEventListener('click', (e) => {
+    if (e.target.closest('button, a')) closeMenus();
+  });
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#menubar')) closeMenus();
+});
+
+const WINDOWS = ['win-what'];
+document.querySelectorAll('[data-win]').forEach((b) => b.addEventListener('click', () => {
+  const w = $(b.dataset.win);
+  w.classList.toggle('show');
+}));
+document.querySelectorAll('[data-close]').forEach((b) =>
+  b.addEventListener('click', () => $(b.dataset.close).classList.remove('show')));
+
+document.addEventListener('keydown', (e) => {
+  // the name field keeps every key it wants — the shortcuts are for the cards
+  if (e.target.closest('input, textarea')) return;
+  const di = ['1', '2', '3'].indexOf(e.key);
+  if (di >= 0 && cards[di]) { e.preventDefault(); pick(di); }
+  if (e.key === 'Escape') {
+    closeMenus();
+    WINDOWS.forEach((id) => $(id).classList.remove('show'));
+    cards.forEach((c) => c.classList.remove('active'));
+  }
+});
+</script>
+</body>
+</html>

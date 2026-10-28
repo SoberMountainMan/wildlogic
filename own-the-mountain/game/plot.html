@@ -1,0 +1,2242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Own The Mountain — your plot</title>
+<!-- Every page load asks the server for /favicon.ico and gets a 404 - the one console error
+     on an otherwise clean boot, which is one bad day away from making the probe's "zero
+     console errors" assertion something people learn to ignore. An empty icon is a promise
+     never to ask. (Lead 2026-10-23; the game has no icon art yet and should not invent one.) -->
+<link rel="icon" href="data:,">
+<style>
+  /* UI-DESIGN-v1 (owner GO 2026-10-21): the sidebar is gone. Chrome is now
+     Transport-Tycoon-shaped — status bar, menu bar with tool dropdowns, a tool rail,
+     floating domain windows, a pinned goal panel. Every element ID from the old
+     sidebar survives inside the new containers, so every render function is untouched. */
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100vh; display: flex; flex-direction: column;
+    background: #0e1411; color: #e9e6db; overflow: hidden; max-width: 100vw;
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+
+  /* ---------- A · status bar ---------- */
+  header { display: flex; align-items: center; gap: 12px; padding: 6px 12px;
+    border-bottom: 1px solid #243026; background: #131b16; flex-wrap: wrap;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.03); }
+  header h1 { margin: 0; font-size: 14px; font-weight: 500; }
+  header a { font-size: 12px; color: #7f8d7b; text-decoration: none;
+    border: 1px solid #2b3a30; padding: 3px 9px; border-radius: 99px; }
+  header a:hover { color: #d8e2d4; border-color: #4e7a5b; }
+  header .spacer { flex: 1; }
+  .stat { font-size: 11px; color: #93a08f; line-height: 1.25; padding: 0 10px;
+    border-left: 1px solid #243026; }
+  .stat b { display: block; font-size: 14px; color: #f0ecdf; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .stat.cash b { color: #e8b45a; }
+  .stat.bill b { color: #e08a6a; }
+  /* A1 · alarms announce. A fact that ends a life does not belong in a window the
+     player has to think to open — the four that matter ride the status bar. */
+  #alarms { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
+  .alarm { font-size: 11px; line-height: 1.2; padding: 3px 9px; border-radius: 99px;
+    border: 1px solid; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .alarm b { font-weight: 600; }
+  .alarm.hot { color: #f0b09a; border-color: #8a4530; background: rgba(224,138,106,.13); }
+  .alarm.warn { color: #e8c98a; border-color: #7a6132; background: rgba(232,180,90,.10); }
+  @media (max-width: 980px) { #alarms .alarm { padding: 2px 7px; font-size: 10px; } }
+  #endday { width: auto; margin: 0; background: #2c4a35; border-color: #4e7a5b;
+    font-weight: 500; text-align: center; padding: 8px 18px; }
+  #endday:hover:not(:disabled) { background: #35593f; }
+
+  /* ---------- B · menu bar ---------- */
+  /* z 90, above the death overlay (#over, 80). #over fills #stage, and a menu panel hangs down
+     INTO the stage, so on a dead run every dropdown item was painted under the overlay and
+     could not be clicked - the playtest hit it as "Start over is unreachable, #over intercepts
+     the pointer". Raising the panel alone does nothing: a descendant's z-index cannot escape
+     its parent's stacking context, and #menubar had its own (z 40). So the bar goes up. */
+  #menubar { display: flex; align-items: stretch; gap: 2px; padding: 3px 8px;
+    background: #101812; border-bottom: 1px solid #243026; position: relative; z-index: 90; }
+  .mbtn { position: relative; }
+  #menubar .mbtn > button { width: auto; margin: 0; background: none; border: none;
+    color: #c7cfc4; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+  #menubar .mbtn > button:hover, .mbtn.open > button { background: #1c2a22; color: #f0ecdf; }
+  #menubar .mbtn > button.active { background: #2e4a37; border: 1px solid #5f9e6d; }
+  /* Sits above the windows (70) inside the menu bar's own context; the bar itself is raised
+     above the death overlay so a menu panel hanging into the stage stays clickable (see
+     #menubar). */
+  .dropdown { display: none; position: absolute; top: 100%; left: 0; min-width: 265px;
+    background: #17211b; border: 1px solid #2f3f34; border-radius: 8px; padding: 5px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.5); z-index: 90; }
+  .mbtn.open .dropdown { display: block; }
+  .dropdown .dlink { display: block; width: 100%; padding: 6px 9px; margin: 0;
+    border-radius: 6px; color: #d6ddd2; font: inherit; text-decoration: none; border: none;
+    background: none; text-align: left; cursor: pointer; }
+  .dropdown .dlink:hover { background: #24382c; }
+  .dropdown .note { font-size: 11px; color: #6f7d6c; padding: 4px 9px 2px; line-height: 1.4; }
+  .msep { width: 1px; background: #243026; margin: 4px 6px; }
+  #menubar .mbtn.winbtn > button { color: #9aa79a; }
+  #menubar .mbtn.winbtn > button:hover { color: #f0ecdf; }
+
+  /* ---------- stage ---------- */
+  main { flex: 1; display: flex; min-height: 0; position: relative; }
+  #stage { flex: 1; position: relative; min-width: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #map { touch-action: none; }
+  /* U12 look fix: the renderer paints its scale label ("170 × 146 m · 2.4 ha · ↑120 m · iso")
+     in a 150px band at the canvas bottom-left, y H-24..H-7. The hint used to sit at
+     bottom:10px, i.e. exactly on top of it — both were unreadable in every screenshot of the
+     default screen. It now clears the band. */
+  #hint { position: absolute; left: 62px; bottom: 30px; font-size: 12px; color: #b9c4b3;
+    background: rgba(12,18,14,.82); padding: 5px 10px; border-radius: 6px; z-index: 5; }
+
+  /* ---------- C · tool rail ---------- */
+  #rail { position: absolute; left: 10px; top: 12px; display: flex; flex-direction: column;
+    gap: 6px; z-index: 30; }
+  #rail button { width: 38px; height: 38px; margin: 0; border-radius: 8px;
+    border: 1px solid #2f3f34; background: rgba(19,27,22,.92); color: #a7b3a2;
+    cursor: pointer; display: grid; place-items: center; padding: 0; }
+  #rail button:hover { border-color: #4e7a5b; color: #d8e2d4; }
+  #rail svg { width: 19px; height: 19px; display: block; }
+
+  /* ---------- F · goal panel (pinned, collapsible) ---------- */
+  #goalpanel { position: absolute; right: 12px; top: 12px; width: 252px; z-index: 25;
+    background: rgba(19,27,22,.94); border: 1px solid #2f3f34; border-radius: 9px;
+    overflow: hidden; }
+  #goalhead { display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 11px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: #7f8d7b; cursor: pointer; user-select: none; }
+  #goalhead:hover { color: #c7cfc4; }
+  #goalpanel .card { margin: 0; border: none; border-top: 1px solid #243026;
+    border-radius: 0; }
+  #goalpanel.closed .card { display: none; }
+
+  /* ---------- E · floating domain windows ---------- */
+  .win { position: absolute; width: 340px; background: #131b16;
+    border: 1px solid #2f3f34; border-radius: 10px; overflow: hidden;
+    box-shadow: 0 10px 34px rgba(0,0,0,.55); z-index: 70; display: none;
+    /* U1: a window is the player's furniture — it keeps the size they gave it */
+    resize: both; min-width: 260px; min-height: 120px; }
+  .win.show { display: block; }
+  /* the unread count on the Log button: the one window that fills up while shut */
+  .dot { display: none; min-width: 15px; height: 15px; border-radius: 99px; background: #e8b45a;
+    color: #131b16; font-size: 9.5px; line-height: 15px; text-align: center; margin-left: 6px;
+    padding: 0 4px; vertical-align: 1px; font-weight: 600; }
+  .win .tbar { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    background: #1c2a22; border-bottom: 1px solid #2f3f34; cursor: grab; user-select: none; }
+  .win .tbar:active { cursor: grabbing; }
+  .win .tbar b { font-size: 11px; font-weight: 500; letter-spacing: .07em;
+    text-transform: uppercase; color: #d9c9a0; }
+  .win .tbar .x { width: auto; margin: 0; padding: 0 4px; border: none; background: none;
+    color: #7f8d7b; font-size: 15px; cursor: pointer; margin-left: auto; }
+  .win .tbar .x:hover { color: #e08a6a; background: none; }
+  .win .wbody { padding: 10px; max-height: min(46vh, 420px); overflow-y: auto; }
+  .win .tabs { display: flex; gap: 4px; padding: 6px 10px 0; border-bottom: 1px solid #243026; }
+  .win .tabs button { width: auto; margin: 0; background: none; border: none;
+    border-bottom: 2px solid transparent; border-radius: 0; color: #8d9a89; font: inherit;
+    font-size: 12px; padding: 4px 9px; cursor: pointer; }
+  .win .tabs button:hover { background: none; border-color: transparent; color: #c7cfc4; }
+  .win .tabs button.on { color: #f0ecdf; border-bottom-color: #5f9e6d; }
+  .win .tabpanel { padding: 10px; }
+  .win .tabpanel[hidden] { display: none; }
+
+  /* U2 · the keys window: one row per entry in the KEYMAP table, so the list cannot
+     disagree with the handler that reads it */
+  #helpbody { padding: 5px 9px; }
+  .krow { display: flex; gap: 10px; align-items: flex-start; padding: 5px 2px;
+    border-bottom: 1px solid #1c2620; }
+  .krow:last-child { border-bottom: none; }
+  .krow kbd { flex: none; min-width: 44px; text-align: center; padding: 0 5px;
+    font: 11px/1.7 ui-monospace, Consolas, monospace; color: #f0ecdf; background: #1c2a22;
+    border: 1px solid #2f3f34; border-bottom-width: 2px; border-radius: 5px; }
+  .krow b { display: block; font-size: 12.5px; font-weight: 500; color: #e9e6db; }
+  .krow small { display: block; font-size: 11px; color: #8d9a89; line-height: 1.35; }
+  .krow .own { font-size: 10px; color: #6f7d6c; text-transform: uppercase; letter-spacing: .06em; }
+
+  .card { background: #17211b; border: 1px solid #243026; border-radius: 8px;
+    padding: 9px 11px; margin-bottom: 10px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; padding: 1px 0;
+    flex-wrap: wrap; }          /* a long value wraps, it does not shove off the sheet */
+  .row span { min-width: 0; }
+  .row span:last-child { color: #f0ecdf; font-variant-numeric: tabular-nums; text-align: right;
+    overflow-wrap: break-word; }
+  .row.muted span { color: #8d9a89; }
+  button { width: 100%; padding: 8px 10px; margin: 0 0 6px; border-radius: 7px; cursor: pointer;
+    border: 1px solid #2f3f34; background: #1c2a22; color: #e9e6db; font: inherit; text-align: left; }
+  button:hover:not(:disabled) { background: #24382c; border-color: #3d5545; }
+  button.active { background: #2e4a37; border-color: #5f9e6d; }
+  button:disabled { opacity: .38; cursor: not-allowed; }
+  button small { display: block; color: #93a08f; font-size: 11px; }
+  #log { font-size: 12px; color: #a7b3a2; height: 300px; overflow-y: auto; }  #log div { padding: 1px 0; border-bottom: 1px solid #1c2620; }
+  #log div.day { color: #d9c9a0; }
+  #log div.bad { color: #e08a6a; }
+  #report { position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%);
+    min-width: 300px; max-width: 420px; background: rgba(18,26,21,.96); border: 1px solid #33513f;
+    border-radius: 10px; padding: 12px 14px; display: none; box-shadow: 0 6px 24px rgba(0,0,0,.45);
+    z-index: 65; }
+  #report.show { display: block; }
+  #report h3 { margin: 0 0 6px; font-size: 13px; font-weight: 500; color: #f0ecdf; }
+  #report .r { display: flex; justify-content: space-between; font-size: 12.5px; padding: 1px 0; }
+  #report .r span:last-child { font-variant-numeric: tabular-nums; }
+  #report .net { border-top: 1px solid #2b3a30; margin-top: 6px; padding-top: 5px; font-weight: 500; }
+  #report .ev { font-size: 11.5px; color: #c8b48a; margin-top: 6px; line-height: 1.4; }
+  #report .go { font-size: 11px; color: #6f7d6c; margin-top: 8px; text-align: right; }
+  #over { position: absolute; inset: 0; background: rgba(8,12,10,.92); display: none;
+    place-items: center; text-align: center; padding: 30px; z-index: 80; }
+  #over.show { display: grid; }
+  #over h2 { font-size: 20px; margin: 0 0 8px; font-weight: 500; }
+  #over p { color: #b9c4b3; max-width: 420px; margin: 0 auto 18px; }
+  #over a { color: #9fd0a8; }
+  #over .overbtns { display: flex; gap: 12px; justify-content: center; align-items: center;
+    flex-wrap: wrap; }
+  /* The global button rule is width:100% for window panels; on the death screen the retry is
+     a primary action next to a link, so it sizes to its own words. */
+  #over button { width: auto; margin: 0; padding: 9px 18px; font-size: 14px;
+    background: #2e4a37; border: 1px solid #5f9e6d; color: #f0ecdf; border-radius: 8px;
+    cursor: pointer; }
+  #over button:hover { background: #38583f; }
+  #over .overtip { font-size: 11.5px; color: #7f8d80; margin: 14px auto 0; max-width: 340px; }
+
+  /* ---------- U3 · the phone (390×844 — the owner's real test) ----------
+     Below 980px the windows become bottom sheets: one at a time, thumb-height, with a
+     grab handle you can drag down to shut. Targets are 44px, the page never scrolls
+     sideways, and every scroller keeps its overscroll to itself so a flick inside a
+     window cannot pan the map behind it. */
+  .wbody, .tabpanel, #log { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  @media (max-width: 980px) {
+    .win.show { left: 8px !important; right: 8px; width: auto !important; top: auto !important;
+      bottom: calc(10px + env(safe-area-inset-bottom, 0px)); max-height: 62vh; resize: none;
+      border-radius: 14px; }
+    .win .wbody, .win .tabpanel { max-height: 48vh; }
+    /* the grab handle: the sheet's own affordance, and the drag-to-shut target */
+    .win .tbar { padding-top: 13px; position: relative; touch-action: none; }
+    .win .tbar::before { content: ''; position: absolute; top: 5px; left: 50%;
+      transform: translateX(-50%); width: 38px; height: 4px; border-radius: 3px;
+      background: #465a4c; }
+    .win .tbar .x { min-width: 44px; min-height: 44px; margin: -10px -6px -10px auto; }
+    #rail { display: none; }
+    /* the goal card stays reachable one-handed: small, top-right, still collapsible */
+    #goalpanel { display: block; width: 188px; right: 8px; top: 8px; }
+    #hint { left: 8px; right: 8px; font-size: 11px;
+      bottom: calc(30px + env(safe-area-inset-bottom, 0px)); }
+    header { gap: 6px; padding: calc(6px + env(safe-area-inset-top, 0px)) 10px 6px; }
+    .stat b { font-size: 12px; }
+    .stat { font-size: 10px; padding: 0 7px; }
+    #menubar { flex-wrap: wrap; row-gap: 2px; padding: 2px 6px; }
+    /* a thumb, not a cursor */
+    button, #menubar .mbtn > button, .dropdown .dlink { min-height: 44px; }
+  }
+  @media (max-width: 560px) {
+    /* the status bar keeps what ends a run; the rest lives in the windows */
+    header h1, .spacer { display: none; }
+    .stat.weather, .stat.bill, .stat.produce, .stat.honey, .stat.trees { display: none; }
+    #endday { margin-left: auto; }
+    #alarms { order: 20; flex-basis: 100%; overflow-x: auto; padding: 2px 0; }
+    /* six window chips cannot fit a phone bar — one menu holds them */
+    #menubar .mbtn.winbtn { display: none; }
+    #winmenu { display: block; }
+    #menubar .mbtn > button { padding: 0 8px; font-size: 12.5px; }
+    .dropdown { min-width: 200px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Plot</h1>
+  <div class="stat cash"><b id="v-cash">H$0</b>cash</div>
+  <div class="stat weather"><b id="v-weather">—</b>weather</div>
+  <div class="stat date"><b id="v-date">—</b>date</div>
+  <div class="stat bill"><b id="v-bill">—</b>next bill</div>
+  <div class="stat produce"><b id="v-produce">0 kg</b>produce</div>
+  <div class="stat honey"><b id="v-honey">0 kg</b>honey</div>
+  <div class="stat trees"><b id="v-trees">0</b>trees</div>
+  <div id="alarms"></div>
+  <div class="spacer"></div>
+  <a id="btn-mute" href="#">mute sound</a>
+  <button id="endday">End the day →</button>
+</header>
+<nav id="menubar">
+  <!-- Game menu: the life-level decisions. -->
+  <div class="mbtn" data-menu>
+    <button>Game ▾</button>
+    <div class="dropdown">
+      <a class="dlink" href="start.html">Change life</a>
+      <a class="dlink" id="rename-place" href="#">Rename your place</a>
+      <a class="dlink" id="restart" href="#">Start over</a>
+      <a class="dlink" id="valley-link" href="valley.html">The road in</a>
+      <!-- U1: the player's own desk — shut every window, and the game remembers it -->
+      <a class="dlink" id="closeall" href="#">Close all windows</a>
+      <a class="dlink" data-win="win-help" href="#">Keyboard shortcuts · ?</a>
+    </div>
+  </div>
+  <!-- Tool menus: the same buttons the tile popup serves, one implementation.
+       Buttons live here so their labels and disabled states keep updating for free. -->
+  <div class="mbtn" data-menu>
+    <button>Build ▾</button>
+    <div class="dropdown">
+      <!-- U8: the roof is a build (ACCOM.house has existed since the terrain round with no
+           UI at all). First row, because it is the first decision — and it arms the ghost,
+           it does not quietly put a house somewhere the player never chose. -->
+      <button id="btn-house">Build your house <small id="lbl-house"></small></button>
+      <button id="btn-unit">Build a letting unit <small id="lbl-unit"></small></button>
+      <button id="btn-cabin">Build a cabin <small id="lbl-cabin"></small></button>
+      <button id="btn-camp">Open a camping site <small id="lbl-camp"></small></button>
+      <button id="btn-caravan">Open a caravan stand <small id="lbl-caravan"></small></button>
+      <button id="btn-cleaner">Get a village cleaner <small id="lbl-cleaner"></small></button>
+      <div class="note">Or click a clear tile on the map and choose Build there —
+        you pick the spot.</div>
+    </div>
+  </div>
+  <div class="mbtn" data-menu>
+    <button>Siteworks ▾</button>
+    <div class="dropdown">
+      <!-- Drag-build (owner, 2026-10-21): arm a line, then press-drag-release across
+           the tiles. One ordered run — the sim still rules on each tile. -->
+      <button id="btn-dragtrack" class="dragtool" data-drag="track">Drag a dirt track <small id="lbl-dragtrack"></small></button>
+      <button id="btn-draggravel" class="dragtool" data-drag="gravel">Drag a gravel road <small id="lbl-draggravel"></small></button>
+      <button id="btn-dragmud" class="dragtool" data-drag="mud">Drag a mud track <small id="lbl-dragmud"></small></button>
+      <button id="btn-dragfence" class="dragtool" data-drag="fence">Drag a fence line <small id="lbl-dragfence"></small></button>
+      <button id="btn-dragflat" class="dragtool" data-drag="flatten">Flatten a block <small id="lbl-dragflat"></small></button>
+      <button id="btn-patch">Patch the road <small id="lbl-patch"></small></button>
+      <div class="note">Arm a line, then drag across the ground — release builds the run.
+        Esc cancels. Or click one tile for a single piece.</div>
+    </div>
+  </div>
+  <div class="mbtn" data-menu>
+    <button>Forestry ▾</button>
+    <div class="dropdown">
+      <button id="btn-fell">Fell trees <small id="lbl-fell"></small></button>
+      <button id="btn-wood">Sell firewood <small id="lbl-wood"></small></button>
+      <button id="btn-poles">Sell poles to the yard <small id="lbl-poles"></small></button>
+    </div>
+  </div>
+  <div class="mbtn" data-menu>
+    <button>Farm ▾</button>
+    <div class="dropdown">
+      <!-- FARMING Part 2: planting is a choice of three, so the rows are GENERATED from
+           CROPS (one per crop, priced, with the rate on it) rather than typed here — a
+           fourth crop in the sim has to appear on its own. #bedcount carries the capacity
+           line that used to sit on the single bed button. -->
+      <div id="croprows"></div>
+      <div class="note" id="bedcount"></div>
+      <button id="btn-hive">Buy a hive <small id="lbl-hive"></small></button>
+      <button id="btn-harvest">Harvest <small id="lbl-harvest"></small></button>
+      <button id="btn-hire">Hire a casual for the day <small id="lbl-hire"></small></button>
+      <button id="btn-water">Buy water <small id="lbl-water"></small></button>
+      <button id="btn-tank">Build a water tank <small id="lbl-tank"></small></button>
+    </div>
+  </div>
+  <div class="mbtn" data-menu>
+    <button>Trade ▾</button>
+    <div class="dropdown">
+      <button id="btn-sell">Take it to the shop <small id="lbl-sell"></small></button>
+      <button id="btn-expand">Buy the land next door <small id="lbl-expand"></small></button>
+    </div>
+  </div>
+  <div class="msep"></div>
+  <!-- Domain windows: one subject each, opened when you care about it. -->
+  <div class="mbtn winbtn"><button data-win="win-plot">The plot</button></div>
+  <div class="mbtn winbtn"><button data-win="win-guests">Guests</button></div>
+  <div class="mbtn winbtn"><button data-win="win-company">Company</button></div>
+  <div class="mbtn winbtn"><button data-win="win-village">Village</button></div>
+  <div class="mbtn winbtn"><button data-win="win-money">Money</button></div>
+  <div class="mbtn winbtn"><button data-win="win-log">Log<span class="dot" id="logdot"></span></button></div>
+  <!-- U3 · phone: the six chips above cannot fit a 390px bar, so one menu holds them -->
+  <div class="mbtn" id="winmenu">
+    <button>Windows ▾</button>
+    <div class="dropdown">
+      <button data-win="win-plot">The plot</button>
+      <button data-win="win-guests">Guests</button>
+      <button data-win="win-company">Company</button>
+      <button data-win="win-village">Village</button>
+      <button data-win="win-money">Money</button>
+      <button data-win="win-log">Log</button>
+      <button data-win="win-help">Keys</button>
+      <a class="dlink" id="closeall-m" href="#">Close all</a>
+    </div>
+  </div>
+</nav>
+<main>
+  <div id="stage">
+    <canvas id="map"></canvas>
+    <div id="hint">Click a tree to inspect it.</div>
+    <div id="report"></div>
+    <div id="over"><div>
+      <h2 id="over-title">The run is over</h2>
+      <p id="over-reason"></p>
+      <!-- BUG-006 (playtest 2026-10-26): the only way back into the life you just lost was
+           "Choose another life", and clicking the SAME life on the picker loads the dead save
+           again - straight back to this screen. The retry belongs here, on the screen that
+           knows the run ended, and it states what it clears. -->
+      <div class="overbtns">
+        <button id="over-retry" type="button">Retry this life</button>
+        <a href="start.html" id="over-another">Choose another life</a>
+      </div>
+      <p class="overtip">Retry starts <span id="over-life">this life</span> again from the first
+        of September. Everything on this run is gone.</p>
+    </div></div>
+  </div>
+  <!-- C · tool rail: the five tool families, TT-style redundant entry -->
+  <div id="rail"></div>
+  <!-- F · goal panel: pinned small, click the head to collapse -->
+  <div id="goalpanel">
+    <div id="goalhead"><span>What now</span><span id="goaltoggle">▾</span></div>
+    <div class="card" id="goalcard"></div>
+  </div>
+  <!-- E · domain windows. The cards keep their IDs; the render functions never knew. -->
+  <div class="win" id="win-plot">
+    <div class="tbar"><b>The plot</b><button class="x" data-close="win-plot">×</button></div>
+    <div class="wbody"><div class="card" id="plotcard" style="margin:0"></div></div>
+  </div>
+  <div class="win" id="win-guests">
+    <div class="tbar"><b>Guests</b><button class="x" data-close="win-guests">×</button></div>
+    <div class="tabs">
+      <button class="on" data-tab="tp-yard">Bookings</button>
+      <button data-tab="tp-voice">Reviews</button>
+    </div>
+    <div class="tabpanel" id="tp-yard"><div class="card" id="yardcard" style="margin:0"></div></div>
+    <div class="tabpanel" id="tp-voice" hidden><div class="card" id="voicecard" style="margin:0"></div></div>
+  </div>
+  <div class="win" id="win-company">
+    <div class="tbar"><b>The company</b><button class="x" data-close="win-company">×</button></div>
+    <div class="tabs">
+      <button class="on" data-tab="tp-company">The company</button>
+      <button data-tab="tp-mountain">The mountain</button>
+    </div>
+    <div class="tabpanel" id="tp-company"><div class="card" id="companycard" style="margin:0"></div></div>
+    <div class="tabpanel" id="tp-mountain" hidden><div class="card" id="legacycard" style="margin:0"></div></div>
+  </div>
+  <div class="win" id="win-village">
+    <div class="tbar"><b>The village</b><button class="x" data-close="win-village">×</button></div>
+    <div class="wbody"><div class="card" id="villagecard" style="margin:0"></div></div>
+  </div>
+  <div class="win" id="win-money">
+    <div class="tbar"><b>Money</b><button class="x" data-close="win-money">×</button></div>
+    <div class="wbody"><div class="card" id="bankcard" style="margin:0"></div></div>
+  </div>
+  <div class="win" id="win-log">
+    <div class="tbar"><b>Log</b><button class="x" data-close="win-log">×</button></div>
+    <div class="wbody" style="padding:10px 10px 4px"><div id="log"></div></div>
+  </div>
+  <!-- U2 · the keys window. Its body is built from KEYMAP, never typed twice. -->
+  <div class="win" id="win-help" style="width:360px">
+    <div class="tbar"><b>Keys</b><button class="x" data-close="win-help">×</button></div>
+    <div class="wbody" id="helpbody" style="padding:5px 9px"></div>
+  </div>
+</main>
+<script type="module">
+import { START_OPTIONS, startPlan, landPlan, LAND_MORTGAGE, PRICES, setupCost, STEM_M3, drivewaySurcharge, STUB_NOTE,
+  tileFlat } from './js/sim/plotmap.js';
+import { SITE_BY_ID, lifeSpec } from './js/sim/sites.js';
+import {
+  newHomestead, summary, endDay, plantBed, buyHive, harvest, sellAll, fell, buildTank, buyWater, hireCasual,
+  waterOk, toJSON, fromJSON, BED, CROPS, DEFAULT_CROP, HIVE, TANK, WATER, FOOD, LABOUR, LIVING_PER_DAY, FUEL_PER_TRIP, bedSlots,
+  NATIVE_FINE,
+} from './js/sim/homestead.js';
+import { sellFirewood, sellPoles, inFirewoodSeason, FIREWOOD, lumberOff } from './js/sim/firewood.js';
+import { ACCOM, buildAccom, patchRoad, patchCost, getCleaner, PATCH_COST, tourismSummary,
+  FACILITY, FACILITY_KINDS, buildFacility, setListed, setOpen,
+  MARKET, rateFor, setRate, priceDemand, canPlaceAccom, accomSurcharge, UNLISTED_ON_BUILD } from './js/sim/tourism.js';
+import { FAULTS, bookRepair } from './js/sim/handyman.js';
+import { COST, layTrack, layMud, layFence, flatten, grade, dop, fenceConnects, FILL_PER_DAY,
+  driveWithin, damEstimate } from './js/sim/siteworks.js';
+import { acceptOffer, refuseOffer, acceptContract, declineContract, oppose, stanceSummary } from './js/sim/company.js';
+import { companyVoiceSummary } from './js/sim/companyVoice.js';
+import { restructure } from './js/sim/bank.js';
+import { expand, expansionPrice, canExpand, EXPANSION } from './js/sim/holding.js';
+import { buyIn, LEGACY } from './js/sim/legacy.js';
+import { acceptSubsidy, declineSubsidy, SUBSIDY } from './js/sim/subsidy.js';
+import { PlotRenderer } from './js/ui/plotrender.js';
+import { IsoPlotRenderer, groundTexturesReady } from './js/ui/iso-render.js';
+import { spriteImagesReady } from './js/ui/sprites.js';
+import { initAudio, world, sfx, seasonCue, setMuted, isMuted, review } from './js/ui/audio.js';
+// U10b: one money formatter for the whole game, and it is NOT this seat's module. The lead
+// landed js/sim/fmt.js the same night (a leaf that imports nothing, so sim, pages and tests
+// read one rule) — which made the UI seat's js/ui/format.js the second copy this item was
+// meant to remove. Delete the new-looking one, keep the one everything already agrees with.
+import { money, signedMoney } from './js/sim/fmt.js';
+import { seasonOf } from './js/sim/weather.js';
+import { loadTerrain, setTerrain } from './js/sim/terrain.js';
+// The save key is one rule, not two: the life picker on start.html has to know whether a life
+// has a run to Continue or a dead one to Restart, and it cannot answer that by guessing the
+// key this page invents. Both pages read js/ui/saves.js.
+import { saveKey, saveKeysFor } from './js/ui/saves.js';
+
+// The real ground (TERRAIN-SPEC.md): the plot DEM is fetched once and installed BEFORE
+// the first makePlot, so a new game samples the real Hogsback heights. Fails soft —
+// without the bake the sim plays the documented fallback slope model.
+let terrainPromise = null;
+function bootTerrain() {
+  if (!terrainPromise) {
+    terrainPromise = Promise.all([
+      fetch('data/hogsback-v3.json').then((x) => x.json()),
+      fetch('data/hogsback-v3.bin').then((x) => x.arrayBuffer()),
+    ]).then(([mapJson, demBuf]) => setTerrain(loadTerrain(demBuf, mapJson.meta, mapJson)));
+  }
+  return terrainPromise;
+}
+
+// Sound can only start on a real gesture (autoplay policy); the first one unlocks it.
+addEventListener('pointerdown', initAudio, { once: true });
+addEventListener('keydown', initAudio, { once: true });
+
+const $ = (id) => document.getElementById(id);
+// U10: amounts come from js/sim/fmt.js — `money` for an amount, `signedMoney` for the
+// report's delta column. This page used to carry TWO copies of the rule (its own money()
+// and a money2() for the report), start.html and valley.html a third and fourth, which is
+// how the identity line and the life card ended up disagreeing about one cheque.
+
+// The player's name (NARRATIVE-BIBLE §12): UI-side only — localStorage, escaped at every
+// render, never written into the household, so golden traces cannot see it.
+const playerName = (() => {
+  try { return (localStorage.getItem('otm.playerName') || '').trim().slice(0, 20); }
+  catch { return ''; }
+})();
+// The player's name for their OWN land (owner ruling 2026-10-22 23:38). The game will not
+// name a property: every name it could invent is either somebody's real farm or a lie about
+// where the ground is. So the catalog describes ground ("the meadow above the chapel") and
+// the player names the place. Same rules as playerName — localStorage, escaped, never in
+// the household, goldens untouched. Renamable from the Game menu.
+let plotName = (() => {
+  try { return (localStorage.getItem('otm.plotName') || '').trim().slice(0, 24); }
+  catch { return ''; }
+})();
+function setPlotName(v) {
+  plotName = String(v || '').trim().slice(0, 24);
+  try {
+    if (plotName) localStorage.setItem('otm.plotName', plotName);
+    else localStorage.removeItem('otm.plotName');
+  } catch { /* private mode */ }
+  paintTitle();
+}
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// The mute switch (SOUND-PLAN §1.3): one click, persisted UI-side in localStorage.
+// Applied before anything can play; the household never sees it, golden traces cannot.
+// The key is shared with valley.html so both views obey the same switch.
+const storedMute = (() => { try { return localStorage.getItem('otm.audioMuted') === '1'; } catch { return false; } })();
+if (storedMute) setMuted(true);
+function applyMuteLabel() { $('btn-mute').textContent = isMuted() ? 'unmute sound' : 'mute sound'; }
+applyMuteLabel();
+$('btn-mute').onclick = (e) => {
+  e.preventDefault();
+  setMuted(!isMuted());
+  try { localStorage.setItem('otm.audioMuted', isMuted() ? '1' : '0'); } catch { /* private mode */ }
+  applyMuteLabel();
+};
+
+const params = new URLSearchParams(location.search);
+let optionIndex = START_OPTIONS.findIndex((o) => o.key === params.get('start'));
+if (optionIndex < 0) optionIndex = 0;
+const option = START_OPTIONS[optionIndex];
+
+// A plot off the main map (sites.js): ?site=<id>&side=<N|E>. The site IS the spec —
+// its anchor, footprint, water, forest and road side — so the plot you buy is the plot
+// the catalog measured. No ?site → the canonical three, unchanged.
+const site = SITE_BY_ID[params.get('site')] || null;
+const sideParam = params.get('side');
+const side = site
+  ? (sideParam && site.entranceSide.includes(sideParam) ? sideParam : site.roadSide)
+  : null;
+const plotSpec = site
+  // the LIFE's own terms ride along: the incomer's H$320k already promised to a builder
+  // and the stayed's H$40k are properties of the life, not of the ground
+  ? lifeSpec(site.id, side, option)
+  : option.plot;
+// One save per life AND per site: buying different ground is a different run. The formula
+// lives in js/ui/saves.js so the picker can ask the same question about a life.
+const SAVE = saveKey(option.key, site ? site.id : '');
+
+let h = null;
+let mode = 'inspect';
+
+/* FARMING Part 2 — which crop the plant tool will put in the ground. The tool is one mode
+   ('bed') with a chosen crop, because the map needs one cursor, not three. */
+let bedCrop = DEFAULT_CROP;
+/** What a day of that bed earns once it is in — the number that makes three crops a
+    DECISION rather than three timers. Display arithmetic on the sim's own three values;
+    the renderer never sees the formula, only the result. */
+const cropRate = (c) => (c.yield - c.cost) / c.growDays;
+
+/** Echo the sentences the SIM wrote during this action. `plantBed` already logs "Planted
+    greens. Ready in 12 days. −H$120" into `h.log`, and the page used to print its own
+    "Planted a bed. Ready in 12 days." beside it — so the same action read one way live and
+    another way after a reload, and never named the crop. One source, from now on. */
+function echoSimLog(fromLen) {
+  for (const e of h.log.slice(fromLen)) log(e.text);
+  return true;
+}
+
+// View selection: iso is the candidate default (ISO-PLAN.md), ?view=top rolls back to
+// the flat top-down renderer. Both implement the same public API.
+const useIso = params.get('view') !== 'top';
+const RClass = useIso ? IsoPlotRenderer : PlotRenderer;
+const unitKind = () => (h && h.key === 'stayed' ? 'spare' : 'room');
+
+/* Every verb the tile popup can hand back, and the sound the action module owns for it.
+   `buildmenu`/`buildpick` are menu travel, not work, so they stay on the tick - and they are
+   IN the table rather than left to the default, so the probe can prove nothing is missing.
+   Names are the audio seat's contract (audio.js's recipe bank); this map is the call side. */
+const VERB_SOUND = {
+  sell: 'coins', fell: 'axe',
+  track: 'gravel', gravel: 'gravel', mud: 'gravel',
+  fence: 'post',
+  flatten: 'dozer', dop: 'dozer', raise: 'dozer', lower: 'dozer',
+  bed: 'plant', hive: 'plant', harvest: 'plant',
+  accom: 'build',
+  buildmenu: 'ui', buildpick: 'ui',
+};
+window.__verbSound = VERB_SOUND;
+
+/* The tile popup's verbs run the SAME sim calls the sidebar buttons run — one
+   implementation, two entry points. The renderer hands back an action descriptor;
+   everything about money and rules stays here, in the sim's terms. */
+function tileAction(a) {
+  if (!a) return;
+  let res = null;
+  let line = '';
+  // where the sim's own log began, for a verb whose sentence the sim already writes
+  let simFrom = 0;
+  if (a.kind === 'bed') {
+    simFrom = h.log.length;
+    res = plantBed(h, a.x, a.y, a.crop || bedCrop);
+  } else if (a.kind === 'hive') {
+    res = buyHive(h, a.x, a.y);
+    line = 'Bought a hive.';
+  } else if (a.kind === 'accom') {
+    res = buildAccom(h, a.accom, a.x, a.y);
+    line = `${ACCOM[a.accom].label} started — ready in ${ACCOM[a.accom].buildDays} days.`;
+  } else if (a.kind === 'track' || a.kind === 'gravel') {
+    // gravel is a stone finish on the same rate — the sim prices both at COST.track
+    res = layTrack(h.plot, a.x, a.y, h, a.kind === 'gravel' ? 'gravel' : 'dirt');
+    line = res.upgraded ? 'Mud upgraded to track.' : a.kind === 'gravel' ? 'Gravel laid.' : 'Track laid.';
+  } else if (a.kind === 'mud') {
+    res = layMud(h.plot, a.x, a.y, h);
+    line = 'Mud track laid.';
+  } else if (a.kind === 'fence') {
+    res = layFence(h.plot, a.x, a.y, h);
+    line = 'Fence post in.';
+  } else if (a.kind === 'flatten') {
+    res = flatten(h.plot, a.x, a.y, 1, 1, h);
+    line = 'Flattened.';
+  } else if (a.kind === 'dop') {
+    res = dop(h.plot, a.x, a.y, h);
+    line = res.struck ? 'Dopped — below the water table. It will seep.' : 'Dopped a level down.';
+  } else if (a.kind === 'raise') {
+    res = grade(h.plot, a.x, a.y, 1, h);
+    line = 'Ground raised.';
+  } else if (a.kind === 'lower') {
+    res = grade(h.plot, a.x, a.y, -1, h);
+    line = 'Ground lowered.';
+  } else if (a.kind === 'fell') {
+    res = fell(h, a.treeId);
+    if (res.ok) line = `Felled a ${res.kind} · +${money(res.cash)}`;
+  } else if (a.kind === 'harvest') {
+    res = harvest(h);
+    if (res.ok) line = res.msg;
+  } else if (a.kind === 'sell') {
+    res = sellAll(h);
+    if (res.ok) line = `${res.msg} · +${money(res.net)}`;
+  }
+  if (!res) return;
+  if (!res.ok) return log(res.msg, 'bad');
+  // A11 (audio seat): the verb the player performed, heard. The old ternary had no `accom`,
+  // no `gravel` and no `raise`/`lower` branch, so a house going up played the sound of a
+  // menu click, a GRAVEL run ticked while a dirt one crunched, and moving a level of ground
+  // - the dozer's own work - ticked too. One table with every verb named, and the probe
+  // asserts no popup action is missing from it: the dead "Lay gravel road" row, in the ear.
+  sfx(VERB_SOUND[a.kind] || 'ui');
+  if (a.kind === 'fell') sfx('fell', 0.18);   // the axe thunk, then the canopy arrives
+  if (simFrom) echoSimLog(simFrom); else log(line);
+  save(); refresh();
+}
+
+const r = new RClass($('map'), {
+  onFell(treeId) {
+    const res = fell(h, treeId);
+    if (!res.ok) return log(res.msg, 'bad');
+    sfx('axe');
+    sfx('fell', 0.18);
+    log(`Felled a ${res.kind} · +${money(res.cash)}`);
+    save(); refresh();
+  },
+  onBuild(kind, x, y) {
+    if (kind === 'bed') {
+      const simFrom = h.log.length;
+      const res = plantBed(h, x, y, bedCrop);
+      if (!res.ok) return log(res.msg, 'bad');
+      sfx('plant');
+      echoSimLog(simFrom);      // the sim names the crop and the days; no page copy of it
+      save(); refresh();
+      return;
+    }
+    const res = buyHive(h, x, y);
+    if (!res.ok) return log(res.msg, 'bad');
+    sfx('plant');
+    log('Bought a hive.');
+    save(); refresh();
+  },
+  onSelectTree(t) {
+    const worth = PRICES.pineTree * (t.kind === 'pine' ? STEM_M3.pine : STEM_M3.indigenous);
+    log(`${t.kind} · ${t.age}y · worth ${money(worth)}`);
+  },
+  // the tile menu: live cash and the sim's own gates, never a copy of them
+  tileState: () => ({
+    cash: h.cash,
+    ended: !!h.ended,
+    canPlant: waterOk(h),
+    // FARMING Part 2: the GROUND rule for a bed ('' when it can be dug), so the three crop
+    // rows go dead on rock and slope with the sim's reason beside them, instead of offering
+    // a verb the click then refuses. The renderer imports no sim module, so it is handed here.
+    plantSay: (x, y) => plantSay(x, y),
+    day: h.day,
+    dozerDay: h.bulldozerDay,
+    // LD-12 (owner GO 2026-10-22): the tile menu quotes the dam's WAIT, and says so when
+    // there is no water source at all — a dig cannot be the first water verb.
+    damFillDaysPerLevel: Math.round(1 / FILL_PER_DAY),
+    noWaterSource: !(h.water.tank || h.water.stream),
+    dryDays: WATER.deathDays,
+    // U11 / LD-12: what a dig HERE would do, straight from the sim's own pure estimate —
+    // cost with the dozer, whether it strikes, how many days of seep after the strike, and
+    // how many digs down if it does not. The popup used to do this arithmetic itself and
+    // got it wrong twice (it multiplied levels-down by the seep rate). No page-side number:
+    // if the sim ever moves the rule, the screen moves with it.
+    dopQuote: (x, y) => damEstimate(h.plot, x, y, 1, 1, 1, h),
+    unitKind: unitKind(),
+    driveway: (x, y) => drivewaySurcharge(h.plot, x, y),
+    // the fence's connectivity rule, so the tile menu can say WHY a post is refused
+    fenceOk: (x, y) => fenceConnects(h.plot, x, y),
+    // ACCOM footprints (verdict 5): the build menu and ghost read the sim's own table
+    footprints: Object.fromEntries(Object.keys(ACCOM).map((k) => [k, ACCOM[k].footprint])),
+    // U8: the rung NAMES live in ACCOM as well. iso-render's BUILD_ITEMS used to hand-declare
+    // them, and the caravan round just proved the cost — the sim said "stand" while the menu
+    // still said "park". The literals stay as the standalone-probe fallback only.
+    labels: Object.fromEntries(Object.keys(ACCOM).map((k) => [k, ACCOM[k].label])),
+    // one home per plot: the popup must refuse a second house and name the reason. The sim
+    // only refuses an OVERLAPPING site, so this gate belongs to the page.
+    hasHouse: hasHouse(),
+    facilities: { ...(h.facilities || {}) },
+    costs: {
+      // `bed` is now just the DEFAULT crop's price, kept for the standalone probes that
+      // carry no page. The popup reads `crops` — every crop the sim has, keyed by crop so a
+      // planted bed can be named too — because planting is a choice of three, not a timer.
+      bed: BED.cost,
+      crops: Object.fromEntries(Object.entries(CROPS).map(([k, c]) => [k, {
+        label: c.label, cost: c.cost, days: c.growDays, yield: c.yield,
+        rate: cropRate(c).toFixed(1),
+      }])),
+      hive: HIVE.cost,
+      unit: ACCOM[unitKind()].cost,
+      cabin: ACCOM.cabin.cost,
+      camp: ACCOM.camp.cost,
+      caravan: ACCOM.caravan.cost,
+      house: ACCOM.house.cost,
+      track: COST.track,
+      gravel: COST.track,   // layTrack charges COST.track for both — COST.gravel is an unused owner call
+      mud: COST.mud,
+      nativeFine: NATIVE_FINE,
+      fence: COST.fence,
+      flatten: COST.flattenPerTile,
+      grade: COST.flattenPerTile,
+      dop: COST.dopPerTile,
+      // B2 · the bulldozer's day is charged ONCE, by whichever verb moves earth first —
+      // so the tile menu can only quote a true total if it knows whether it is due.
+      dozerFee: COST.bulldozer,
+      pineTree: PRICES.pineTree,
+      fellCost: PRICES.fellCost,
+      m3Pine: STEM_M3.pine,
+      m3Other: STEM_M3.indigenous,
+    },
+  }),
+  onAction: tileAction,
+  // drag-build: the run is applied by layRun in path order; the hint shows the bill.
+  // U4: a rect kind hands back a block, committed in ONE sim call — one dozer day.
+  onDragPath: (payload, kind) => kind === 'flatten' ? commitFlat(payload.rect) : layRun(payload, kind),
+  onDragHint: (g) => { if (g) dragHint(g); },
+  // the ghost preview reports back so the hint line can coach the placement
+  onGhost: ghostHint,
+});
+
+/** Rewrite a menu button's caption without touching its <small> price line. The rung names
+    live in `tourism.ACCOM`, so no caption in this file is allowed to hand-type one. */
+function caption(id, text) {
+  const b = $(id);
+  if (!b) return;
+  const t = b.childNodes[0];
+  if (t && t.nodeType === 3) t.nodeValue = text;
+  else b.insertBefore(document.createTextNode(text + ' '), b.firstChild);
+}
+
+/* U8 — the bill the SIM would actually charge for THIS site: the rung price after any
+   lumber the yard holds, plus the driveway it must cut, cancelled outright when a drive is
+   already laid within reach. Every term is the sim's own function, so the number on the
+   screen is the number on the click — the dead "Lay gravel road" row is the lesson here. */
+function siteBill(kind, x, y) {
+  const d = ACCOM[kind];
+  if (!d) return null;
+  const lm = lumberOff(d.cost, d.lumber || 0, h.lumber || 0);
+  const drive = driveWithin(h.plot, x, y) ? 0 : accomSurcharge(h, kind, x, y);
+  return { price: Math.round(lm.cost) + drive, drive, used: lm.used, off: lm.off };
+}
+
+/** One home per plot. The sim happily builds duplicates — `canPlaceAccom` only refuses an
+    overlapping site — so this gate is the page's, and it counts the family house at
+    qhumusa-flats too (that one is plot scenery, not an accom unit). */
+function hasHouse() {
+  return (h.accom || []).some((a) => a.kind === 'house')
+    || (h.plot.buildings || []).some((b) => b.kind === 'house');
+}
+
+/** What the ground under the player is called. A bought site brings its catalog place; the
+    canonical three bring the sim's `groundLabel` (homestead.js copies it onto the household).
+    `plot.id` is never one of these: it is the seed the terrain is generated from, and two of
+    the three ids are real places somebody owns (`the-arboretum`, `qhumusa-flats`) - which is
+    why valley.html's old prettify(plot.id) put "The Arboretum" on the land office. Falling
+    back to the LIFE name is honest; falling back to the seed would be the defect again. */
+function groundName() {
+  return h.site ? h.site.place : (h.groundLabel || h.name);
+}
+
+/** Why a bed cannot go on this tile, in the sim's own words — or '' when it can.
+    `plantBed` refuses rock and refuses unflat ground, but the popup was still OFFERING the
+    three crop rows on that ground, so the player's click came back as an error line where
+    the row should have been dead. Same two facts the sim reads (the ground kind and the
+    corner-flat rule), read through the sim's own `tileFlat()` — the SAME gate the verb
+    now uses (plantBed moved off orthogonal steep(), which let a raised DIAGONAL through,
+    the 517-cells gap the art seat measured). The row and the verb cannot disagree about
+    what flat means, which is the lesson the corner-model round already paid for. */
+function plantSay(x, y) {
+  const p = h.plot;
+  if (!p) return '';
+  if (p.ground && p.ground[y * p.w + x] === 'rock') return 'rock — nothing takes root in stone';
+  if (!tileFlat(p, x, y)) return 'too steep to plant — flatten it first';
+  return '';
+}
+
+/** Where the roof can actually go. `freeCell()` only looks for CLEAR ground — it never
+    asked whether the ground is FLAT, which is the other half of every build gate, so the
+    house armed on a slope and opened red. This asks the sim's own rule for the site, so
+    the ghost arrives on ground that will take it. Falls back to the plot centre when a
+    life has no flat 2×2 yet — the hint then names the reason, which is the honest screen. */
+function freeRoofSite() {
+  const p = h.plot;
+  for (let y = 1; y <= p.h - 2; y++) {
+    for (let x = 1; x <= p.w - 2; x++) {
+      if (canPlaceAccom(h, 'house', x, y).ok) return [x, y];
+    }
+  }
+  return [Math.floor(p.w / 2), Math.floor(p.h / 2)];
+}
+
+/** The ghost's live caption. A blocked site quotes the sim's own refusal sentence rather
+    than a generic phrase, because "blocked" without a reason is the thing the owner has
+    been telling this seat about since the fence round. */
+function ghostHint(g) {
+  if (!g) { $('hint').textContent = ''; return; }
+  const d = ACCOM[g.kind];
+  const label = d ? d.label : g.kind;
+  const size = `${g.fp[0]}×${g.fp[1]}`;
+  if (!g.ok) {
+    const why = d ? canPlaceAccom(h, g.kind, g.x, g.y) : { ok: false, msg: 'no such rung' };
+    $('hint').textContent = `${label} — ${size} at ${g.x},${g.y} will not stand here: `
+      + (why.ok ? 'the ground does not hold the whole footprint' : why.msg)
+      + ' · move it, or Esc to stop';
+    return;
+  }
+  const b = siteBill(g.kind, g.x, g.y);
+  $('hint').textContent = `${label} — ${size} at ${g.x},${g.y} · ${money(b.price)}`
+    + (b.drive > 0 ? ` (incl. ${money(b.drive)} of drive to the gate)` : '')
+    + (b.used ? ` · ${b.used} of your lumber, −${money(b.off)}` : '')
+    + ` · ${d ? d.buildDays : '?'} days — click to place, Esc or right-click cancels`;
+}
+
+/* U1 · the Log fills up while it is shut, and the button says so. A count, not a
+   bare dot: "how much did I miss" is the question the player actually has. */
+let logUnread = 0;
+function paintLogDot() {
+  const d = $('logdot');
+  if (!d) return;
+  const shut = !$('win-log').classList.contains('show');
+  const n = shut ? logUnread : 0;
+  d.style.display = n ? 'inline-block' : 'none';
+  d.textContent = n > 9 ? '9+' : String(n || '');
+}
+function log(text, cls = '') {
+  if (cls === 'bad') sfx('error');
+  const el = document.createElement('div');
+  if (cls) el.className = cls;
+  el.textContent = text;
+  $('log').prepend(el);
+  while ($('log').children.length > 60) $('log').lastChild.remove();
+  if (!$('win-log').classList.contains('show')) { logUnread++; paintLogDot(); }
+}
+
+function save() { try { localStorage.setItem(SAVE, toJSON(h)); } catch { /* private mode */ } }
+function load() {
+  try {
+    const raw = localStorage.getItem(SAVE);
+    return raw ? fromJSON(raw) : null;
+  } catch { return null; }
+}
+
+function setMode(m, kind) {
+  mode = m;
+  if (m === 'drag') {
+    // the drag-build tool: the renderer owns the gesture, the sim owns every rule
+    r.cancelPaint();
+    r.mode = 'drag';
+    r.dragKind = kind || 'track';
+    r.closePopup();
+  } else {
+    if (r.cancelPaint) r.cancelPaint();
+    r.mode = m === 'fell' ? 'fell' : (m === 'bed' || m === 'hive') ? 'build' : 'inspect';
+    r.buildKind = kind || null;
+    r.dragKind = null;
+    // a sidebar mode takes over the click, so the tile menu must get out of the way
+    if (r.closePopup) r.closePopup();
+  }
+  refresh();
+}
+
+/* Drag-build commit (owner, 2026-10-21): the renderer hands back the ordered run; each
+   tile goes through the SAME sim call the tile popup uses, in path order, so gate
+   connectivity, terrain, cash and the mud-over rules all bite exactly as before.
+   One summary line, one sound, one save — not sixty log entries and sixty saves. */
+function layRun(path, kind) {
+  let laid = 0, spent = 0, refused = 0, firstErr = '';
+  for (const [x, y] of path) {
+    const res = kind === 'fence' ? layFence(h.plot, x, y, h)
+      : kind === 'mud' ? layMud(h.plot, x, y, h)
+        : layTrack(h.plot, x, y, h, kind === 'gravel' ? 'gravel' : 'dirt');
+    if (res && res.ok) { laid++; spent += res.cost || 0; }
+    else { refused++; if (!firstErr) firstErr = (res && res.msg) || 'refused'; }
+  }
+  if (!laid) return log(firstErr || 'nothing could be laid along that line', 'bad');
+  sfx(kind === 'fence' ? 'post' : 'gravel');
+  const unit = kind === 'fence' ? 'post' : 'tile';
+  log(`Laid ${laid} ${unit}${laid === 1 ? '' : 's'} · −${money(spent)}`
+    + (refused ? ` · ${refused} refused` : ''));
+  save(); refresh();
+}
+
+/* Live cost while the finger is down: TT shows you the bill before you commit. */
+function dragModeHint() {
+  const k = r.dragKind || 'track';
+  if (k === 'flatten') {
+    return 'Drag a rectangle of ground — '
+      + `${money(COST.flattenPerTile)} a tile moved + the bulldozer's ${money(COST.bulldozer)} day, once · Esc cancels`;
+  }
+  const per = k === 'fence' ? COST.fence : k === 'mud' ? COST.mud : COST.track;
+  const unit = k === 'fence' ? 'post' : 'tile';
+  return `Drag across the ground to lay a line — ${money(per)} a ${unit} · Esc cancels`;
+}
+function dragHint(g) {
+  if (!g) {
+    if (mode === 'drag') $('hint').textContent = dragModeHint();
+    return;
+  }
+  // U4 · the block quote: earth that will actually move, plus the dozer when it is due
+  if (g.rect) {
+    const due = h.bulldozerDay !== h.day;
+    const bill = g.moved * COST.flattenPerTile + (due ? COST.bulldozer : 0);
+    $('hint').textContent = g.bad
+      ? `the block will not take — ${g.bad} tile${g.bad === 1 ? '' : 's'} of water or trees in it`
+      : `${g.rect.w}×${g.rect.h} block · ${g.moved} tile${g.moved === 1 ? '' : 's'} to move · ${money(bill)}`
+        + (due ? ` (incl. the ${money(COST.bulldozer)} dozer)` : '')
+        + ' — release to grade, Esc cancels';
+    return;
+  }
+  const per = g.kind === 'fence' ? COST.fence : g.kind === 'mud' ? COST.mud : COST.track;
+  const unit = g.kind === 'fence' ? 'post' : 'tile';
+  $('hint').textContent = `${g.n} ${unit}${g.n === 1 ? '' : 's'} · ${money(g.n * per)}`
+    + ` — release to build, Esc cancels`;
+}
+
+/* U4 · the block commit: one drag, one flatten call, one dozer day. Escape drops the
+   rectangle before release, so nothing is charged for a change of mind. */
+function commitFlat(rect) {
+  const res = flatten(h.plot, rect.x, rect.y, rect.w, rect.h, h);
+  if (!res || !res.ok) return log((res && res.msg) || 'the blade refused that block', 'bad');
+  sfx('dozer');
+  log(`Bulldozer in on a ${rect.w}×${rect.h} block · −${money(res.cost || 0)}`);
+  save(); refresh();
+}
+
+/** First free AREA for a new building, spiralling out from the middle. w×h default
+    to the rung's ACCOM footprint (verdict 5) — a 4×3 camp needs 12 clear tiles. */
+function freeCell(kind) {
+  const [fw, fh] = (kind && ACCOM[kind] && ACCOM[kind].footprint) || [1, 1];
+  const w = Math.max(1, fw), ht = Math.max(1, fh);
+  const used = new Set([...(h.beds || []), ...(h.hives || []), ...(h.accom || [])].map((o) => o.x + ',' + o.y));
+  const treeAt = (x, y) => h.plot.trees.some((t) => t.x === x && t.y === y);
+  const bldAt = (x, y) => (h.plot.buildings || []).some((b) => b.x === x && b.y === y);
+  for (let r = 2; r < Math.max(h.plot.w, h.plot.h); r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (const dy of [-r, r]) {
+        const x = Math.floor(h.plot.w / 2) + dx, y = Math.floor(h.plot.h / 2) + dy;
+        if (x < 1 || y < 1 || x + w > h.plot.w - 1 || y + ht > h.plot.h - 1) continue;
+        let clear = true;
+        for (let cx = x; cx < x + w && clear; cx++) {
+          for (let cy = y; cy < y + ht && clear; cy++) {
+            if (used.has(cx + ',' + cy) || treeAt(cx, cy) || bldAt(cx, cy)
+              || h.plot.ground[cy * h.plot.w + cx] === 'water') clear = false;
+          }
+        }
+        if (clear) return [x, y];
+      }
+    }
+  }
+  return [1, 1];
+}
+
+/* The guests card — the review scoreboard, the open switch, the yard, listings, repairs. */
+function renderYard() {
+  const s = summary(h);
+  const t = s.tourism;
+  const fac = h.facilities || {};
+  const builds = h.facilityBuilds || [];
+  let html = `<div class="row"><span>Rating</span><span>★${t.rating.toFixed(2)} · ${t.complaints} complaint${t.complaints === 1 ? '' : 's'}</span></div>`;
+  html += `<div class="row muted"><span>${t.rating >= 4.5 ? 'premium nights, +15%' : t.rating < 3.5 ? 'the site is dragging you down, −20%' : 'holding steady'}</span><span></span></div>`;
+  html += `<button data-act="open">${t.open ? 'Close for bookings' : 'Open for bookings'} <small>${t.open ? 'no lets, no reviews' : 'lets resume'}</small></button>`;
+
+  for (const k of FACILITY_KINDS) {
+    const d = FACILITY[k];
+    const have = !!fac[k];
+    const going = builds.some((b) => b.kind === k && !b.built);
+    const sub = have ? 'built' : going ? 'going up'
+      : `${money(d.cost)} · ${d.buildDays}d${d.monthly ? ' + ' + money(d.monthly) + '/mo' : ''}`;
+    html += `<button data-act="facility" data-kind="${k}" ${have || going || h.cash < d.cost ? 'disabled' : ''}>${d.label} <small>${sub}</small></button>`;
+  }
+
+  // A home is not a rung. `ACCOM.house.capacity` is 0 and `MARKET.house` does not exist, so
+  // a listed house takes bookings at H$0 and still pays the clean: measured 23 "nights" in
+  // 50 days on an incomer, cash moving the wrong way every one of them. The page never offers
+  // it; `setListed` accepting it anyway is filed as a Request (it should refuse cap 0).
+  for (const a of (h.accom || []).filter((u) => u.built && !u.listed && ACCOM[u.kind] && ACCOM[u.kind].capacity > 0)) {
+    const d = ACCOM[a.kind];
+    html += `<button data-act="list" data-id="${a.id}">List the ${d.label} <small>${money(d.rate)}/night · ${d.capacity} place${d.capacity === 1 ? '' : 's'}</small></button>`;
+  }
+
+  // Your rates against the market (owner, 10-20): price drives fill, and greed is reviewed.
+  // A home is not in it: `ACCOM.house.capacity` is 0 and `MARKET.house` does not exist, so a
+  // built house would grow a "House rate - H$0, market H$0" row with two buttons that change
+  // nothing but a multiplier nobody charges. Same exclusion as the list rows above.
+  const kinds = [...new Set((h.accom || []).filter((u) => u.built && ACCOM[u.kind] && ACCOM[u.kind].capacity > 0).map((u) => u.kind))];
+  for (const k of kinds) {
+    const mult = (h.rates && h.rates[k]) || 1;
+    const pct = Math.round(priceDemand(mult) * 100);
+    html += `<div class="row" style="margin-top:8px"><span>${ACCOM[k].label} rate</span>`
+      + `<span>${money(rateFor(h, k))} · market ${money(MARKET[k])}</span></div>`;
+    html += `<div class="row muted"><span>${pct}% of the guests at this price</span><span></span></div>`;
+    html += `<button data-act="rate" data-kind="${k}" data-step="-0.05" ${mult <= 0.5 ? 'disabled' : ''}>Cheaper <small>${Math.round((mult - 0.05) * 100)}% of market</small></button>`;
+    html += `<button data-act="rate" data-kind="${k}" data-step="0.05" ${mult >= 2 ? 'disabled' : ''}>Dearer <small>${Math.round((mult + 0.05) * 100)}% of market</small></button>`;
+  }
+
+  for (const job of (h.repairs || [])) {
+    const f = FAULTS[job.fault];
+    if (!f) continue;
+    html += `<div class="row" style="margin-top:8px"><span>${f.text}</span><span>${job.deadline ? 'by day ' + job.deadline : ''}</span></div>`;
+    if (job.booked) {
+      html += `<div class="row muted"><span>${job.booked.outside ? 'Outside company' : 'The handyman'} · day ${job.booked.day}</span><span></span></div>`;
+    } else {
+      html += `<button data-act="repair" data-id="${job.id}" data-outside="0" ${h.cash < f.cost ? 'disabled' : ''}>Call the handyman <small>${money(f.cost)} · may not come</small></button>`;
+      html += `<button data-act="repair" data-id="${job.id}" data-outside="1" ${h.cash < f.cost * 2 ? 'disabled' : ''}>Outside company <small>${money(f.cost * 2)} · tomorrow, guaranteed</small></button>`;
+    }
+  }
+  $('yardcard').innerHTML = html;
+}
+
+function renderGoals() {  const g = summary(h).goals;
+  if (!g.next.length) {
+    $('goalcard').innerHTML = '<div class="row muted"><span>You know what you are doing</span><span>—</span></div>';
+    return;
+  }
+  let html = `<div class="row muted" style="margin-bottom:6px"><span>${g.done} of ${g.total} done</span><span></span></div>`;
+  html += g.next.map((x, i) => `
+    <div style="padding:4px 0;border-bottom:1px solid #1c2620">
+      <div style="font-size:12.5px;color:${i === 0 ? '#e9e6db' : '#9aa79a'}">
+        <span style="color:#5f9e6d">○</span> ${x.text}
+      </div>
+      <div style="font-size:11px;color:#7f8d7b;padding-left:14px">${x.hint}</div>
+    </div>`).join('');
+  $('goalcard').innerHTML = html;
+}
+
+function bar(pct, col) {
+  return `<div style="height:4px;border-radius:9px;background:#22302a;margin:3px 0 6px;overflow:hidden">`
+    + `<i style="display:block;height:100%;width:${Math.max(0, Math.min(100, pct))}%;background:${col}"></i></div>`;
+}
+
+function renderLegacy() {
+  const L = summary(h).legacy;
+  if (L.settled) {
+    const text = L.boughtIn
+      ? `You own the company. The cutting stopped because you said so. ${money(L.dividends)} in dividends so far.`
+      : 'The company sold up and left. Your beds and the forest were worth more than their pine.';
+    $('legacycard').innerHTML = `<div style="font-size:12.5px;color:#d9c9a0;line-height:1.5">${text}</div>`;
+    return;
+  }
+  let html = `<div class="row"><span>Buy in</span><span>${money(h.cash)} / ${money(L.buyInCost)}</span></div>`;
+  html += bar(L.buyInProgress, '#8fc4dd');
+  html += `<div class="row muted"><span>Alternative</span><span>${L.capacity}/${L.altCapacity} beds · forest ${L.forest}% · day ${L.days}/${L.altDays}</span></div>`;
+  html += bar(L.alternativeProgress, '#9fd0a8');
+  if (h.cash >= L.buyInCost) {
+    html += '<button id="btn-buyin" style="margin-top:6px">Buy the company <small>the cutting stops; you become them</small></button>';
+  }
+  $('legacycard').innerHTML = html;
+  const b = $('btn-buyin');
+  if (b) b.onclick = () => {
+    const res = buyIn(h);
+    if (!res.ok) return log(res.msg, 'bad');
+    log('You bought the company.');
+    save(); refresh();
+  };
+}
+
+function renderVillage() {
+  const s = summary(h).subsidy;
+  let html = '';
+  if (s.state === 'offered') {
+    html = `<div class="row"><span>Road subsidy</span><span>${money(s.pay)}</span></div>`
+      + `<div class="row muted"><span>Hold the road</span><span>above ${s.threshold}% all December</span></div>`
+      + '<button id="btn-sub-yes" style="margin-top:8px">Take the subsidy</button>'
+      + '<button id="btn-sub-no">Decline</button>';
+  } else if (s.state === 'accepted') {
+    html = `<div class="row"><span>Road subsidy</span><span>${s.frac == null ? 'starts in December' : s.frac + '% of days'}</span></div>`
+      + `<div class="row muted"><span>Worth</span><span>${money(s.pay)}</span></div>`;
+  } else if (s.state === 'done') {
+    html = `<div class="row"><span>Subsidy paid</span><span>${money(s.paid)}</span></div>`;
+  } else if (s.state === 'failed') {
+    html = '<div class="row muted"><span>The road did not hold</span><span>no subsidy</span></div>';
+  } else {
+    html = '<div class="row muted"><span>Nothing this month</span><span>—</span></div>';
+  }
+  $('villagecard').innerHTML = html;
+  const y = $('btn-sub-yes'); if (y) y.onclick = () => { acceptSubsidy(h); save(); refresh(); };
+  const n = $('btn-sub-no'); if (n) n.onclick = () => { declineSubsidy(h); save(); refresh(); };
+}
+
+function renderBank() {
+  const b = summary(h).bank;
+  // Naidoo may address the name — a display-side substitution, never a new bank.js string
+  let line = b.line;
+  if (playerName && b.arrears === 0 && b.monthly > 0) {
+    line = line.replace('All square this month.', `All square this month, ${esc(playerName)}.`);
+  }
+  let html = `<div style="font-size:12px;color:#b9c4b3;line-height:1.45">${line}</div>`;
+  html += `<div class="row muted" style="margin-top:6px"><span>Bond</span><span>${b.monthly ? money(b.monthly) + '/mo' : 'none'}</span></div>`;
+  if (b.arrears) html += `<div class="row"><span>Behind</span><span>${b.arrears} month${b.arrears === 1 ? '' : 's'}</span></div>`;
+  if (b.canRestructure) html += '<button id="btn-restructure" style="margin-top:8px">Ask her to carry you <small>clears the arrears, +H$400 on the bond</small></button>';
+  $('bankcard').innerHTML = html;
+  const btn = $('btn-restructure');
+  if (btn) btn.onclick = () => {
+    const res = restructure(h);
+    if (!res.ok) return log(res.msg, 'bad');
+    log(`She carried you. The bond is now ${money(res.monthly)}.`);
+    save(); refresh();
+  };
+}
+
+function renderVoices() {
+  const vs = summary(h).tourism.voices || [];
+  if (!vs.length) {
+    $('voicecard').innerHTML = '<div class="row muted"><span>No guests yet</span><span>—</span></div>';
+    return;
+  }
+  $('voicecard').innerHTML = vs.slice(0, 4).map((v) => {
+    const col = v.mood === 'bad' ? '#e08a6a' : v.mood === 'good' ? '#9fd0a8' : '#9aa79a';
+    return `<div style="font-size:12px;color:${col};padding:3px 0;border-bottom:1px solid #1c2620">“${v.text}”</div>`;
+  }).join('');
+}
+
+function renderCompany() {
+  const co = summary(h).company;
+  let html = `<div class="row"><span>${co.name}</span><span>forest ${co.forest}%</span></div>`;
+  html += `<div class="row muted"><span>Indigenous forest</span><span>${co.mountainForest}% · guests at ${co.mountainFactor}%</span></div>`;
+  // the trade-off in one line (owner ruling 2026-10-21)
+  const stance = stanceSummary(h).line;
+  if (stance) html += `<div style="font-size:12px;color:#b9c4b3;padding:4px 0">${esc(stance)}</div>`;
+
+  if (co.offer) {
+    html += `<div class="row"><span>Standing pine</span><span>${co.offer.trees} trees</span></div>`;
+    html += `<div class="row"><span>They will pay</span><span>${money(co.offer.zar)}</span></div>`;
+    html += '<button id="btn-accept" style="margin-top:8px">Take the money <small>clears every pine, for good</small></button>';
+    html += '<button id="btn-refuse">Turn them down <small>the offer does not come back</small></button>';
+  } else if (co.taken) {
+    html += `<div class="row muted"><span>Sold</span><span>${money(co.paid)} · ${co.treesSold} trees</span></div>`;
+  }
+
+  const c = co.contract;
+  if (c && c.state === 'offered') {
+    html += `<div class="row" style="margin-top:8px"><span>Quota</span><span>${c.m3} m³ in ${c.dueIn} days</span></div>`;
+    html += `<div class="row"><span>They will pay</span><span>${money(c.pay)}</span></div>`;
+    html += '<button id="btn-sign" style="margin-top:8px">Sign the contract <small>you must fell your own pines</small></button>';
+    html += '<button id="btn-nosign">Not this month</button>';
+  } else if (c && c.state === 'active') {
+    html += `<div class="row" style="margin-top:8px"><span>Delivered</span><span>${c.delivered} / ${c.m3} m³</span></div>`;
+    html += `<div class="row muted"><span>Due in</span><span>${c.dueIn} days</span></div>`;
+  } else if (c && (c.state === 'done' || c.state === 'failed')) {
+    html += `<div class="row muted"><span>Last contract</span><span>${c.state === 'done' ? 'met · ' + money(c.pay) : 'missed'}</span></div>`;
+  }
+
+  if (co.relation === 'opposed') {
+    html += '<div class="row muted"><span>You are with the ratepayers</span><span>no contracts</span></div>';
+  } else if (!co.offer) {
+    html += '<button id="btn-oppose" style="margin-top:8px">Join the ratepayers <small>no more contracts; slows the cutting</small></button>';
+  }
+
+  $('companycard').innerHTML = html;
+
+  // van Wyk is the company's only mouth (NARRATIVE-BIBLE §5.3) — his line rides on top
+  const vw = companyVoiceSummary(h).line;
+  if (vw) {
+    $('companycard').innerHTML = `<div style="font-size:12px;color:#d9c9a0;line-height:1.45;
+      border-left:2px solid #5a4526;padding-left:8px;margin-bottom:8px">${vw}</div>` + html;
+  }
+
+  const a = $('btn-accept');
+  if (a) a.onclick = () => {
+    const res = acceptOffer(h);
+    if (!res.ok) return log(res.msg, 'bad');
+    log(`Sold ${res.trees} pines for ${money(res.zar)}. The plot is bare.`);
+    save(); refresh();
+  };
+  const rf = $('btn-refuse');
+  if (rf) rf.onclick = () => {
+    const res = refuseOffer(h);
+    if (!res.ok) return log(res.msg, 'bad');
+    log('You told them no. The pines stay.');
+    save(); refresh();
+  };
+  const sg = $('btn-sign');
+  if (sg) sg.onclick = () => {
+    const res = acceptContract(h);
+    if (!res.ok) return log(res.msg, 'bad');
+    log(`Signed for ${res.m3} m³ in ${res.dueDay - h.day} days.`);
+    save(); refresh();
+  };
+  const ns = $('btn-nosign');
+  if (ns) ns.onclick = () => { declineContract(h); save(); refresh(); };
+  const op = $('btn-oppose');
+  if (op) op.onclick = () => {
+    const res = oppose(h);
+    if (!res.ok) return log(res.msg, 'bad');
+    log('You joined the ratepayers.');
+    save(); refresh();
+  };
+}
+
+function refresh() {
+  const s = summary(h);
+  $('v-cash').textContent = money(s.cash);
+  $('v-date').textContent = `${s.date} · ${s.tourism.weekday}${s.tourism.schoolHoliday ? ' · school holidays' : ''}`;
+  $('v-weather').textContent = s.weather.label;
+  // the bed follows the weather, and the season changes what the same weather sounds like.
+  // Since SOUND-PLAN-v2 the snapshot carries more than weather: the generator (a hum that
+  // sputters in storms), the mountain's saws (frequency is the company stance) and the road.
+  // The cache key includes those, or refresh() would re-arm the saw timer on every action
+  // and a distant saw would never get to fire.
+  const power = h.facilities && h.facilities.power ? 'solar'
+    : h.facilities && h.facilities.generator ? 'generator' : 'none';
+  const stance = h.company && h.company.relation;
+  const bed = h.weather.kind + '|' + seasonOf(h.date.month) + '|' + power + '|' + stance;
+  if (bed !== refresh._bed) {
+    refresh._bed = bed;
+    world({
+      weather: h.weather.kind,
+      season: seasonOf(h.date.month),
+      power,
+      stance,
+      road: s.tourism.road,
+    });
+  }
+  // the season turns: the birds change with it (audio.birdGate — hadeda all winter, nightjar
+  // in summer, piet-my-vrou from spring). Fires once per turn, never on first load.
+  const season = seasonOf(h.date.month);
+  if (refresh._season && season !== refresh._season) seasonCue(season);
+  refresh._season = season;
+  $('v-bill').textContent = `${money(s.billTotal)} in ${s.daysToBill}d`;
+  $('v-produce').textContent = s.produce + ' kg';
+  $('v-honey').textContent = s.honey + ' kg';
+  $('v-trees').textContent = s.trees;
+
+  // A1 — alarms announce (owner principle 5). The four facts that end a life or quietly
+  // bleed it sit on the status bar: dry tank, arrears, a road too far gone to sell, and a
+  // cold house burning paraffin every night. Each one names the number, because "warning"
+  // without a number is decoration. Rebuilt only when the text changes, so the chips do
+  // not flicker on every refresh.
+  const alarms = [];
+  // BUG-003 (playtest 2026-10-25): a dry life had NO alarm on load — the clock only spoke
+  // after the first End Day, so the one fact that kills a new player in three days was the
+  // one thing the status bar said nothing about. The clock starts on day 0 whether or not
+  // the player has spent a day yet.
+  /* BUG-005 (playtest 2026-10-26): the BUG-003 fix over-corrected into a survival lie. The
+     no-tank branch printed the CONSTANT `WATER.deathDays`, so a Homesteader with no tank read
+     "no water 3 days" on Sept 1, 2, 3 AND 4, then died — the one sentence that decides whether
+     they buy a tank was the one sentence that never moved. Both dry cases now share one branch
+     and read the sim's own countdown (`summary(h).tank.daysLeft`), so the alarm cannot disagree
+     with the death message. BUG-003's case still holds: thirst is 0 on day 0, so a dry life
+     still alarms "3 days" the moment it loads. */
+  if (!waterOk(h)) {
+    const left = s.tank ? s.tank.daysLeft
+      : Math.max(0, WATER.deathDays - (h.water.thirst || 0));
+    alarms.push(`<span class="alarm hot"><b>no water</b> ${
+      left > 1 ? `${left} days` : left === 1 ? '1 day' : 'final day'
+    } · ${h.water.tank ? 'buy water' : 'build a tank'}</span>`);
+  } else if (h.water.tank && !h.water.stream && s.tank && s.tank.pct <= 20) {
+    alarms.push(`<span class="alarm warn"><b>tank</b> ${s.tank.pct}%</span>`);
+  }
+  if (s.arrears > 0) {
+    alarms.push(`<span class="alarm hot"><b>arrears</b> ${s.arrears} month${s.arrears === 1 ? '' : 's'}</span>`);
+  }
+  if (s.tourism.roadCeil && s.tourism.road < 40) {
+    alarms.push(`<span class="alarm warn"><b>road</b> ${s.tourism.road}% of ${s.tourism.roadCeil}</span>`);
+  }
+  if ((h.coldHouseNights || 0) > 0) {
+    alarms.push(`<span class="alarm warn"><b>cold house</b> ${money(FIREWOOD.coldHouseNight)}/night</span>`);
+  }
+  // BUG-002 (playtest 2026-10-25): "the geyser gave up −H$4 500" showed no alarm — cash
+  // dropped and only the Log dot blinked. A debit the player did not choose must announce
+  // itself on the same bar as the other four, with the number and the reason.
+  if (h.lastHit && h.lastHit.day === h.day && Math.abs(h.lastHit.amount) >= 500) {
+    alarms.push(`<span class="alarm hot"><b>${h.lastHit.amount < 0 ? '−' : '+'}${
+      money(Math.abs(h.lastHit.amount)).slice(1)}</b> ${esc(h.lastHit.why || 'out of the blue')}</span>`);
+  }
+  const alarmKey = alarms.join('');
+  const alarmEl = $('alarms');
+  if (alarmEl && alarmKey !== refresh._alarmKey) {
+    refresh._alarmKey = alarmKey;
+    alarmEl.innerHTML = alarmKey;
+  }
+
+  const waterRow = h.water.stream ? 'stream'
+    : s.tank.thirst > 0
+      ? `<span style="color:#e08a6a;font-weight:500">DRY — ${s.tank.daysLeft} day${s.tank.daysLeft === 1 ? '' : 's'} left</span>`
+      : h.water.tank ? `tank ${s.tank.pct}%` : 'none — build a tank';
+  const foodCost = s.food.selfFed ? 0 : s.food.shopCostPerDay;
+  $('plotcard').innerHTML = `
+    <div class="row"><span>Land</span><span>${h.plot.ha} ha · ${s.holding.bought + 1} erf${s.holding.bought ? "s" : ""}</span></div>
+    ${h.site ? `<div class="row muted"><span>${esc(h.site.place)}</span><span>gate ${h.plot.gate.side}</span></div>` : ''}
+    <div class="row ${s.tank && s.tank.thirst > 0 ? '' : 'muted'}" ${s.tank && s.tank.thirst > 0 ? 'style="font-weight:500"' : ''}><span>Water</span><span>${waterRow}</span></div>
+    <div class="row ${s.tank && s.tank.pct < 20 && s.tank.thirst === 0 ? '' : 'muted'}"><span>Tank</span><span>${s.tank ? s.tank.pct + '%' : '—'}</span></div>
+    <div class="row ${s.food.selfFed ? 'muted' : ''}"><span>Food</span><span>${s.food.selfFed ? 'from the plot' : 'shop · ' + money(s.food.shopCostPerDay) + '/day'}</span></div>
+    <div class="row"><span>To the shop</span><span>${h.plot.kmFromShop} km</span></div>
+    <div class="row"><span>Beds / hives</span><span>${s.beds} / ${s.hives}</span></div>
+    <div class="row ${s.arrears ? '' : 'muted'}"><span>Arrears</span><span>${s.arrears} month${s.arrears === 1 ? '' : 's'}</span></div>
+    <div class="row muted"><span>Living</span><span>${money(LIVING_PER_DAY + foodCost)}/day</span></div>
+    <div class="row"><span>Road</span><span>${s.tourism.road}% of ${s.tourism.roadCeil}</span></div>
+    <div class="row"><span>Guests</span><span>${s.tourism.units} unit${s.tourism.units === 1 ? '' : 's'} · ★${s.tourism.rating}</span></div>
+    <div class="row muted"><span>Nights sold</span><span>${s.tourism.nights} · ${money(s.tourism.earned)}</span></div>
+    <div class="row muted"><span>The shop takes</span><span>${s.shop.veg} kg veg · ${money(s.shop.vegPrice)}/kg</span></div>
+    <div class="row muted"><span>Weather</span><span>${s.weather.line}</span></div>
+  `;
+
+  $('lbl-fell').textContent = `${s.trees} left · ${money(PRICES.pineTree * STEM_M3.pine - PRICES.fellCost)} a pine`;
+  // FARMING Part 2: one line per crop — what it costs, how long the bed is gone, what the
+  // run pays, and the one figure that makes them DECISIONS rather than three timers: what a
+  // day of that bed earns. Every number is read off CROPS on each refresh.
+  for (const b of cropRows) {
+    const c = CROPS[b.dataset.crop];
+    // "over that" went: the whole sentence had 1px of room left in the 265px dropdown, and the
+    // homesteader adds " · needs water" to it. Same four facts, room to breathe.
+    b.querySelector('small').textContent = `${money(c.cost)} · ${c.growDays} days · `
+      + `${signedMoney(c.yield - c.cost)} · ${cropRate(c).toFixed(1)} a day`
+      + (!waterOk(h) && !h.water.tank ? ' · needs water' : '');
+    b.disabled = !!s.ended || !waterOk(h) || s.cash < c.cost;
+    b.classList.toggle('active', mode === 'bed' && bedCrop === b.dataset.crop);
+  }
+  $('bedcount').textContent = `${s.beds} of ${s.slots} beds planted — past your own hands, hire a casual on a harvest day.`;
+  $('lbl-hive').textContent = `${money(HIVE.cost)} · ${HIVE.honeyPerDay} kg/day in season`;
+  $('lbl-tank').textContent = h.water.tank ? 'already have one' : `${money(TANK.cost)} + ${money(TANK.delivery)} delivery, filled`;
+  $('lbl-water').textContent = h.water.stream ? 'the stream does the job'
+    : !h.water.tank ? 'nowhere to store it yet'
+      : `${money(WATER.deliveryCost)} · +${WATER.deliveryL} L (tank ${s.tank ? s.tank.pct : 0}%)`;
+  $('lbl-hire').textContent = `${money(LABOUR.wagePerDay)} today · +${LABOUR.perWorker} beds harvested today`;
+  const unitKind = h.key === 'stayed' ? 'spare' : 'room';
+  // the captions name the rung the sim names, the price line quotes the sim's rate — no
+  // hand-typed rung name survives in this file (the caravan round: sim said "stand", menu
+  // still said "park")
+  caption('btn-house', `Build your ${ACCOM.house.label.toLowerCase()}`);
+  caption('btn-unit', `Build a ${ACCOM[unitKind].label.toLowerCase()}`);
+  caption('btn-cabin', `Build a ${ACCOM.cabin.label.toLowerCase()}`);
+  caption('btn-camp', `Open a ${ACCOM.camp.label.toLowerCase()}`);
+  caption('btn-caravan', `Open a ${ACCOM.caravan.label.toLowerCase()}`);
+  $('lbl-unit').textContent = `${money(ACCOM[unitKind].cost)} · ${ACCOM[unitKind].buildDays} days · ${money(ACCOM[unitKind].rate)}/night`;
+  $('lbl-cabin').textContent = `${money(ACCOM.cabin.cost)} · ${ACCOM.cabin.buildDays} days · ${money(ACCOM.cabin.rate)}/night`;
+  $('lbl-camp').textContent = `${money(ACCOM.camp.cost)} · ${ACCOM.camp.buildDays} days · ${money(ACCOM.camp.rate)}/pitch${h.facilities && h.facilities.ablution ? '' : ' · needs an ablution block'}`;
+  $('lbl-caravan').textContent = `${money(ACCOM.caravan.cost)} · ${ACCOM.caravan.buildDays} days · ${money(ACCOM.caravan.rate)}/stand${h.facilities && h.facilities.driveway ? '' : ' · needs a driveway'}`;
+  // U8 — the roof. The reason a disabled row is disabled sits where the price sits: a dead
+  // button with no sentence is the silent refusal the fence round and the gravel row both
+  // taught this seat about. The H$45 000 is the list price; the drive to the site is quoted
+  // live on the ghost, because it depends on where the player puts it.
+  const houseGap = h.cash < ACCOM.house.cost ? money(ACCOM.house.cost - h.cash) : '';
+  $('lbl-house').textContent = `${money(ACCOM.house.cost)} · ${ACCOM.house.buildDays} days`
+    + ' · plus the drive to wherever you put it'
+    + (hasHouse() ? ' · you already have a house' : houseGap ? ` · ${houseGap} short` : '');
+  $('lbl-expand').textContent = s.holding.canExpand
+    ? `${money(expansionPrice(h))} · +${EXPANSION.ha} ha`
+    : 'no more land next door';
+  $('lbl-patch').textContent = `${money(patchCost(h))} · ${s.tourism.roadKm} km · road ${s.tourism.road}%`;
+  $('lbl-harvest').textContent = s.ready
+    ? `${s.ready} bed${s.ready === 1 ? '' : 's'} ready · bring in ${Math.min(s.ready, s.slots)}`
+    : 'nothing ready';
+  $('lbl-cleaner').textContent = s.tourism.cleaner
+    ? `${money(s.tourism.perClean)} a let night — she already works for you`
+    : `${money(8000)} to set up, then ${money(s.tourism.perClean)} a let night · nothing on empty nights`;
+  // the reserve maths on one line (owner GO 2026-10-21): what the winter takes before
+  // a single load is for sale — the hearth, the guests, then the bakkie's loads.
+  const fwRes = s.firewoodReserve || { hearth: 12, guests: 0, total: 12 };
+  const toSell = Math.max(0, Math.floor((s.firewood || 0) - fwRes.total + 1e-9));
+  $('lbl-wood').textContent = (s.firewood > 0
+    ? `${s.firewood} load${s.firewood === 1 ? '' : 's'} stacked · ${money(s.firewoodPrice)}${s.firewoodSeason ? '' : ' (out of season)'}`
+    : `offcuts from felling · ${money(s.firewoodPrice)} in season`)
+    + ` · ${fwRes.total} kept for the hearth, ${fwRes.guests} for guests, ${toSell} to sell`
+    + (s.firewoodSeason ? ` · ${s.firewoodWeekLeft} of 6 at the winter price this week` : '');
+  // the yard (owner GO 2026-10-21): poles at H$95 a unit, H$150 a trip, 10 a load
+  const poleUnits = Math.min(s.poles || 0, s.polePerTrip || 10);
+  const poleNet = poleUnits * (s.polePrice || 95) - (s.poleTripFee || 150);
+  $('lbl-poles').textContent = s.poles > 0
+    ? `${s.poles} unit${s.poles === 1 ? '' : 's'} · ${poleUnits} a trip · fee ${money(s.poleTripFee)} · net ${poleNet < 0 ? '−' : '+'}${money(Math.abs(poleNet))}`
+    : 'no sawn lumber yet — pine stems saw into units';
+  const pile = s.produce + s.honey;
+  const cap = s.shop.veg;
+  $('lbl-sell').textContent = pile
+    ? `${s.produce} kg veg + ${s.honey} kg honey · ${s.produce > cap * 3 ? 'too much for one shop' : 'fuel ' + money(FUEL_PER_TRIP)}`
+    : `fuel ${money(FUEL_PER_TRIP)} per trip`;
+
+  $('btn-fell').disabled = s.trees === 0 || !!s.ended;
+  // (the crop rows set their own disabled state in the loop above - each is priced by its
+  // own crop, which is the whole point of showing three)
+  $('btn-hive').disabled = !!s.ended || s.cash < HIVE.cost;
+  $('btn-tank').disabled = !!s.ended || h.water.tank || s.cash < TANK.cost + TANK.delivery;
+  $('btn-water').disabled = !!s.ended || h.water.stream || !h.water.tank || s.cash < WATER.deliveryCost;
+  $('btn-hire').disabled = !!s.ended || s.cash < LABOUR.wagePerDay;
+  $('btn-house').disabled = !!s.ended || hasHouse() || s.cash < ACCOM.house.cost;
+  $('btn-unit').disabled = !!s.ended || s.cash < ACCOM[unitKind].cost;
+  $('btn-cabin').disabled = !!s.ended || s.cash < ACCOM.cabin.cost;
+  $('btn-camp').disabled = !!s.ended || s.cash < ACCOM.camp.cost;
+  $('btn-caravan').disabled = !!s.ended || s.cash < ACCOM.caravan.cost;
+  $('btn-patch').disabled = !!s.ended || s.cash < patchCost(h);
+  $('btn-expand').disabled = !!s.ended || !s.holding.canExpand || s.cash < expansionPrice(h);
+  $('btn-harvest').disabled = !!s.ended || s.ready === 0;
+  $('btn-wood').disabled = !!s.ended || s.firewood < 1;
+  $('btn-poles').disabled = !!s.ended || !(s.poles > 0);
+  $('btn-cleaner').disabled = !!s.ended || s.tourism.cleaner || !s.tourism.nights;
+  $('btn-sell').disabled = !!s.ended || (s.produce === 0 && s.honey === 0);
+  $('endday').disabled = !!s.ended;
+
+  for (const b of ['fell', 'hive']) $('btn-' + b).classList.toggle('active', mode === b);
+  for (const b of document.querySelectorAll('.dragtool')) {
+    b.classList.toggle('active', mode === 'drag' && r.dragKind === b.dataset.drag);
+  }
+  if (r.ghost) ghostHint(r.ghost);       // a live placement outranks the mode hint
+  else if (r._paint) { /* the drag hint owns the line while the finger is down */ }
+  else $('hint').textContent = s.ended ? 'The run is over.'
+    : mode === 'drag' ? dragModeHint()
+    : mode === 'fell' ? 'Fell mode — click a tree.'
+      : mode === 'bed' ? `Click a cell to plant ${CROPS[bedCrop].label.toLowerCase()} — ${CROPS[bedCrop].growDays} days, ${money(CROPS[bedCrop].cost)} in.`
+        : mode === 'hive' ? 'Click a cell to place a hive.'
+          : r._openPopup ? 'Click any tile to see what you can do there.'
+            : 'Click a tree to inspect it.';
+
+  if (s.ended) {
+    $('over').classList.add('show');
+    $('over-title').textContent = s.ended.result === 'win' ? 'You made it' : 'The run is over';
+    $('over-reason').textContent = s.ended.reason;
+    $('over-life').textContent = h.name || option.name || 'this life';
+  } else {
+    $('over').classList.remove('show');
+  }
+
+  renderCompany();
+  renderVoices();
+  renderGoals();
+  renderYard();
+  renderLegacy();
+  renderVillage();
+  renderBank();
+  r.h = h;
+  r.frame();
+}
+
+$('btn-fell').onclick = () => setMode('fell');
+// Drag-build tools (owner, 2026-10-21): click to arm, click again to disarm.
+for (const b of document.querySelectorAll('.dragtool')) {
+  b.onclick = () => setMode(mode === 'drag' && r.dragKind === b.dataset.drag ? 'inspect' : 'drag',
+    b.dataset.drag);
+}
+// prices are the sim's own constants, printed once — no second copy of the rate table
+$('lbl-dragtrack').textContent = `${money(COST.track)} a tile · drag a run`;
+$('lbl-draggravel').textContent = `${money(COST.track)} a tile · stone finish`;
+$('lbl-dragmud').textContent = `${money(COST.mud)} a tile · cheap, and it bites`;
+$('lbl-dragfence').textContent = `${money(COST.fence)} a post · drag a line`;
+$('lbl-dragflat').textContent = `${money(COST.flattenPerTile)} a tile moved + ${money(COST.bulldozer)} once · drag a block`;
+// start over: clearing the save is the only way back once the pines are sold or the
+// bond is lost — the plot generator is deterministic, so a fresh run replays the land
+// name the place (owner ruling 2026-10-22): the catalog describes ground, the player names
+// the property. Display-side only — nothing here reaches the household or a golden trace.
+$('rename-place').onclick = (e) => {
+  e.preventDefault();
+  const ground = groundName();
+  const v = prompt(`What do you call this place?\n\nIt sits on ${ground}.`, plotName);
+  if (v === null) return;                      // cancelled — leave the name alone
+  setPlotName(v);
+  log(plotName ? `This place is called ${plotName}.` : `The place goes back to being ${ground}.`);
+};
+/* BUG-006 (playtest 2026-10-26): one reset, two doors. The Game menu asks first, because a
+   live run has something to lose. The death screen does not ask - the run is already over, the
+   button names what it clears, and until this commit the only way back into the life you just
+   lost was "Choose another life" followed by clicking the SAME life, which loads the dead save
+   and lands you back here. */
+function startOver() {
+  try { localStorage.removeItem(SAVE); } catch { /* private mode */ }
+  location.reload();
+}
+$('restart').onclick = (e) => {
+  e.preventDefault();
+  if (confirm('Clear this life and start it again? Everything on this run is gone.')) startOver();
+};
+$('over-retry').onclick = startOver;
+/* FARMING Part 2 — the three crop rows, built ONCE from CROPS so a fourth crop shows up
+   without anyone editing this file (the same rule that stopped the build menu hand-typing
+   rung names). Clicking arms the plant tool WITH that crop; pressing the armed one again
+   disarms, like the drag tools do. */
+const cropRows = [];
+for (const key of Object.keys(CROPS)) {
+  const b = document.createElement('button');
+  b.className = 'cropbtn';
+  b.dataset.crop = key;
+  b.innerHTML = `Plant ${esc(CROPS[key].label.toLowerCase())} <small></small>`;
+  b.onclick = () => {
+    const already = mode === 'bed' && bedCrop === key;
+    bedCrop = key;
+    setMode(already ? 'inspect' : 'bed', 'bed');
+  };
+  $('croprows').appendChild(b);
+  cropRows.push(b);
+}
+$('btn-hive').onclick = () => setMode('hive', 'hive');
+$('btn-tank').onclick = () => {
+  const res = buildTank(h);
+  if (!res.ok) return log(res.msg, 'bad');
+  log(`Tank built and filled. −${money(res.cost)}`);
+  save(); refresh();
+};
+$('btn-water').onclick = () => {
+  const res = buyWater(h);
+  if (!res.ok) return log(res.msg, 'bad');
+  sfx('water');
+  log(res.wasDry ? `Water delivered — the countdown stops. −${money(res.cost)}` : `Water delivered. −${money(res.cost)}`);
+  save(); refresh();
+};
+$('btn-hire').onclick = () => {
+  const res = hireCasual(h);
+  if (!res.ok) return log(res.msg, 'bad');
+  log(`Hired a casual for the day. ${res.slots} beds can come in today.`);
+  save(); refresh();
+};
+$('btn-wood').onclick = () => {
+  const res = sellFirewood(h);
+  if (!res.ok) return log(res.msg, 'bad');
+  log(res.msg);
+  save(); refresh();
+};
+$('btn-poles').onclick = () => {
+  const res = sellPoles(h, 10);
+  if (!res.ok) return log(res.msg, 'bad');
+  log(res.msg);
+  save(); refresh();
+};
+$('btn-cleaner').onclick = () => {
+  const res = getCleaner(h);
+  if (!res.ok) return log(res.msg, 'bad');
+  log(res.msg);
+  save(); refresh();
+};
+/* One wrapper for every rung. The sentence is built FROM `ACCOM`, because these four used
+   to hand-type "Caravan park started" and "ready in 30 days" — two copies of two sim facts,
+   and the caravan label moved under them this morning. */
+function startedLine(kind) {
+  const d = ACCOM[kind];
+  const tail = d.capacity === 0 ? 'your own roof — a home, never a listing'
+    : UNLISTED_ON_BUILD.has(kind) ? 'unlisted until you open it in Guests'
+      : `ready in ${d.buildDays} days, then it lets`;
+  return `${d.label} started — ${tail}.`;
+}
+function buildRung(kind) {
+  const [x, y] = freeCell(kind);
+  const res = buildAccom(h, kind, x, y);
+  if (!res.ok) return log(res.msg, 'bad');
+  sfx(VERB_SOUND.accom);   // the same sound as the popup's build verb (A11)
+  log(startedLine(kind));
+  save(); refresh();
+}
+$('btn-unit').onclick = () => buildRung(unitKind());
+$('btn-cabin').onclick = () => buildRung('cabin');
+$('btn-camp').onclick = () => buildRung('camp');
+$('btn-caravan').onclick = () => buildRung('caravan');
+/* U8 — the roof is armed, not placed. `freeCell()` building it silently would decide the
+   player's first real decision FOR them; this puts the same 2×2 ghost the cabin uses under
+   the cursor, quoting the live bill for the site it is standing on. */
+$('btn-house').onclick = () => {
+  if (hasHouse()) return log('You already have a house on this plot — one home per life.', 'bad');
+  if (h.cash < ACCOM.house.cost) {
+    return log(`A house is ${money(ACCOM.house.cost)} before the drive — you have ${money(h.cash)}.`, 'bad');
+  }
+  const [x, y] = freeRoofSite();
+  const site = canPlaceAccom(h, 'house', x, y);
+  if (!site.ok) log(`No ground on this plot will hold a 2×2 yet — ${site.msg.split(' — ')[1] || 'the blade first'}.`);
+  setMode('inspect');
+  r._setGhost('house', x, y);
+};
+$('yardcard').onclick = (e) => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const act = b.dataset.act;
+  let res;
+  if (act === 'open') res = setOpen(h, !h.open);
+  else if (act === 'facility') res = buildFacility(h, b.dataset.kind);
+  else if (act === 'list') res = setListed(h, b.dataset.id, true);
+  else if (act === 'repair') res = bookRepair(h, b.dataset.id, { outside: b.dataset.outside === '1' });
+  else if (act === 'rate') {
+    const k = b.dataset.kind;
+    res = setRate(h, k, ((h.rates && h.rates[k]) || 1) + Number(b.dataset.step));
+  }
+  if (!res) return;
+  if (!res.ok) return log(res.msg, 'bad');
+  log(act === 'open' ? (h.open ? 'Open for bookings.' : 'Closed for bookings — no lets, no reviews.')
+    : act === 'facility' ? 'The yard is being improved.'
+      : act === 'list' ? 'Listed for bookings.'
+        : act === 'rate' ? 'Rate changed — the booking sites update overnight.'
+          : 'Repair booked.');
+  save(); refresh();
+};
+$('btn-expand').onclick = () => {
+  const res = expand(h);
+  if (!res.ok) return log(res.msg, 'bad');
+  log(`Bought the land next door — ${res.ha} ha now, ${res.trees} more trees.`);
+  save(); refresh();
+};
+$('btn-patch').onclick = () => {
+  const res = patchRoad(h);
+  if (!res.ok) return log(res.msg, 'bad');
+  log(`Patched the road to ${res.condition}%. −${money(res.cost)}`);
+  save(); refresh();
+};
+$('btn-harvest').onclick = () => {
+  const res = harvest(h);
+  if (!res.ok) return log(res.msg, 'bad');
+  log(res.msg);
+  save(); refresh();
+};
+$('btn-sell').onclick = () => {
+  const res = sellAll(h);
+  if (!res.ok) return log(res.msg, 'bad');
+  sfx('coins');
+  log(`${res.msg} · +${money(res.net)}`);
+  save(); refresh();
+};
+$('endday').onclick = () => {
+  const res = endDay(h);
+  if (!res.ok) return;
+  log(`— ${res.date} —`, 'day');
+  for (const e of res.events) log(e, /due|short|Missed/.test(e) ? 'bad' : '');
+  if (h.ended) log(h.ended.reason, 'bad');
+  // the animals, heard (SEAT A3). wildlife.js writes every line into the log WITH its
+  // event name, so the cue and the sentence are one entry and cannot drift — that is the
+  // §15.6 contract. Matched on today's day, so a reload cannot replay it, and staggered
+  // so two events in one night (a raid and a snake) are two sounds, not one.
+  let cueN = 0;
+  for (const entry of h.log) {
+    if (entry.day !== h.day || !entry.event) continue;
+    if (entry.event === 'loerie') continue;   // rides the praise pool, not a state event
+    sfx(entry.event, 0.45 * cueN++);
+  }
+  // the guest's score, heard as well as read (owner GO 2026-10-22, L2). The sim always
+  // computed it and always threw it away; now it is kept on the household and the cue is
+  // keyed to the review's own day, so a reload or a second report cannot play it twice.
+  const lr = h.lastReview;
+  if (lr && lr.day !== endday._heard) { endday._heard = lr.day; review(lr.score); }
+  save(); refresh();
+  if (res.report) showReport(res.report);
+};
+
+function showReport(r, sticky) {
+  // the day's net, heard before it is read (SOUND-PLAN Tier 1)
+  if (r.delta > 0) sfx('report-up');
+  else if (r.delta < 0) sfx('report-down');
+  // U10: the delta column is the shared formatter's signed form, not a fifth copy
+  const lines = [];
+  if (r.nights) lines.push(`<div class="r"><span>${r.nights} night${r.nights === 1 ? '' : 's'} let</span><span style="color:#9fd0a8">${signedMoney(r.guests)}</span></div>`);
+  if (r.ateHome) lines.push(`<div class="r"><span>Ate from the plot</span><span>—</span></div>`);
+  if (r.food) lines.push(`<div class="r"><span>Food from the shop</span><span style="color:#e08a6a">${signedMoney(-r.food)}</span></div>`);
+  if (r.tankPct != null && r.tankPct < 20) lines.push(`<div class="r"><span style="color:#e08a6a">The tank is at ${r.tankPct}%</span><span></span></div>`);
+  lines.push(`<div class="r"><span>Living and wages</span><span style="color:#e08a6a">${signedMoney(-r.living)}</span></div>`);
+  if (r.bills) lines.push(`<div class="r"><span>The month's bills</span><span style="color:#e08a6a">${signedMoney(-r.bills)}</span></div>`);
+  const col = r.delta >= 0 ? '#9fd0a8' : '#e08a6a';
+  lines.push(`<div class="r net"><span>${r.delta >= 0 ? 'Up' : 'Down'}</span><span style="color:${col}">${signedMoney(r.delta)}</span></div>`);
+
+  const ev = (r.events || []).slice(0, 3).map((e) => `<div>${e}</div>`).join('');
+  const who = playerName ? ` — ${esc(playerName)}` : '';
+  $('report').innerHTML = `<h3>${r.date}${who} · ${r.weather}</h3>${lines.join('')}`
+    + (ev ? `<div class="ev">${ev}</div>` : '')
+    + '<div class="go">click anywhere to carry on</div>';
+  $('report').classList.add('show');
+  clearTimeout(showReport._t);
+  if (!sticky) showReport._t = setTimeout(() => $('report').classList.remove('show'), 10000);
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.closest('#report') || $('report').classList.contains('show')) {
+    $('report').classList.remove('show');
+  }
+}, true);
+
+/* ---------------- UI-DESIGN-v1 chrome: menus, windows, rail, goals ---------------- */
+// Menu dropdowns: click to open, click elsewhere to close, Escape disarms everything.
+// `menus` is the six tool menus the probe counts; the phone's Windows menu rides the
+// same wiring without joining that count.
+const menus = [...document.querySelectorAll('#menubar .mbtn[data-menu]')];
+const menuAll = [...menus, document.getElementById('winmenu')].filter(Boolean);
+function closeMenus() { menuAll.forEach((m) => m.classList.remove('open')); }
+/* BUG-009 (playtest 2026-10-26): every menu hangs from its button's LEFT edge, and on a phone
+   the bar wraps - so Farm, fifth in the row at x292 of a 390px screen, pushed a 200px panel out
+   to x492. The crop prices the picker exists to show were off the device, and opening the menu
+   grew the document to 493px wide. Clamp each menu to the viewport as it opens and re-clamp on
+   resize; doing it per-menu means it holds wherever the bar happens to wrap, not just at Farm. */
+function placeMenu(m) {
+  const dd = m.querySelector('.dropdown');
+  if (!dd) return;
+  dd.style.left = '0px';                        // back to the CSS default before measuring
+  const vw = document.documentElement.clientWidth || window.innerWidth;
+  const r = dd.getBoundingClientRect(), mr = m.getBoundingClientRect();
+  let shift = 0;
+  if (r.right > vw - 8) shift = (vw - 8) - r.right;      // pull it in from the right edge
+  if (mr.left + shift < 8) shift = 8 - mr.left;          // never push it off the left instead
+  dd.style.left = `${Math.round(shift)}px`;
+}
+menuAll.forEach((m) => {
+  m.querySelector(':scope > button').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const was = m.classList.contains('open');
+    closeMenus();
+    m.classList.toggle('open', !was);
+    if (!was) placeMenu(m);
+  });
+  // a click on any menu item runs the action and closes the menu (TT habit)
+  m.querySelector('.dropdown').addEventListener('click', (e) => {
+    if (e.target.closest('button:not(:disabled), a')) closeMenus();
+  });
+});
+window.addEventListener('resize', () => {
+  menuAll.forEach((m) => { if (m.classList.contains('open')) placeMenu(m); });
+});
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#menubar')) closeMenus();
+});
+$('closeall-m').addEventListener('click', (e) => { e.preventDefault(); closeAllWins(); });
+
+/** U3 · below 980px the windows are bottom sheets — one at a time, thumb-height. */
+function isSheet() {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 980px)').matches;
+}
+
+// Domain windows: open/focus, close, drag by the title bar. One subject per window.
+const WINDOWS = ['win-plot', 'win-guests', 'win-company', 'win-village', 'win-money', 'win-log'];
+const ALLWINS = [...WINDOWS, 'win-help'];
+let winZ = 70;
+
+/* ---------------- U1 · window memory ----------------
+   The plot is a workspace, not a form: a player who put the Money window bottom-left
+   expects it there tomorrow. Geometry and which windows were open live in localStorage
+   under the `otm.ui.` prefix (same prefix the rest of the chrome uses), and every
+   restore is CLAMPED to the viewport — a layout saved on a 1600 px screen must not come
+   back with its title bar off the edge of a 1000 px one. */
+const UI_PFX = 'otm.ui.';
+function uiGet(k, d) {
+  try { const v = localStorage.getItem(UI_PFX + k); return v == null ? d : JSON.parse(v); }
+  catch { return d; }
+}
+function uiSet(k, v) {
+  try { localStorage.setItem(UI_PFX + k, JSON.stringify(v)); } catch { /* private mode */ }
+}
+const WIN_GEO = uiGet('win.geo', {}) || {};        // id → { x, y, w, h }
+const WIN_OPEN = uiGet('win.open', null);          // null = this player has never chosen
+
+/** A stored rectangle, made legal for the viewport we are actually on. */
+function clampWinGeo(g) {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const w = Math.min(Math.max(260, Math.round(g.w || 340)), Math.max(260, vw - 16));
+  const h = g.h ? Math.min(Math.max(120, Math.round(g.h)), Math.max(120, vh - 96)) : 0;
+  const x = Math.min(Math.max(4, Math.round(g.x == null ? 4 : g.x)), Math.max(4, vw - w - 4));
+  const y = Math.min(Math.max(52, Math.round(g.y == null ? 64 : g.y)), Math.max(52, vh - 64));
+  return { x, y, w, h };
+}
+function applyWinGeo(id) {
+  const w = $(id);
+  const g = WIN_GEO[id];
+  if (!w || !g) return false;
+  const c = clampWinGeo(g);
+  w.style.left = c.x + 'px';
+  w.style.top = c.y + 'px';
+  w.style.width = c.w + 'px';
+  // a height is only restored when the player resized; otherwise the content decides
+  if (c.h) w.style.height = c.h + 'px';
+  return true;
+}
+/** Persist where this window is now. A CSS resize writes an inline height, which is
+    how a user-set size is told apart from a content-driven one. */
+function saveWinGeo(id) {
+  const w = $(id);
+  // a sheet has no position of its own — never save the sheet's computed geometry
+  // over the desk the player laid out on a proper screen
+  if (isSheet()) return;
+  if (!w || !w.classList.contains('show') || !w.offsetWidth) return;
+  WIN_GEO[id] = { x: w.offsetLeft, y: w.offsetTop, w: w.offsetWidth, h: w.style.height ? w.offsetHeight : 0 };
+  uiSet('win.geo', WIN_GEO);
+}
+function saveWinOpen() {
+  uiSet('win.open', ALLWINS.filter((id) => $(id) && $(id).classList.contains('show')));
+}
+/** After a viewport change, pull every open window back inside the frame. */
+function reclampWins() {
+  for (const id of ALLWINS) {
+    const w = $(id);
+    if (!w || !w.classList.contains('show')) continue;
+    const c = clampWinGeo({ x: w.offsetLeft, y: w.offsetTop, w: w.offsetWidth, h: 0 });
+    w.style.left = c.x + 'px';
+    w.style.top = c.y + 'px';
+    w.style.width = c.w + 'px';
+    WIN_GEO[id] = { x: c.x, y: c.y, w: c.w, h: w.style.height ? w.offsetHeight : 0 };
+  }
+  uiSet('win.geo', WIN_GEO);
+}
+
+function openWin(id) {
+  const w = $(id);
+  if (!w) return;
+  // on a phone the sheets stack — one at a time, so a window never hides a window
+  if (isSheet()) {
+    for (const other of ALLWINS) {
+      if (other !== id && $(other) && $(other).classList.contains('show')) closeWin(other);
+    }
+  }
+  if (!w.classList.contains('show')) {
+    w.classList.add('show');
+    // restored geometry wins; a first-ever open docks on the free side
+    if (!applyWinGeo(id) && !w.style.left) {
+      const n = document.querySelectorAll('.win.show').length;
+      /* VIS-06 (owner 10-26, and the regression tester saw it too): the default used to
+         cascade from the RIGHT edge, minus the goal panel's width - which is the middle of
+         the map. So every new player met THE PLOT parked over the ground they were meant to
+         be looking at, and had to close it by hand. The default now docks it on the free
+         side: clear of the tool rail, below the menu bar, with the map's centre and the
+         goal panel's corner both left alone. This is only the first-ever desk - a player who
+         drags it anywhere keeps that choice (win.geo), and one who closes it stays closed
+         (win.open), both across sessions. */
+      const rail = $('rail');
+      const rrail = rail && rail.getBoundingClientRect ? rail.getBoundingClientRect().right : 58;
+      const x0 = Math.round(rrail) + 12;
+      const w0 = w.offsetWidth || 340;
+      const x = Math.max(8, Math.min(x0 + n * 22, window.innerWidth - w0 - 8));
+      w.style.left = x + 'px';
+      w.style.top = (64 + n * 26) + 'px';
+    }
+  }
+  w.style.zIndex = ++winZ;
+  if (id === 'win-log') { logUnread = 0; paintLogDot(); }
+  saveWinOpen();
+}
+function closeWin(id) {
+  const w = $(id);
+  if (!w) return;
+  w.classList.remove('show');
+  saveWinGeo(id);
+  saveWinOpen();
+  paintLogDot();
+}
+function closeAllWins() {
+  for (const id of ALLWINS) { const w = $(id); if (w) w.classList.remove('show'); }
+  saveWinOpen();
+  paintLogDot();
+}
+function toggleWin(id) {
+  const w = $(id);
+  if (!w) return;
+  if (w.classList.contains('show')) closeWin(id);
+  else openWin(id);
+}
+document.querySelectorAll('[data-win]').forEach((b) =>
+  b.addEventListener('click', (e) => {
+    if (b.tagName === 'A') e.preventDefault();   // a menu entry, not a link
+    toggleWin(b.dataset.win);
+  }));
+document.querySelectorAll('[data-close]').forEach((b) =>
+  b.addEventListener('click', () => closeWin(b.dataset.close)));
+$('closeall').addEventListener('click', (e) => { e.preventDefault(); closeAllWins(); });
+document.querySelectorAll('.win .tbar').forEach((bar) => {
+  let sx = 0, sy = 0, ox = 0, oy = 0, drag = false;
+  bar.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.x')) return;
+    const w = bar.parentElement;
+    w.style.zIndex = ++winZ;
+    drag = true; sx = e.clientX; sy = e.clientY; ox = w.offsetLeft; oy = w.offsetTop;
+    bar.setPointerCapture(e.pointerId);
+  });
+  bar.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const w = bar.parentElement;
+    if (isSheet()) {
+      // U3 · a sheet does not wander — it follows the thumb downwards, and far enough
+      // is a dismissal. Transient feedback only; position is reset on release.
+      w.style.transform = `translateY(${Math.max(0, e.clientY - sy)}px)`;
+      return;
+    }
+    w.style.left = Math.max(4, ox + e.clientX - sx) + 'px';
+    w.style.top = Math.max(52, oy + e.clientY - sy) + 'px';
+  });
+  bar.addEventListener('pointerup', (e) => {
+    if (!drag) return;
+    drag = false;
+    const w = bar.parentElement;
+    if (isSheet()) {
+      const dy = e.clientY - sy;
+      w.style.transform = '';
+      if (dy > 90) closeWin(w.id);       // thrown down — shut it
+      return;
+    }
+    saveWinGeo(w.id);   // U1: a moved window is remembered moved
+  });
+  bar.addEventListener('pointercancel', () => {
+    if (!drag) return;
+    drag = false;
+    bar.parentElement.style.transform = '';
+  });
+});
+// a resize (the CSS corner grip, or content growth) is worth remembering too
+for (const id of ALLWINS) {
+  const w = $(id);
+  if (!w || typeof ResizeObserver === 'undefined') continue;
+  const ro = new ResizeObserver(() => {
+    clearTimeout(w._geoT);
+    w._geoT = setTimeout(() => saveWinGeo(id), 220);
+  });
+  ro.observe(w);
+}
+
+// Window tabs (Guests: Bookings/Reviews · Company: The company/The mountain)
+document.querySelectorAll('.win .tabs').forEach((tabs) => {
+  tabs.querySelectorAll('[data-tab]').forEach((t) => t.addEventListener('click', () => {
+    tabs.querySelectorAll('[data-tab]').forEach((x) => x.classList.remove('on'));
+    t.classList.add('on');
+    for (const p of tabs.parentElement.querySelectorAll('.tabpanel')) p.hidden = p.id !== t.dataset.tab;
+  }));
+});
+
+// Tool rail: the five tool families, one click from anywhere on the map.
+const RAIL_ICONS = {
+  Build: 'M4 12 L12 5 L20 12 M6.5 10.5 V19 H17.5 V10.5',
+  Siteworks: 'M8 3 L5 21 M16 3 L19 21 M12 5 V8 M12 11 V14 M12 17 V20',
+  Forestry: 'M12 3 L7 11 H9.5 L5.5 17 H18.5 L14.5 11 H17 Z M12 17 V21',
+  Farm: 'M12 21 V12 M12 12 C12 8 9 6 5 6 C5 10 8 12 12 12 M12 12 C12 9 15 7 19 7 C19 10 16 12 12 12',
+  Trade: 'M12 3 A9 9 0 1 0 12.01 3 Z M12 7 V17 M9 9.5 C9 8 10.2 7.5 12 7.5 C13.8 7.5 15 8.2 15 9.5 C15 12 9 11.5 9 14 C9 15.3 10.2 16 12 16 C13.8 16 15 15.4 15 14',
+};
+const railDefs = [['Build', 1], ['Siteworks', 2], ['Forestry', 3], ['Farm', 4], ['Trade', 5]];
+for (const [label, mi] of railDefs) {
+  const b = document.createElement('button');
+  b.title = label;
+  b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+    stroke-linecap="round" stroke-linejoin="round"><path d="${RAIL_ICONS[label]}"/></svg>`;
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const m = menus[mi];
+    const was = m.classList.contains('open');
+    closeMenus();
+    m.classList.toggle('open', !was);
+  });
+  $('rail').appendChild(b);
+}
+
+// Goal panel: pinned, collapsible — the "What now" card without the scroll column.
+$('goalhead').addEventListener('click', () => {
+  const p = $('goalpanel');
+  p.classList.toggle('closed');
+  $('goaltoggle').textContent = p.classList.contains('closed') ? '▸' : '▾';
+});
+
+/* ---------------- U2 · one key table, two readers ----------------
+   The help window and the keydown handler both read KEYMAP. A row with `run` is the
+   page's own key; a row with `own: 'renderer'` is handled by iso-render.js's document
+   listener (the map's own keys: Escape cancels a half-drawn run or a ghost, G toggles
+   the ground map) — the help window still documents it, because the player cannot tell
+   which file answers them. There is no second list to drift. */
+const KEYMAP = [
+  { keys: ['n'], label: 'Change life', hint: 'back to the three lives', run: () => { location.href = 'start.html'; } },
+  { keys: ['f'], label: 'Fell trees', hint: 'arm the axe, then click a tree', run: () => setMode('fell') },
+  { keys: ['t'], label: 'Drag a dirt track', hint: 'arm the tool, drag a line; press again to disarm', run: () => setMode(mode === 'drag' && r.dragKind === 'track' ? 'inspect' : 'drag', 'track') },
+  { keys: ['b'], label: 'Flatten a block', hint: 'drag a rectangle of ground; release grades it in one go', run: () => setMode(mode === 'drag' && r.dragKind === 'flatten' ? 'inspect' : 'drag', 'flatten') },
+  { keys: ['1', '2', '3', '4', '5', '6'], label: 'Open a window', hint: 'The plot · Guests · Company · Village · Money · Log', run: (e) => toggleWin(WINDOWS[Number(e.key) - 1]) },
+  { keys: ['Escape'], label: 'Back out', hint: 'cancel the run, close the menu, then the top window', run: () => escapeChrome() },
+  { keys: ['g'], label: 'Ground map', hint: 'green builds, amber takes track, red is a wall', own: 'renderer' },
+  { keys: ['?', '/'], label: 'This list', hint: 'press it again to close', run: () => toggleWin('win-help') },
+];
+
+/** Escape, the page's share of it: drop the tool, close the menus, shut the top window.
+    The renderer's own Escape (cancel the run, drop the ghost, close the tile menu) runs
+    in its own listener first. */
+function escapeChrome() {
+  setMode('inspect');
+  closeMenus();
+  const open = ALLWINS.map($).filter((w) => w && w.classList.contains('show'))
+    .sort((a, b) => (+b.style.zIndex || 70) - (+a.style.zIndex || 70))[0];
+  if (open) closeWin(open.id);
+}
+
+/** The keys window, generated — never a typed copy of the table. */
+function renderHelp() {
+  $('helpbody').innerHTML = KEYMAP.map((k) => {
+    const label = k.keys.length > 2 ? `${k.keys[0]}–${k.keys[k.keys.length - 1]}`
+      : k.keys.join(' ');
+    return `<div class="krow" data-key="${esc(k.keys.join(' '))}"><kbd>${esc(label)}</kbd>`
+      + `<div><b>${esc(k.label)}</b><small>${esc(k.hint)}</small>`
+      + `${k.own ? `<span class="own">${esc(k.own)}</span>` : ''}</div></div>`;
+  }).join('');
+}
+renderHelp();
+window.__keymap = KEYMAP;
+
+// n/f/t/1–6/Esc/? — dispatched from the table, so a key that is documented is a key
+// that works, and a key that works is a key that is documented.
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  const row = KEYMAP.find((k) => k.keys.includes(e.key));
+  if (row && row.run) row.run(e);
+});
+window.addEventListener('resize', () => { r.resize(); reclampWins(); });
+
+// U1 · first load: restore the desk the player left, or open the plot window if this
+// is their first day. A saved empty list means they shut everything — respect it.
+if (Array.isArray(WIN_OPEN)) {
+  for (const id of WIN_OPEN) if (ALLWINS.includes(id)) openWin(id);
+} else {
+  openWin('win-plot');
+}
+
+// QA hook: ?fresh=1 starts this life from scratch. Probes and screenshot packs need a
+// deterministic run — the repeated reloads in tools/ui-probe.html used to walk the save
+// into the water clock's grave, and an ended run disables half the chrome.
+// The window memory lives in otm.ui.* and survives this on purpose.
+if (params.get('fresh') === '1') { try { localStorage.removeItem(SAVE); } catch { /* private mode */ } }
+
+/* ?retry=1 is the PLAYER's restart, and it is not the same thing as ?fresh. The life picker
+   puts it on a card whose label says "Restart the Homesteader" - which is only true if the run
+   that ended is cleared before the new one starts. It clears every run THIS life left behind
+   (a life can have bought more than one plot), and no other life's. `fresh` stays what it
+   always was: a QA hook that resets one key so a probe gets a deterministic boot.
+   The window memory (otm.ui.*) survives both, because the desk is the player's. */
+if (params.get('retry') === '1') {
+  for (const k of saveKeysFor(option.key)) { try { localStorage.removeItem(k); } catch { /* private mode */ } }
+}
+
+h = load();
+if (!h) {
+  try { await bootTerrain(); } catch { /* no bake here — the fallback slope model plays */ }
+  let spec = plotSpec;
+  let plan = landPlan(spec, option.mode);
+  let shortfall = null;
+  // The picker disables ground this life cannot even put a deposit on; a hand-typed URL
+  // lands here. Refuse the purchase rather than start a run in the red — and say so.
+  if (plan.mode === 'none') {
+    shortfall = `That ground is ${money(plan.price)} — the deposit alone is ${money(plan.deposit)} `
+      + 'and this life cannot raise it. You are on the old plot instead; the picker will '
+      + 'show you what you can afford.';
+    spec = option.plot;
+    plan = landPlan(spec, option.mode);
+  }
+  // ?seed=N pins the tree layer for a QA run (the bush is rolled per new game, so two
+  // screenshots of "the same" plot never matched and a look-test could not be repeated).
+  // A real game passes nothing and keeps its random bush; goldens never reach this line.
+  const seedQ = params.get('seed');
+  h = newHomestead({ ...option, plot: spec }, plan,
+    seedQ != null && Number.isFinite(Number(seedQ)) ? Number(seedQ) : null);
+  if (site && !shortfall) {
+    // the site you bought, on the household (the plot carries the ground; this carries
+    // the choice, so the HUD and the save can say which entrance you took)
+    h.site = { id: site.id, side: h.plot.gate.side, place: site.place };
+    if (plan.mode === 'mortgage') {
+      h.log.push({ day: h.day, text: `Bought ${site.place}: ${money(plan.deposit)} down, `
+        + `${money(plan.monthly)} a month for ${LAND_MORTGAGE.years} years.` });
+    }
+    // the starter stub (plotmap.STUB_NOTE): log-only, day one, never in snap()
+    h.log.push({ day: h.day, text: STUB_NOTE });
+  }
+  if (shortfall) h.log.push({ day: h.day, text: shortfall });
+  save();
+}
+// QA hooks for screenshots: ?build=room|cabin|spare|house then ?ff=N days
+const buildKind = params.get('build');
+if (buildKind && ACCOM[buildKind]) {
+  // U8 found this hook was a coin flip for any 2x2 rung: freeCell() looks for CLEAR ground
+  // and never asks whether it is FLAT, so the build could be refused by the corner gate and
+  // the shot came out empty — and the tree layer rolls a fresh bush on every new game, so
+  // the refusal moved between runs. A house asks the sim's own site rule, like the menu row.
+  const [bx, by] = buildKind === 'house' ? freeRoofSite() : freeCell(buildKind);
+  const res = buildAccom(h, buildKind, bx, by);
+  if (res.ok) save();
+  else console.warn('QA ?build=' + buildKind + ' refused at ' + bx + ',' + by + ': ' + res.msg);
+}
+if (params.get('sold') === '1') acceptOffer(h);   // QA hook for screenshots
+if (params.get('pile')) h.produce = Number(params.get('pile')) || 0;
+const ff = Number(params.get('ff') || 0);
+if (ff > 0 && !h.ended) {
+  for (let i = 0; i < ff && !h.ended; i++) endDay(h);
+  save();
+}
+// QA hook: ?report=1 shows one morning report (used by tools/shoot.mjs)
+if (params.get('report') === '1' && !h.ended) {
+  const r = endDay(h);
+  save();
+  if (r.report) setTimeout(() => showReport(r.report, true), 60);
+}
+// QA hook: ?tile=x,y opens the tile menu on that cell (screenshot evidence)
+const tileQ = (params.get('tile') || '').split(',').map(Number);
+// QA hook: ?win=win-guests,win-money opens windows for screenshots (U1/U7 pack)
+for (const id of (params.get('win') || '').split(',')) {
+  if (ALLWINS.includes(id)) openWin(id);
+}
+// The header names the place the player named, and the ground it stands on underneath —
+// "Wolwehok · the meadow above the chapel". With no name it stays what it always was.
+function paintTitle() {
+  const ground = groundName();
+  $('title').textContent = plotName ? `${plotName} · ${ground}` : (h.site ? `${h.name} · ${ground}` : h.name);
+  if (plotName) $('title').setAttribute('title', ground); else $('title').removeAttribute('title');
+}
+paintTitle();
+$('valley-link').href = 'valley.html?start=' + encodeURIComponent(option.key)
+  + (h.site ? '&site=' + encodeURIComponent(h.site.id) : '');
+/* U9 — day one is an opening, and an opening is read from the top.
+   `log()` prepends, because news belongs at the top of a running log — so replaying the
+   saved lines in order landed the newest first and the identity line LAST, and `slice(-6)`
+   then cut the oldest lines out entirely. Measured on the Incomer this morning: eight
+   day-one lines in the household, six on the screen, and "The Incomer: 1 September,
+   H$243 520 in hand." — the sentence that says who you are — was one of the two that never
+   arrived. Day one now replays every line, oldest first. A save in progress keeps the six
+   newest with the news on top, because that is a log, not a first page. */
+if (h.day === 1) {
+  const opening = h.log.filter((e) => e.day === 1);
+  for (let i = opening.length - 1; i >= 0; i--) log(opening[i].text);
+} else {
+  for (const entry of h.log.slice(-6)) log(entry.text);
+}
+// history is not news: the restored log is read, so the dot starts clean
+logUnread = 0; paintLogDot();
+// §12: the arrival line, display-side only — fires once, on day one, when a name exists
+if (playerName && h.day === 1) {
+  log(`${playerName} arrived at the gate with ${money(h.cash)} and one plot${
+    plotName ? ` — ${plotName}` : ''}.`);
+}
+r.setPlot(h.plot);
+r.setHomestead(h);
+refresh();
+// QA hook, applied last so the plot exists: ?tile=x,y opens the tile menu on that cell
+if (tileQ.length === 2 && tileQ.every(Number.isFinite) && r._openPopup) {
+  r._openPopup(tileQ[0], tileQ[1]);
+  // &submenu=build goes one level deeper — the priced rung list with the house on top and
+  // the dam's wait under it. Both are the surfaces the owner was asked to review.
+  if (params.get('submenu') === 'build' && r._openBuildMenu) r._openBuildMenu(tileQ[0], tileQ[1]);
+}
+/* U12 · the screenshot pack needs a GESTURE frozen mid-flight, not a finished one: the
+   owner reviews pictures, and a picture of a road that is already built proves nothing about
+   the drag. Applied LAST, beside the ?tile hook and for the same reason — the first version
+   of these hooks sat up by ?win=, before r.setPlot(), so `_setGhost` reached a null plot,
+   the module threw, and the shot came out as an empty black canvas with H$0 in the bar. The
+   pack is what caught it: a hook nobody looks at is a hook nobody tested.
+     ?paint=track|gravel|mud|fence|flatten   holds a run (or a block) open, nothing charged
+     ?arm=house|camp|caravan|room|cabin      arms that rung's ghost on ground that takes it
+     ?menu=<name>                            opens one dropdown for the camera
+   The run is chosen the way a player would meet it: out from the gate, along the longest
+   line of dry, treeless ground, so the preview is green rather than a wall of refusals. */
+function demoRun(kind) {
+  const p = h.plot;
+  const g = p.gate || { x: Math.floor(p.w / 2), y: p.h - 2 };
+  const clear = (x, y) => x >= 0 && y >= 0 && x < p.w && y < p.h
+    && p.ground[y * p.w + x] !== 'water'
+    && !(p.trees || []).some((t) => t.x === x && t.y === y);
+  // A block is a RECTANGLE, so the block tool walks two tiles across and one down from the
+  // gate (clamped to the plot) - a straight line would shoot a 1x4 strip and the shot would
+  // not read as the feature it is evidence for.
+  if (kind === 'flatten') {
+    return [g.x, g.y, Math.min(g.x + 2, p.w - 1), Math.min(g.y + 1, p.h - 1)];
+  }
+  let best = null;
+  for (const [dx, dy] of [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [1, -1]]) {
+    let n = 0;
+    while (n < 6 && clear(g.x + dx * (n + 1), g.y + dy * (n + 1))) n++;
+    if (!best || n > best.n) best = { n, dx, dy };
+  }
+  const len = Math.max(4, Math.min(best.n, 6));
+  return [g.x, g.y, g.x + best.dx * len, g.y + best.dy * len];
+}
+const paintQ = params.get('paint');
+if (paintQ && r && h && h.plot) {
+  const [ax, ay, bx, by] = demoRun(paintQ);
+  setMode('drag', paintQ);
+  r._startPaint(ax, ay);
+  r._updatePaint(bx, by);
+}
+const armQ = params.get('arm');
+if (armQ && ACCOM[armQ] && r && h && h.plot) {
+  const [ax, ay] = armQ === 'house' ? freeRoofSite() : freeCell(armQ);
+  r._setGhost(armQ, ax, ay);
+}
+/* QA hook for the crop picker: arms the plant tool with THAT crop, the same way clicking the
+   Farm row does, so a screenshot (and a probe) can show the mid-decision state — the hint, the
+   active row, and the popup rows greyed or live — without a mouse in the way. */
+const plantQ = params.get('plant');
+if (plantQ && CROPS[plantQ]) {
+  bedCrop = plantQ;
+  setMode('bed', 'bed');
+}
+/* QA hook: ?bed=N plants N beds on the first tiles the ground takes and sets them ready, so
+   the harvest badge and the bed art can be photographed at fit zoom without running the crop
+   clock out. Query-gated like ?paint / ?arm / ?seed, and it refuses loudly rather than
+   shooting an empty field. */
+const bedQ = Number(params.get('bed') || 0);
+if (bedQ > 0 && r && h && h.plot) {
+  let placed = 0;
+  for (let y = 1; y < h.plot.h - 1 && placed < bedQ; y++) {
+    for (let x = 1; x < h.plot.w - 1 && placed < bedQ; x++) {
+      const res = plantBed(h, x, y, plantQ && CROPS[plantQ] ? plantQ : DEFAULT_CROP);
+      if (!res.ok || !res.bed) continue;
+      res.bed.planted = 1;
+      res.bed.ready = h.day;              // ready now: the badge is the thing under review
+      placed++;
+    }
+  }
+  if (!placed) console.warn(`?bed=${bedQ} planted nothing on this plot`);
+  else { save(); refresh(); }
+}
+const menuQ = (params.get('menu') || '').toLowerCase();
+if (menuQ) {
+  // compare lowercased text, not a RegExp built from a URL: `menu` arrives from a query
+  // string, and `new RegExp('[` would throw and take the whole page's boot down with it
+  const m = menus.find((x) => (x.querySelector(':scope > button').textContent || '').toLowerCase().includes(menuQ));
+  if (m) m.querySelector(':scope > button').click();
+}
+window.__home = {
+  get h() { return h; }, get r() { return r; }, option,
+  // U1 — the probe reads the remembered desk without poking localStorage itself
+  ui: {
+    get geo() { return WIN_GEO; },
+    get open() { return ALLWINS.filter((id) => $(id) && $(id).classList.contains('show')); },
+    get unread() { return logUnread; },
+    closeAll: closeAllWins,
+    // BUG-005's probe needs the chrome to re-render after moving the sim clock by hand, so
+    // it can read the alarm at thirst 0, 1, 2 and 3 in one frame. Tests drive the sim
+    // directly; this only repaints what the sim already says.
+    refresh: () => refresh(),
+  },
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Own The Mountain — the road in</title>
+<!-- no favicon art yet: an empty icon stops every page load logging a 404 (see plot.html) -->
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100vh; display: flex; flex-direction: column;
+    background: #0e1411; color: #e9e6db;
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 9px 16px;
+    border-bottom: 1px solid #243026; background: #131b16; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 15px; font-weight: 500; }
+  header a { font-size: 12px; color: #7f8d7b; text-decoration: none;
+    border: 1px solid #2b3a30; padding: 3px 9px; border-radius: 99px; }
+  header a:hover { color: #d8e2d4; border-color: #4e7a5b; }
+  .sep { width: 1px; height: 24px; background: #2a362d; }
+  .stat { font-size: 11px; color: #93a08f; line-height: 1.25; }
+  .stat b { display: block; font-size: 15px; color: #f0ecdf; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .stat.bad b { color: #e08a6a; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #stage { flex: 1; position: relative; min-width: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+  aside { width: 300px; flex: none; border-left: 1px solid #243026; background: #131b16;
+    padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  aside h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #7f8d7b;
+    margin: 0; font-weight: 500; }
+  .card { background: #17211b; border: 1px solid #243026; border-radius: 8px; padding: 9px 11px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; padding: 1px 0; }
+  .row span:last-child { color: #f0ecdf; font-variant-numeric: tabular-nums; }
+  .row.muted span { color: #8d9a89; }
+  button { width: 100%; padding: 9px 10px; border-radius: 7px; cursor: pointer;
+    border: 1px solid #2f3f34; background: #1c2a22; color: #e9e6db; font: inherit; text-align: left; }
+  button:hover:not(:disabled) { background: #24382c; border-color: #3d5545; }
+  button:disabled { opacity: .38; cursor: not-allowed; }
+  button small { display: block; color: #93a08f; font-size: 11px; }
+  #bar { height: 6px; border-radius: 99px; background: #22302a; overflow: hidden; margin: 6px 0 2px; }
+  #bar i { display: block; height: 100%; background: #5f9e6d; }
+  #hint { position: absolute; left: 12px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: #b9c4b3;
+    background: rgba(12,18,14,.82); padding: 5px 10px; border-radius: 6px; }
+  #log { font-size: 12px; color: #a7b3a2; overflow-y: auto; max-height: 120px; }
+  #log div { padding: 1px 0; border-bottom: 1px solid #1c2620; }
+
+  /* ---------- U6 · the land office: a list window over the map, not a card column.
+     Thirty plots and three numbers each (cash, deposit, instalment) — a 300px card
+     could not hold them, so it held neither. Workable and rough are separate piles,
+     the way a buyer actually shops. ---------- */
+  /* VIS-03: 640 px of list sat on top of the only map in the game; 460 leaves the
+     valley readable while the list stays open. */
+  .vwin { position: absolute; left: 12px; top: 12px; width: 460px; max-width: calc(100% - 24px);
+    max-height: calc(100% - 24px); display: flex; flex-direction: column;
+    background: rgba(15,22,17,.96); border: 1px solid #2f3f34; border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.6); z-index: 20; overflow: hidden; }
+  .vbar { display: flex; align-items: baseline; gap: 10px; padding: 9px 12px 7px;
+    border-bottom: 1px solid #243026; background: #131b16; cursor: grab; user-select: none; }
+  .vbar:active { cursor: grabbing; }
+  .vbar b { font-size: 12px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: #cfd9cb; }
+  .vbar span { font-size: 11px; color: #7f8d7b; margin-left: auto; }
+  .vbody { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 4px 6px 8px; }
+  .shead, .srow { display: grid; grid-template-columns: minmax(150px, 1fr) 92px 84px 92px;
+    gap: 8px; align-items: baseline; }
+  .shead { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #7f8d7b;
+    padding: 7px 9px 3px; position: sticky; top: 0; background: rgba(15,22,17,.98); }
+  .shead span:not(:first-child), .srow .s-num { text-align: right; font-variant-numeric: tabular-nums; }
+  .srow { width: 100%; text-align: left; padding: 7px 9px; margin: 1px 0; border-radius: 8px;
+    border: 1px solid transparent; background: transparent; color: #e9e6db; font: inherit; cursor: pointer; }
+  .srow:hover { background: #1c2a22; border-color: #2f3f34; }
+  .srow.on { background: #24382c; border-color: #5f9e6d; }
+  .srow .s-name { font-size: 12.5px; min-width: 0; }
+  .srow .s-name i { display: block; font-style: normal; font-size: 10.5px; color: #8d9a89; margin-top: 1px; }
+  .srow .s-num { font-size: 12px; color: #f0ecdf; }
+  .srow .s-num:last-child { color: #b9c4b3; }
+  .srow.poor { opacity: .45; }
+  .srow.poor .s-name i { color: #d99a5a; }
+  .sgroup { font-size: 10.5px; color: #7f8d7b; padding: 9px 9px 3px; letter-spacing: .05em;
+    text-transform: uppercase; border-top: 1px solid #1c2620; margin-top: 5px; }
+  .sgroup:first-of-type { border-top: 0; margin-top: 0; }
+
+  @media (max-width: 980px) {
+    main { flex-direction: column; }
+    #stage { min-height: 42vh; }
+    aside { width: auto; border-left: 0; border-top: 1px solid #243026; }
+    /* the land office becomes a sheet over the map, the same pattern as the plot page */
+    .vwin { left: 8px !important; top: auto !important; bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+      width: auto; right: 8px; max-height: 60vh; }
+    .vbar { padding-top: calc(9px + env(safe-area-inset-top, 0px)); }
+    .srow, .shead { grid-template-columns: minmax(110px, 1fr) 78px 72px 80px; }
+    button { min-height: 44px; }
+    .srow { min-height: 44px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">The road in</h1>
+  <a href="start.html">change life</a>
+  <a id="back" href="plot.html">back to the plot</a>
+  <a id="btn-mute" href="#">mute sound</a>
+  <div class="sep"></div>
+  <div class="stat"><b id="v-date">—</b>date</div>
+  <div class="stat bad"><b id="v-road">—</b>road</div>
+  <div class="stat"><b id="v-km">—</b>to the village</div>
+  <div class="stat cash"><b id="v-cash">—</b>cash</div>
+</header>
+<main>
+  <div id="stage">
+    <canvas id="map"></canvas>
+    <div id="hint">Drag to pan · scroll to zoom · the orange line is your road in</div>
+    <!-- U6 · the land office: 30 plots, cash / deposit / instalment, two piles -->
+    <div class="vwin" id="sitewin">
+      <div class="vbar" id="sitewin-bar"><b>Land on the mountain</b><span id="sitewin-count"></span></div>
+      <div class="vbody" id="sites"></div>
+    </div>
+    <div id="legend" style="position:absolute;right:12px;top:12px;font-size:11.5px;color:#c8b48a;background:rgba(12,18,14,.82);padding:5px 10px;border-radius:6px;z-index:10">
+      <span style="display:inline-block;width:10px;height:10px;background:rgba(74,56,36,.9);border:1px solid #6b5426;vertical-align:-1px;margin-right:5px"></span>
+      cut by Amatola Forestry
+    </div>
+  </div>
+  <aside>
+    <div class="card" id="pick" style="flex:0 0 auto"></div>
+    <h2>Your place</h2>
+    <div class="card">
+      <div class="row"><span id="c-anchor">—</span><span id="c-ha">—</span></div>
+      <div class="row muted"><span>On the plot</span><span id="c-on">—</span></div>
+      <div class="row muted"><span>To the village</span><span id="c-dist">—</span></div>
+    </div>
+    <h2>The valley</h2>
+    <div class="card">
+      <div class="row"><span>Forest</span><span id="v-forest">—</span></div>
+      <div id="bar2" style="height:6px;border-radius:99px;background:#22302a;overflow:hidden;margin:6px 0 2px"><i id="bar2-fill" style="display:block;height:100%;width:0%;background:#7fc48d"></i></div>
+      <div class="row muted"><span>Cut so far</span><span id="v-cut">—</span></div>
+      <div class="row muted"><span>Your bookings</span><span id="v-book">—</span></div>
+    </div>
+    <h2>Your road</h2>
+    <div style="display:flex;gap:6px;margin:0 0 8px">
+      <button id="cam-gate" style="flex:1;padding:6px;font-size:11.5px;text-align:center">my gate</button>
+      <button id="cam-village" style="flex:1;padding:6px;font-size:11.5px;text-align:center">the village</button>
+      <button id="cam-all" style="flex:1;padding:6px;font-size:11.5px;text-align:center">all of it</button>
+    </div>
+    <div class="card">
+      <div class="row"><span>Condition</span><span id="c-cond">—</span></div>
+      <div id="bar"><i id="bar-fill" style="width:0%"></i></div>
+      <div class="row muted"><span>Length</span><span id="c-km">—</span></div>
+      <div class="row muted"><span>Wears</span><span id="c-decay">—</span></div>
+      <div class="row muted"><span>A patch costs</span><span id="c-cost">—</span></div>
+    </div>
+    <button id="btn-patch">Patch the road <small id="lbl-patch"></small></button>
+    <h2>Guests</h2>
+    <div class="card">
+      <div class="row"><span>Rating</span><span id="c-rating">—</span></div>
+      <div class="row muted"><span>Nights sold</span><span id="c-nights">—</span></div>
+      <div class="row muted"><span>Complaints</span><span id="c-comp">—</span></div>
+      <div class="row muted"><span>The company</span><span id="c-rel">—</span></div>
+    </div>
+    <h2>Log</h2>
+    <div id="log"></div>
+  </aside>
+</main>
+<script type="module">
+import { MapRenderer } from './js/ui/render.js';
+import { loadTerrain, setTerrain } from './js/sim/terrain.js';
+import { fromJSON, toJSON, summary, newHomestead } from './js/sim/homestead.js';
+import { patchRoad, patchCost, roadDecay, tourismSummary } from './js/sim/tourism.js';
+import { START_OPTIONS, startPlan, landPlan, plotPrice, bondPayment, LAND_MORTGAGE } from './js/sim/plotmap.js';
+import { SITES, SITE_BY_ID, siteSpec, lifeSpec } from './js/sim/sites.js';
+import { initAudio, world, setMuted, isMuted } from './js/ui/audio.js';
+import { seasonOf } from './js/sim/weather.js';
+// U10b: the same js/sim/fmt.js the sim writes its own sentences with — the land office
+// quotes a deposit and an instalment side by side, so a second grouping rule here would
+// show two formats on one screen. (fmt.js imports nothing, so this crosses no boundary.)
+import { money } from './js/sim/fmt.js';
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const key = params.get('start') || 'incomer';
+const option = START_OPTIONS.find((o) => o.key === key) || START_OPTIONS[0];
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// A game bought off the main map (sites.js): ?site=<id>. One save per life AND site.
+const siteQ = params.get('site');
+const siteStart = siteQ ? SITE_BY_ID[siteQ] : null;
+const SAVE = 'otm-home-' + option.key + (siteStart ? '-' + siteStart.id : '');
+
+let h = null;
+try { const raw = localStorage.getItem(SAVE); h = raw ? fromJSON(raw) : null; } catch { /* ignore */ }
+
+$('back').href = 'plot.html?start=' + encodeURIComponent(option.key)
+  + (siteStart ? '&site=' + encodeURIComponent(siteStart.id) : '');
+
+// QA hook: ?road=N forces a condition so screenshots can show a worn road
+// Number(null) is 0, so an absent parameter used to zero the road on every load.
+const q = (k) => (params.get(k) === null ? null : Number(params.get(k)));
+const forced = q('road');
+const forcedValley = q('valley');
+
+/* ---------------- map ---------------- */
+const cv = $('map');
+const r = new MapRenderer(cv, {});
+
+const [mapJson, demBuf] = await Promise.all([
+  fetch('data/hogsback-v3.json').then((x) => x.json()),
+  fetch('data/hogsback-v3.bin').then((x) => x.arrayBuffer()),
+]);
+const t = loadTerrain(demBuf, mapJson.meta, mapJson);
+r.setTerrain(t.dem, mapJson.meta, mapJson);
+setTerrain(t);   // the SIM sees the real ground too: a new game samples real heights
+/* VIS-03 (playtest 10-25: "selected plot not highlighted… you cannot tell two plots
+   apart"): this page never called setState, so the renderer had an EMPTY plot list and
+   drew no markers at all — the whole map was terrain and roads. Hand it the land
+   office's 30 sites AND the 24 baked anchors (the three canonical lives live in the
+   bake, not in SITES), deduped by id, and select the player's own ground. */
+const MY_SITE = siteQ || option.plot.id;
+{
+  const byId = new Map();
+  for (const p of (mapJson.plots || [])) {
+    byId.set(p.id, { id: p.id, name: p.place || p.id, x: p.x, y: p.y });
+  }
+  for (const s of SITES) {
+    if (!byId.has(s.id)) byId.set(s.id, { id: s.id, name: s.place, x: s.x, y: s.y, tier: s.tier });
+  }
+  for (const p of byId.values()) p.owned = p.id === MY_SITE;
+  r.setState({ plots: [...byId.values()] });
+  r.selected = MY_SITE;
+}
+r.fitToMap();
+
+// no save yet: start this life here so the page works on its own — AFTER the DEM is
+// in, so the plot samples the real heights (TERRAIN-SPEC.md). A site you cannot afford
+// is not started and not saved: the picker disables that card, and this is the page's
+// preview household, not a game.
+if (!h) {
+  const spec = siteStart ? lifeSpec(siteStart.id, params.get('side'), option) : option.plot;
+  const plan = landPlan(spec, option.mode);
+  if (plan.mode === 'none') {
+    h = newHomestead(option, startPlan(option.plot, option.mode));
+  } else {
+    h = newHomestead({ ...option, plot: spec }, plan);
+    if (siteStart) h.site = { id: siteStart.id, side: h.plot.gate.side, place: siteStart.place };
+    try { localStorage.setItem(SAVE, toJSON(h)); } catch { /* ignore */ }
+  }
+}
+// QA hooks, applied after a fresh start too
+if (h && forced !== null && Number.isFinite(forced) && forced >= 0 && forced <= 100) h.road.condition = forced;
+if (h && forcedValley !== null && Number.isFinite(forcedValley) && forcedValley >= 0 && forcedValley <= 100) h.valley.health = forcedValley;
+
+/* ---------------- sound (SOUND-PLAN-v1) ----------------
+   The valley view carries the same bed as the plot: same weather, same season, same
+   rules. An AudioContext cannot cross page navigation, so this page unlocks on its
+   own first gesture, reads the shared mute switch, and starts the bed from the
+   household's actual weather. */
+try { setMuted(localStorage.getItem('otm.audioMuted') === '1'); } catch { /* private mode */ }
+addEventListener('pointerdown', initAudio, { once: true });
+addEventListener('keydown', initAudio, { once: true });
+function applyMuteLabel() { $('btn-mute').textContent = isMuted() ? 'unmute sound' : 'mute sound'; }
+applyMuteLabel();
+$('btn-mute').onclick = (e) => {
+  e.preventDefault();
+  setMuted(!isMuted());
+  try { localStorage.setItem('otm.audioMuted', isMuted() ? '1' : '0'); } catch { /* private mode */ }
+  applyMuteLabel();
+};
+// the same snapshot the plot page hands over, so the saws on the mountain are audible
+// HERE most of all — this is the view that looks at them (SOUND-PLAN-v2 §2).
+if (h && h.weather && h.weather.kind) {
+  world({
+    weather: h.weather.kind,
+    season: seasonOf(h.date.month),
+    power: h.facilities && h.facilities.power ? 'solar'
+      : h.facilities && h.facilities.generator ? 'generator' : 'none',
+    stance: h.company && h.company.relation,
+  });
+}
+
+/** Where your plot sits on the real map: the site's own anchor when you bought off the
+ *  map, otherwise the baked anchor of the canonical plot. */
+function siteAnchor() {
+  const s = (h && h.plot && SITE_BY_ID[h.plot.id]) || siteStart;
+  if (s) return { x: s.x, y: s.y };
+  return (mapJson.plots || []).find((p) => p.id === option.plot.id);
+}
+
+/** How much of the map the land-office panel covers, in canvas px (VIS-03). The
+ *  composition centre has to be the centre of the VISIBLE strip, not of the canvas —
+ *  centring on the canvas is what put your own ground underneath the panel, so the
+ *  selection existed and could not be seen. */
+function panelInset() {
+  const win = document.querySelector('.vwin');
+  if (!win || !r.cv) return 0;
+  const box = win.getBoundingClientRect();
+  const cvBox = r.cv.getBoundingClientRect();
+  const right = box.right - cvBox.left;
+  return Math.max(0, Math.min(right, r.cv.width * 0.55));
+}
+
+// frame the road, not the whole valley: at fit zoom a 0.4 km driveway is ten pixels
+function frameRoad() {
+  const pxPerKm = 1000 / mapJson.meta.mPerPx;
+  const km = h ? h.plot.kmFromShop : option.plot.kmFromShop;
+  const spanKm = Math.max(1.6, km * 2.4);
+  const inset = panelInset();
+  const vis = Math.max(160, r.cv.width - inset);
+  const z = Math.min(r.baseZoom * 9, vis / (spanKm * pxPerKm));
+  const mid = siteAnchor();
+  const vill = (mapJson.plots || []).find((p) => p.id === 'hogsback-village');
+  const cx = mid && vill ? (mid.x + vill.x) / 2 : mapJson.meta.width / 2;
+  const cy = mid && vill ? (mid.y + vill.y) / 2 : mapJson.meta.height / 2;
+  r.cam.zoom = z;
+  r.cam.x = inset + vis / 2 - cx * z;
+  r.cam.y = r.cv.height / 2 - cy * z;
+  if (r._clampCam) r._clampCam();
+}
+/** Centre the map on a point, showing roughly `spanKm` across — centred in the visible
+ *  strip, so clicking a plot in the list does not park it under the list (VIS-03). */
+function centreOn(mx, my, spanKm) {
+  const pxPerKm = 1000 / mapJson.meta.mPerPx;
+  const inset = panelInset();
+  const vis = Math.max(160, r.cv.width - inset);
+  const z = Math.min(r.baseZoom * 12, vis / (spanKm * pxPerKm));
+  r.cam.zoom = z;
+  r.cam.x = inset + vis / 2 - mx * z;
+  r.cam.y = r.cv.height / 2 - my * z;
+  if (r._clampCam) r._clampCam();
+}
+
+frameRoad();
+
+/* VIS-03: the land-office window sits ON the map. The framing fix lives in `frameRoad()`
+   and `centreOn()` themselves (`panelInset()` centres the composition on the visible
+   strip); the half-window nudge that used to sit here was a heuristic that still left the
+   owned marker under the panel's edge at 1400 px, so it is gone. */
+
+// where your plot sits on the real map, and where the village is
+const mine = siteAnchor();
+const village = (mapJson.plots || []).find((p) => p.id === 'hogsback-village');
+
+function conditionColour(c) {
+  if (c >= 70) return '#7fc48d';
+  if (c >= 50) return '#d9c46a';
+  if (c >= 30) return '#d99a5a';
+  return '#d9695a';
+}
+
+/* ---- the company's cutting, drawn on the real forest polygons ---- */
+const FORESTS = (mapJson.osm || [])
+  .filter((f) => f.kind === 'wood' || f.kind === 'forest')
+  .map((f) => {
+    const cx = f.pts.reduce((a, p) => a + p[0], 0) / f.pts.length;
+    const cy = f.pts.reduce((a, p) => a + p[1], 0) / f.pts.length;
+    const d = village ? Math.hypot(cx - village.x, cy - village.y) : 0;
+    return { pts: f.pts, cx, cy, d };
+  })
+  .sort((a, b) => a.d - b.d);          // the accessible blocks go first
+
+function drawLogging() {
+  if (!h || !FORESTS.length) return;
+  const ctx = cv.getContext('2d');
+  const health = h.valley ? h.valley.health : 100;
+  const frac = Math.max(0, Math.min(1, 1 - health / 100));
+  if (frac <= 0.001) return;
+
+  const exact = frac * FORESTS.length;
+  const whole = Math.floor(exact);
+  const part = exact - whole;
+
+  ctx.save();
+  FORESTS.forEach((f, i) => {
+    let share = 0;
+    if (i < whole) share = 1;
+    else if (i === whole) share = part;
+    if (share <= 0.01) return;
+
+    const path = new Path2D();
+    f.pts.forEach(([x, y], k) => {
+      const [sx, sy] = r.worldToScreen(x, y);
+      if (k === 0) path.moveTo(sx, sy); else path.lineTo(sx, sy);
+    });
+    path.closePath();
+
+    // bounding box in screen space, so the cut can eat in from one edge
+    let x1 = Infinity, x2 = -Infinity, y1 = Infinity, y2 = -Infinity;
+    for (const [x, y] of f.pts) {
+      const [sx, sy] = r.worldToScreen(x, y);
+      x1 = Math.min(x1, sx); x2 = Math.max(x2, sx);
+      y1 = Math.min(y1, sy); y2 = Math.max(y2, sy);
+    }
+    if (x2 < -50 || y2 < -50 || x1 > cv.width + 50 || y1 > cv.height + 50) return;
+
+    ctx.save();
+    ctx.clip(path);
+    ctx.fillStyle = 'rgba(74,56,36,0.82)';
+    ctx.fillRect(x1, y1, (x2 - x1) * share, y2 - y1);
+    // stumps on the cut part
+    ctx.fillStyle = 'rgba(30,22,14,0.55)';
+    const n = Math.round(10 * share);
+    for (let k = 0; k < n; k++) {
+      const px = x1 + ((k * 37 + i * 11) % Math.max(1, Math.floor((x2 - x1) * share)));
+      const py = y1 + ((k * 53 + i * 7) % Math.max(1, Math.floor(y2 - y1)));
+      ctx.beginPath();
+      ctx.arc(px, py, 2.2 * r.dpr, 0, 7);
+      ctx.fill();
+    }
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+/** The access road, drawn over the real map from your gate to the village. */
+function drawOverlay() {
+  const ctx = cv.getContext('2d');
+  if (!mine || !village || !h) return;
+  const [ax, ay] = r.worldToScreen(mine.x, mine.y);
+  const [bx, by] = r.worldToScreen(village.x, village.y);
+  const c = h.road.condition;
+  const col = conditionColour(c);
+
+  ctx.save();
+  ctx.setLineDash([7 * r.dpr, 5 * r.dpr]);
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,.55)';
+  ctx.lineWidth = 7 * r.dpr;
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 3.4 * r.dpr;
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // potholes: one mark per ~10% of wear, spread along the line
+  const holes = Math.min(14, Math.round((100 - c) / 8));
+  ctx.fillStyle = 'rgba(20,14,10,.9)';
+  for (let i = 1; i <= holes; i++) {
+    const f = i / (holes + 1);
+    const px = ax + (bx - ax) * f, py = ay + (by - ay) * f;
+    ctx.beginPath();
+    ctx.ellipse(px, py, 2.6 * r.dpr, 1.8 * r.dpr, 0, 0, 7);
+    ctx.fill();
+  }
+
+  // your plot
+  ctx.beginPath();
+  ctx.arc(ax, ay, 7 * r.dpr, 0, 7);
+  ctx.fillStyle = 'rgba(232,180,90,.95)';
+  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2 * r.dpr;
+  ctx.stroke();
+
+  ctx.font = `600 ${11 * r.dpr}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 3 * r.dpr;
+  ctx.strokeStyle = 'rgba(8,12,10,.9)';
+  ctx.strokeText('your gate', ax, ay - 12 * r.dpr);
+  ctx.fillStyle = '#f6eccd';
+  ctx.fillText('your gate', ax, ay - 12 * r.dpr);
+  ctx.restore();
+}
+
+/* ---------------- the picker (owner, 2026-10-21) ----------------
+   "which side has the road so where the entrance is supposed to be… maybe the
+   difference between plots of same kind is the side the entrance is off the road
+   coming in." The 24 sites are baked in sites.js; this lists them, shows the side the
+   road comes in from, and starts a life on the one you choose. A site with two roads
+   (a corner) offers both entrances — that is the difference between two plots of the
+   same kind. */
+let picked = siteStart ? siteStart.id : null;
+let pickedSide = params.get('side') || null;
+
+const WATER_LABEL = { stream: 'stream on the boundary', 'dam-site': 'dam site', null: 'dry' };
+/** The forest as the buyer sees it: the rough ground is wattle-heavy, and saying
+ *  "mixed" would hide the reason it is cheap. */
+const forestLabel = (s) => (s.alienFrac >= 0.2 ? 'wattle-heavy' : s.forest);
+
+/** The three numbers a buyer actually needs (owner: "maybe a deposit and rest
+ *  mortgaged? like real life?"), computed ONCE per plot so the list and the detail
+ *  panel can never disagree — U6. Affordability is the current life's. */
+function landCalc(s, side) {
+  const base = siteSpec(s.id, side || s.roadSide);
+  const price = plotPrice(base);
+  const deposit = Math.round(price * LAND_MORTGAGE.depositFrac);
+  const monthly = bondPayment(price - deposit, LAND_MORTGAGE.rate, LAND_MORTGAGE.years);
+  const plan = landPlan(lifeSpec(s.id, side || s.roadSide, option), option.mode);
+  return { price, deposit, monthly, afford: plan.mode !== 'none', side: side || s.roadSide };
+}
+
+function siteRow(s) {
+  const c = landCalc(s, pickedSide && s.entranceSide.includes(pickedSide) ? pickedSide : null);
+  const water = s.water === 'stream' ? 'stream' : s.water === 'dam-site' ? 'dam site' : 'dry';
+  return `<button class="srow${s.id === picked ? ' on' : ''}${c.afford ? '' : ' poor'}" data-site="${s.id}">`
+    + `<span class="s-name">${esc(s.place)}<i>${s.ha} ha · ${s.kmFromShop} km · ${water}`
+    + ` · gate ${s.entranceSide.join('/')}${c.afford ? '' : ' · this life cannot raise the deposit'}</i></span>`
+    + `<span class="s-num">${money(c.price)}</span>`
+    + `<span class="s-num">${money(c.deposit)}</span>`
+    + `<span class="s-num">${money(c.monthly)}/mo</span>`
+    + `</button>`;
+}
+
+let VALLEY_ROWS = [];
+function renderSites() {
+  // two piles (owner, 2026-10-21: "is there no really cheap shitty property?"): the
+  // workable ground that needs a mortgage, and the rough ground a poor life can own.
+  const groups = [
+    ['Workable ground — a mortgage buys these', SITES.filter((s) => s.tier === 'good')],
+    ['Cheap rough ground — steep, far, dry', SITES.filter((s) => s.tier === 'rough')],
+  ];
+  $('sites').innerHTML = '<div class="shead"><span>Plot</span><span>Cash</span>'
+    + `<span>Deposit ${Math.round(LAND_MORTGAGE.depositFrac * 100)}%</span>`
+    + `<span>Bond · ${LAND_MORTGAGE.years}y</span></div>`
+    + groups.map(([label, list]) =>
+      `<div class="sgroup">${label} · ${list.length}</div>` + list.map(siteRow).join('')).join('');
+  const sel = picked && $('sites').querySelector(`button[data-site="${picked}"]`);
+  if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest' });
+  $('sitewin-count').textContent =
+    `${groups[0][1].length} workable · ${groups[1][1].length} rough · ${option.name}'s money`;
+  // QA: the probe asserts every one of the 30 is listed, priced and reachable
+  VALLEY_ROWS = SITES.map((s) => {
+    const c = landCalc(s, null);
+    return { id: s.id, tier: s.tier, ...c };
+  });
+}
+
+/** U6 · the land office window is draggable and remembers where it was put
+ *  (otm.ui.* — the same prefix the plot page's windows use), clamped to the stage. */
+(function siteWinDrag() {
+  const win = $('sitewin'), bar = $('sitewin-bar');
+  let geo = null;
+  try { geo = JSON.parse(localStorage.getItem('otm.ui.valleySites') || 'null'); } catch { /* private mode */ }
+  if (geo) {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    win.style.left = Math.min(Math.max(4, geo.x), Math.max(4, vw - 200)) + 'px';
+    win.style.top = Math.min(Math.max(4, geo.y), Math.max(4, vh - 80)) + 'px';
+  }
+  let sx = 0, sy = 0, ox = 0, oy = 0, drag = false;
+  bar.addEventListener('pointerdown', (e) => {
+    if (window.matchMedia('(max-width: 980px)').matches) return;   // a sheet does not wander
+    drag = true; sx = e.clientX; sy = e.clientY;
+    ox = win.offsetLeft; oy = win.offsetTop;
+    bar.setPointerCapture(e.pointerId);
+  });
+  bar.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    win.style.left = Math.max(4, ox + e.clientX - sx) + 'px';
+    win.style.top = Math.max(4, oy + e.clientY - sy) + 'px';
+  });
+  const drop = () => {
+    if (!drag) return;
+    drag = false;
+    try { localStorage.setItem('otm.ui.valleySites',
+      JSON.stringify({ x: win.offsetLeft, y: win.offsetTop })); } catch { /* private mode */ }
+  };
+  bar.addEventListener('pointerup', drop);
+  bar.addEventListener('pointercancel', drop);
+})();
+
+function renderPick() {
+  const s = SITE_BY_ID[picked];
+  if (!s) {
+    $('pick').innerHTML = '<div class="row muted"><span>Pick a piece of ground</span><span>—</span></div>';
+    return;
+  }
+  if (!pickedSide || !s.entranceSide.includes(pickedSide)) pickedSide = s.roadSide;
+  const base = siteSpec(s.id, pickedSide);
+  const price = plotPrice(base);
+  // the three numbers a buyer actually needs (owner: "maybe a deposit and rest
+  // mortgaged? like real life?"): cash price, the deposit today, the instalment
+  const deposit = Math.round(price * LAND_MORTGAGE.depositFrac);
+  const monthly = bondPayment(price - deposit, LAND_MORTGAGE.rate, LAND_MORTGAGE.years);
+  let html = `<div class="row"><span>${esc(s.place)}</span><span>${s.ha} ha</span></div>`
+    + `<div class="row muted"><span>${WATER_LABEL[s.water] || s.water} · ${forestLabel(s)} forest</span>`
+    + `<span>${s.kmFromShop} km</span></div>`
+    + `<div class="row muted"><span>Entrance</span><span>${s.entranceSide.join(' or ')} side</span></div>`
+    + `<div class="row"><span>Land</span><span>${money(price)}</span></div>`
+    + `<div class="row muted"><span>Deposit (${Math.round(LAND_MORTGAGE.depositFrac * 100)}%)</span>`
+    + `<span>${money(deposit)}</span></div>`
+    + `<div class="row muted"><span>Bond, ${LAND_MORTGAGE.years} years</span><span>${money(monthly)}/month</span></div>`;
+  if (s.entranceSide.length > 1) {
+    html += '<div style="display:flex;gap:6px;margin:7px 0">'
+      + s.entranceSide.map((side) => `<button data-side="${side}" style="flex:1;padding:5px;text-align:center;font-size:11.5px;`
+        + `${side === pickedSide ? 'background:#2e4a37;border-color:#5f9e6d;' : ''}">from the ${side}</button>`).join('')
+      + '</div>';
+  }
+  html += '<div style="font-size:11px;color:#7f8d7b;margin:6px 0 4px">Take this ground as…</div>';
+  for (const o of START_OPTIONS) {
+    // the life's own terms ride along: the incomer's H$320k promised to a builder, the
+    // stayed's H$40k — properties of the life, not of the ground. landPlan picks the
+    // richest move the life can actually make: cash, else the deposit, else nothing.
+    const plan = landPlan(lifeSpec(s.id, pickedSide, o), o.mode);
+    const can = plan.mode !== 'none';
+    const sub = plan.mode === 'family'
+      ? `a share of the ground · ${money(plan.cashLeft)} in hand, no bond`
+      : plan.mode === 'cash'
+        ? `${money(plan.price)} outright · ${money(plan.cashLeft)} left`
+        : plan.mode === 'mortgage'
+          ? `${money(plan.deposit)} down · ${money(plan.monthly)}/month · ${money(plan.cashLeft)} left`
+          : `${money(plan.deposit)} deposit — this life cannot raise it`;
+    html += `<button data-life="${o.key}" ${can ? '' : 'disabled'}>${o.name} <small>${sub}</small></button>`;
+  }
+  $('pick').innerHTML = html;
+}
+
+$('sites').onclick = (e) => {
+  const b = e.target.closest('button[data-site]');
+  if (!b) return;
+  picked = b.dataset.site;
+  pickedSide = null;
+  const s = SITE_BY_ID[picked];
+  if (s) centreOn(s.x, s.y, 1.8);
+  renderSites(); renderPick();
+};
+
+$('pick').onclick = (e) => {
+  const sb = e.target.closest('button[data-side]');
+  if (sb) { pickedSide = sb.dataset.side; renderPick(); return; }
+  const lb = e.target.closest('button[data-life]');
+  if (!lb) return;
+  const s = SITE_BY_ID[picked];
+  if (!s) return;
+  location.href = 'plot.html?site=' + encodeURIComponent(s.id)
+    + '&start=' + encodeURIComponent(lb.dataset.life)
+    + '&side=' + encodeURIComponent(pickedSide || s.roadSide);
+};
+
+/** The site under consideration, marked on the map so you can see the ground.
+ *  SOLID and subtle (owner, 2026-10-21: "what's the dotted line around the whole
+ *  map?"): a dashed ring reads as a debug marquee, so the selection is a plain thin
+ *  ring plus the name. The only dashed line left on this map is the road — which is
+ *  dashed because it is a condition indicator, not a boundary. */
+function drawPicked() {
+  const s = SITE_BY_ID[picked];
+  if (!s) return;
+  const ctx = cv.getContext('2d');
+  const [px, py] = r.worldToScreen(s.x, s.y);
+  const rad = Math.max(9 * r.dpr, (s.tiles[0] * 2.5 / mapJson.meta.mPerPx) * r.cam.zoom * r.dpr / 2);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(px, py, rad, 0, 7);
+  ctx.strokeStyle = 'rgba(127,196,141,.85)';
+  ctx.lineWidth = 1.6 * r.dpr;
+  ctx.stroke();
+  ctx.font = `600 ${11 * r.dpr}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 3 * r.dpr;
+  ctx.strokeStyle = 'rgba(8,12,10,.9)';
+  ctx.strokeText(s.place, px, py - rad - 6 * r.dpr);
+  ctx.fillStyle = '#cfe6d2';
+  ctx.fillText(s.place, px, py - rad - 6 * r.dpr);
+  ctx.restore();
+}
+
+function loop(tMs) {
+  r.frame(16.7, tMs / 1000);
+  drawLogging();
+  drawOverlay();
+  drawPicked();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ---------------- panel ---------------- */
+function refresh() {
+  if (!h) return;
+  const s = summary(h);
+  const ts = tourismSummary(h);
+  $('title').textContent = `${option.name} — the road in`;
+  $('v-date').textContent = s.date;
+  $('v-road').textContent = ts.road + '%';
+  $('v-km').textContent = ts.roadKm + ' km';
+  $('v-cash').textContent = money(s.cash);
+  $('c-cond').textContent = ts.road + '%';
+  $('c-km').textContent = ts.roadKm + ' km to the village';
+  $('c-decay').textContent = roadDecay(h).toFixed(2) + ' a day';
+  $('c-cost').textContent = money(patchCost(h));
+  const health = h.valley ? h.valley.health : 100;
+  const bookFactor = Math.round((0.7 + 0.3 * (health / 100)) * 100);
+  $('v-forest').textContent = Math.round(health) + '%';
+  $('bar2-fill').style.width = Math.round(health) + '%';
+  $('bar2-fill').style.background = health > 60 ? '#7fc48d' : health > 30 ? '#d9c46a' : '#d9695a';
+  $('v-cut').textContent = Math.round(100 - health) + '% of the blocks';
+  $('v-book').textContent = bookFactor + '% of the rate';
+  const p = h.plot;
+  /* The anchor names the GROUND you stand on. A bought site brings its own catalog place;
+     the canonical three bring the sim's `groundLabel` (homestead.js copies it onto the
+     household). What this line must never do is prettify `plot.id` - the Incomer's id is
+     `the-arboretum` and the Stayed's is `qhumusa-flats`, so the old one printed "The
+     Arboretum" and "Qhumusa Flats", the exact names the owner ruled out on 10-22 (a plot may
+     sit under a landmark, but it is never named after somebody's property). The id is a
+     terrain seed; it is what makes the ground, not what the ground is called.
+     The fallback is the LIFE's own label, not the prettified id: a save that predates
+     `groundLabel` still has a `key`, and START_OPTIONS carries the label - falling back to
+     the id would put the banned name straight back on the screen for exactly the old saves
+     the fallback exists for. */
+  const groundSite = SITE_BY_ID[p.id] || siteStart;
+  $('c-anchor').textContent = groundSite ? groundSite.place
+    : (h.groundLabel || option.groundLabel || 'this ground');
+  $('c-ha').textContent = p.ha + ' ha';
+  $('c-on').textContent = `${(h.beds || []).length} beds · ${(h.accom || []).filter((a) => a.built).length} units`;
+  $('c-dist').textContent = p.kmFromShop + ' km';
+  const rel = (h.company && h.company.relation) || 'neutral';
+  const relText = {
+    neutral: 'cutting as usual',
+    supplier: 'you supply them',
+    opposed: 'you oppose them',
+    owner: 'you own it',
+    left: 'they have gone',
+  }[rel] || rel;
+  $('c-rel').textContent = relText;
+  $('c-rating').textContent = '★' + ts.rating;
+  $('c-nights').textContent = ts.nights;
+  $('c-comp').textContent = ts.complaints;
+  $('bar-fill').style.width = Math.max(0, Math.min(100, ts.road)) + '%';
+  $('bar-fill').style.background = conditionColour(ts.road);
+  $('lbl-patch').textContent = `${money(patchCost(h))} · +10% condition`;
+  $('btn-patch').disabled = !!s.ended || s.cash < patchCost(h);
+  $('log').innerHTML = h.log.slice(-12).reverse().map((e) => `<div>${e.text}</div>`).join('');
+}
+
+$('btn-patch').onclick = () => {
+  const res = patchRoad(h);
+  if (!res.ok) { $('hint').textContent = res.msg; return; }
+  try { localStorage.setItem(SAVE, toJSON(h)); } catch { /* ignore */ }
+  $('hint').textContent = `Patched — road now ${res.condition}%.`;
+  refresh();
+};
+
+/* Re-frame on resize. (This block used to contain a stray SECOND copy of `centreOn`,
+   pasted into the handler body — harmless, since a function declaration inside the
+   handler is local to it, but it meant the handler read as if it were redefining the
+   camera API on every resize. Removed; `frameRoad()` already reads `panelInset()`.) */
+window.addEventListener('resize', () => { r.resize(); frameRoad(); });
+
+renderSites();
+renderPick();
+refresh();
+
+// QA hook: tools/valley-probe.html asserts the whole ladder through this
+window.__valley = {
+  get rows() { return VALLEY_ROWS; },
+  get picked() { return picked; },
+  get side() { return pickedSide; },
+  landCalc,
+  life: option.key,
+};
+</script>
+</body>
+</html>
