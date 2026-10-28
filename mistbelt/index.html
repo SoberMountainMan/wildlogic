@@ -2480,6 +2480,11 @@ function tickDay(w) {
   if (!state.seen.rolled1) {
     state.seen.rolled1 = true;
     var k0 = classify(w, true);
+    /* Q-319: the token PAID is the NOW weather (payToken); the wet/dry that drives growth/the toad is
+       the DAY (k0). They are different facts and can legitimately differ, so the card names the token
+       it is paying from _tk and describes the day only as GROWTH - never "the day pays X" - so the two
+       sentences cannot contradict on a dry-day-raining-now. */
+    var _tk = payToken(), _prem = (_tk === 'rain' || _tk === 'mist');
     card('Day ' + state.day + ' \u2014 ' + weatherWord(w).toLowerCase(),
       /* REWRITTEN. Owner, 2026-10-05: *"the kind of copy that needs better writing"* — and he is
          right about this one in four separate ways.
@@ -2505,13 +2510,15 @@ function tickDay(w) {
          contradiction unless you already know the mechanic, and it never said the one thing that follows
          from it: what to DO today. `k0.wet` is the same flag the card already used for its first line,
          so the advice cannot disagree with the weather it is describing. */
-      + 'Today the hillside pays in ' + payToken() + ' tokens, so the trees that cost ' + payToken() +
-        ' are the ones you can afford. Tomorrow it pays a different one. '
+      + 'Right now the hillside pays ' + _tk + ' tokens, so the trees that cost ' + _tk +
+        ' are the ones you can afford. Tomorrow it may pay a different one. '
+      + (_prem
+          ? 'That is a premium token \u2014 the kind that buys the trees that close a canopy. '
+          : 'Sun is the cheapest token. ')
+      + 'Rain and mist grow a forest; sun does not. '
       + (k0.wet
-          ? 'A wet day pays rain or mist \u2014 the two that buy the trees that close a canopy. '
-          : 'A clear day pays sun, and sun buys the cheapest trees. ')
-      + 'Rain and mist are what grow a forest. Sun does not. '
-      + (k0.wet ? 'So today is a planting day.' : 'So a dry day is for cutting, not for planting.'),
+          ? 'And today is a WET day \u2014 seed comes up and it counts toward the river frogs, so plant. '
+          : 'And today is a DRY day \u2014 nothing sprouts and it does not count toward the frogs, so cut.'),
       null);
   }
   if (baboonLine) note(baboonLine, 'warn');
@@ -6318,7 +6325,14 @@ function drawTileProp(c, r) {
        count already knows which ones they are, so the sprite and the mechanic agree by construction.
        PERCHED, NOT WALKING: owner, 2026-09-30, "birds tend to fly." */
     if (t.hollow && t.stage === 3) {
-      drawCritter('parrot', tx + s * 0.15, tb - s * 0.34, s * 0.42);
+      /* Q-319: a perched parrot is drawn only where a parrot would actually NEST - the same
+         patchAround predicate parrotCapacity() uses to count residents. A lone hollow snag shows no
+         bird, so the sprite can never disagree with the counter (the Q-310/Q-313 "parrot visible,
+         count 0" divergence). Owner decision 28 Oct: no perch until the count prerequisites are met. */
+      var _np = patchAround(c, r);
+      if (_np.trees >= PARROT_PATCH_TREES && _np.species >= PARROT_PATCH_SPECIES) {
+        drawCritter('parrot', tx + s * 0.15, tb - s * 0.34, s * 0.42);
+      }
     }
   }
 
@@ -7687,7 +7701,12 @@ function act(c, r) {
   var apBefore = state.ap;
   /* THE BUILDING IS RESOLVED FROM THE BLOCK, because a tap on a cottage's roof lands on a tile
      the cottage reserves but does not own. `t.obj` is only set on the anchor -- see blockAt(). */
-  var _obj = t.obj || blockAt(c, r);
+  /* Q-319: a tree standing on a tile a BUILDING reserves (a non-anchor footprint tile) must still be
+     cuttable with the axe/lever. Resolve the building from blockAt() ONLY when this is not a cut/pull
+     of an alien on such a tile; the anchor (t.obj set) always opens its building, and planting (a
+     non-cut tool) still routes to the building. This is the act()-only fix from Q-315 - no pickSprite
+     or footprint change. */
+  var _obj = t.obj || ((tool === 'cut' || tool === 'pull') && t.alien ? null : blockAt(c, r));
   if (_obj === 'bin') {
     if (recycle()) { saveLocal(); renderHud(); renderBoard(); }
     return;
