@@ -9,6 +9,7 @@
 import { PRICES, STEM_M3 } from './plotmap.js';
 import { initCompanyVoice } from './companyVoice.js';
 import { money } from './fmt.js';   // one money formatter for every log line (fmt.js)
+import { tickGoals } from './goals.js';   // gate 2: the 'tree' goal ticks on the answer, not the next day
 
 export const COMPANY = {
   name: 'Amatola Forestry',
@@ -90,6 +91,7 @@ export function acceptOffer(h) {
   h.forest = clamp(100 * h.plot.trees.length / h.forestStart, 0, 100);
 
   h.log.push({ day: h.day, text: `${COMPANY.name} bought ${pine.length} pines for ${money(offer.zar)}. The plot is bare.` });
+  tickGoals(h);   // gate 2: the answer is the milestone, so it ticks now
   return ok('sold to the company', { zar: offer.zar, trees: pine.length, forest: h.forest });
 }
 
@@ -101,6 +103,7 @@ export function refuseOffer(h) {
   h.company.refused = true;
   h.company.offer = null;
   h.log.push({ day: h.day, text: `You told ${COMPANY.name} no. The pines stay.` });
+  tickGoals(h);   // gate 2: refusing is an answer too — the goal ticks now
   return ok('refused');
 }
 

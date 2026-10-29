@@ -2039,7 +2039,18 @@ export const SPRITES = {
     },
     bounds: [-27, 27, -16, 10],
   },
-  hive: { w: 31, h: 36, draw: drawHive, bounds: [-27, 27, -38, 6] },
+  hive: {
+    w: 31, h: 36,
+    // painted 10-29 (PLAYER-READINESS gate 3, owner: "hives still vector"): the Mistbelt
+    // garden pack's obj_beehive, which was keyed at source, fitted to the SAME 36 design px
+    // as the vector below so a hive does not change size on the tile the round it becomes a
+    // cutout. drawHive stays the node and pre-decode path, and it is what every gate sees.
+    draw: (c, s, o) => {
+      if (imageState.hive === 'ready') { drawImageSprite(c, 'hive', s, 0.5); return; }
+      drawHive(c, s, o);
+    },
+    bounds: [-27, 27, -38, 6],
+  },
   tank: {
     w: 64, h: 64,
     draw: (c, s, o) => {
@@ -2184,7 +2195,25 @@ export const SPRITES = {
   oak: { w: 132, h: 96, draw: drawOak, salt: 17, variants: 4, bounds: [-66, 66, -100, 5] },
   // ground props (scale pass): decoration with no sim meaning — the renderer may
   // sprinkle these on grass cells to make the ground feel inhabited.
-  logs: { w: 46, h: 28, draw: drawLogs, bounds: [-25, 25, -27, 5] },
+  logs: {
+    // painted 10-29 (PLAYER-READINESS gate 3, owner: "props need sprites"), and it earns its
+    // keep twice: the same cutout is what felling should leave on the ground once the sim
+    // grows p.stumps. Fit by WIDTH to the 46 design px the vector claimed, so the painted
+    // pile occupies the same ground the flat one did; the height grew 28 -> 36 because the
+    // painting has a third log, so `bounds` grew with it or the atlas bake would clip it.
+    // The variant is derived from the cell seed the sprinkler already passes, so one pile in
+    // six is mirrored - the same jitter drawSprite uses, not a second source of variation.
+    w: 46, h: 36,
+    draw: (c, s, o) => {
+      if (imageState.logs === 'ready') {
+        const v = (o && o.seedX !== undefined) ? jitter(o.seedX | 0, o.seedY | 0, 43) : 0.5;
+        drawImageSprite(c, 'logs', s, v);
+        return;
+      }
+      drawLogs(c, s, o);
+    },
+    bounds: [-25, 25, -38, 5],
+  },
   rocks: { w: 34, h: 22, draw: drawRocks, bounds: [-19, 19, -23, 4] },
   flowerPatch: { w: 28, h: 16, draw: drawFlowerPatch, bounds: [-16, 16, -17, 2] },
   grassTuft: { w: 20, h: 14, draw: drawGrassTuft, bounds: [-12, 12, -15, 2] },

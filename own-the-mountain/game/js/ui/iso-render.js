@@ -497,6 +497,15 @@ export class IsoPlotRenderer {
     else if (x >= p.w - 1) vEdge = 'E';
     if (hz && vt) return [hEdge, vEdge];   // a corner turns at the front vertex
     if (vt) return [vEdge];
+    /* A LONE PANEL STANDS PARALLEL TO ITS ROAD. With no fence connections the edge used to
+       fall back to the horizontal one unconditionally, so a gate with no fence beside it -
+       which is EVERY gate on a fresh plot - was drawn ACROSS its own drive on the E and W
+       boundaries, where the road runs along y. Owner 10-29: "the gate faces the wrong way in
+       some placements." Measured in tools/asset-review.html frame 19 (four boundaries, no
+       fence): S ok, N ok, W ACROSS, E ACROSS. T9's gate probe never saw it because it lays
+       fence through the gate first, which supplies the connections and takes the branch above.
+       The road side is already known here, so the fallback follows it. */
+    if (!hz && (front === 'W' || front === 'E')) return [vEdge];
     return [hEdge];                        // a horizontal run, or a lone panel
   }
 
@@ -955,14 +964,36 @@ export class IsoPlotRenderer {
       ground will take — green flat (build/plant), amber slope (track only), red
       where a corner stands two levels up (the steep knoll), blue over water. */
   setOverlay(v) {
-    this.overlay = v === 'build' ? 'build' : null;
+    this.overlay = v === 'build' || v === 'plant' ? v : null;
     this._draw();
   }
 
   /** One tinted quad per tile, over the ground blit, under the objects. */
   _drawOverlay(ctx) {
     const p = this.p;
-    if (!p || this.overlay !== 'build' || !Array.isArray(p.level)) return;
+    if (!p) return;
+    if (this.overlay === 'plant') {
+      const st = this._state();
+      if (!st.plantSay) return; // no host eligibility contract: never guess suitable ground
+      ctx.save();
+      for (let y = 0; y < p.h; y++) {
+        for (let x = 0; x < p.w; x++) {
+          if (st.plantSay(x, y) || this._occupant(x, y)) continue;
+          const q = this._tileCorners(x, y);
+          ctx.beginPath();
+          ctx.moveTo(q[0][0], q[0][1]);
+          for (let i = 1; i < q.length; i++) ctx.lineTo(q[i][0], q[i][1]);
+          ctx.closePath();
+          ctx.fillStyle = 'rgba(110,220,135,.48)';
+          ctx.strokeStyle = '#c5f6cb';
+          ctx.lineWidth = this.dpr;
+          ctx.fill(); ctx.stroke();
+        }
+      }
+      ctx.restore();
+      return;
+    }
+    if (this.overlay !== 'build' || !Array.isArray(p.level)) return;
     for (let y = 0; y < p.h; y++) {
       for (let x = 0; x < p.w; x++) {
         if (p.ground[y * p.w + x] === 'water') {
@@ -1089,6 +1120,7 @@ export class IsoPlotRenderer {
       hasHouse: !!s.hasHouse,
       // household facility flags, so the build menu can say what a rung demands
       facilities: s.facilities || null,
+      facilityDefs: s.facilityDefs || null,
       // LD-12 / B2 — the terraform timing and the dozer day. THIS IS A WHITELIST: a field
       // the page supplies but this object does not copy is silently dropped, and the popup
       // quietly falls back to the default. Both of the terraform features were dead for
@@ -1371,6 +1403,25 @@ export class IsoPlotRenderer {
     if (!p) return [];
     const st = this._state();
     const c = st.costs;
+    /* Demolition rows belong on the tile that HOLDS the thing, whatever else stands there.
+       `layTrack` refuses only water and slope, so a drag can put track under a tree (and a
+       fence can end up beside one); the occupancy branches below all return early, and the
+       first version of these rows lived only in the empty-ground branch - which made a track
+       under a tree a thing you could see and not take up. That is the dead-row class
+       inverted, found by the lead's independent run at 14d8fc0. One helper, called before
+       every exit, so a new occupancy branch cannot forget it.
+       Free, no refund, and the sim writes the sentence. Mud is deliberately absent:
+       `removeTrack` does not remove mud. */
+    const demoRows = () => {
+      if ((p.fence || []).some((f) => f.x === x && f.y === y)) {
+        out.push({ kind: 'act', id: 'unfence', label: 'Pull up the fence', right: 'free · no refund',
+          action: { kind: 'unfence', x, y }, disabled: !!st.ended });
+      }
+      if ((p.track || []).some((t) => t.x === x && t.y === y)) {
+        out.push({ kind: 'act', id: 'untrack', label: 'Pull up the track', right: 'free · no refund',
+          action: { kind: 'untrack', x, y }, disabled: !!st.ended });
+      }
+    };
     const out = [];
     const act = (id, label, right, action, disabled = false) =>
       out.push({ kind: 'act', id, label, right, action, disabled });
@@ -1392,6 +1443,7 @@ export class IsoPlotRenderer {
         : (t.kind === 'wattle' || t.kind === 'blackwood') ? `${t.kind} — alien`
           : t.kind === 'oak' ? 'oak — alien ornamental' : 'indigenous — protected';
       note('age', `${t.age || 0} years standing`, species);
+    demoRows();
       return out;
     }
     if (occ && occ.type === 'bed') {
@@ -1401,6 +1453,7 @@ export class IsoPlotRenderer {
       const ready = st.day >= occ.bed.ready;
       if (ready) act('harvest', `Harvest the ${cl}`, 'ready now', { kind: 'harvest' }, st.ended);
       else note('grow', `Growing ${cl}`, `${Math.max(1, occ.bed.ready - st.day)} days`);
+    demoRows();
       return out;
     }
     if (occ && occ.type === 'hive') {
@@ -1408,6 +1461,7 @@ export class IsoPlotRenderer {
       const kg = Math.round(((h && h.honey) || 0) * 10) / 10;
       if (kg >= 0.5) act('honey', 'Take the honey', `${kg} kg · to the shop`, { kind: 'sell' }, st.ended);
       else note('comb', 'The comb is quiet', kg ? `${kg} kg` : 'nothing yet');
+    demoRows();
       return out;
     }
     if (occ && occ.type === 'accom') {
@@ -1416,13 +1470,29 @@ export class IsoPlotRenderer {
       // unit". A house has capacity 0 and no market rate, so "unlisted" was a promise of a
       // listing that will never exist — read out over the player's own roof.
       const nm = this._accomLabel(a.kind);
-      if (!a.built) note('build', `Going up — the ${String(nm).toLowerCase()}`, `${Math.max(0, (a.doneDay || 0) - st.day)} days`);
+      if (!a.built) note('build', `Going up - the ${String(nm).toLowerCase()}`,
+        `ready day ${a.doneDay} / ${Math.max(0, (a.doneDay || 0) - st.day)} days left`);
       else if (a.kind === 'house') note('home', nm, 'your home · never listed');
       else note('listed', nm, a.listed ? 'listed' : 'unlisted');
+      if (a.kind === 'camp' || a.kind === 'caravan') {
+        for (const [kind, def] of Object.entries(st.facilityDefs || {})) {
+          const target = `[data-act="facility"][data-kind="${kind}"]`;
+          const owned = st.facilities && st.facilities[kind];
+          act('guide-facility-' + kind, `${owned ? 'Inspect' : 'Find'} ${def.label}`,
+            owned ? 'built' : `${money(def.cost)} / ${def.buildDays}d`,
+            { kind: 'guide', target });
+          if (def.where) note('where-' + kind, def.where);
+          if (kind === 'ablution' && !owned && a.kind === 'camp') {
+            note('camp-bathroom', 'Camp needs a completed ablution block before it can let.');
+          }
+        }
+      }
+    demoRows();
       return out;
     }
     if (occ && occ.type === 'building') {
       note('bld', occ.bld.kind === 'tank5000' ? 'The water tank' : 'A building', '');
+    demoRows();
       return out;
     }
     if (occ && occ.type === 'gate') {
@@ -1442,10 +1512,12 @@ export class IsoPlotRenderer {
           st.ended || st.cash < c.fence);
         note('fence-rule', 'then tile by tile, touching what is down');
       }
+    demoRows();
       return out;
     }
     if (p.ground[y * p.w + x] === 'water') {
       note('water', 'The stream', 'no building');
+    demoRows();
       return out;
     }
 
@@ -1570,6 +1642,7 @@ export class IsoPlotRenderer {
     terra('raise', 'Raise the ground', c.grade, { kind: 'raise', x, y });
     terra('lower', 'Lower the ground', c.grade, { kind: 'lower', x, y });
     if (!this._tileFlat(x, y)) note('not-flat', 'slope — takes track, not buildings', 'press G for the ground map');
+    demoRows();
     return out;
   }
 
@@ -1759,6 +1832,30 @@ export class IsoPlotRenderer {
         + `min-height:${touch ? '44px' : '0'};`
         + 'border:0;border-radius:6px;background:transparent;'
         + `color:${UI.popText};font:inherit;text-align:left;cursor:pointer;`;
+      /* PR-03 (player-readiness playtest 10-29, S2): A NOTE IS A SENTENCE, NOT A VALUE PAIR.
+         Every row used to be `display:flex; justify-content:space-between` with a wrapping
+         label and a `white-space:nowrap` right cell. That is right for an action (a verb on
+         the left, a price on the right) and wrong for a note, where BOTH sides are sentences:
+         the nowrap side claimed the width and the label collapsed to min-content. Measured at
+         1440 on a 258 px popup: "a dam cannot be your first water" 37.8 px wide against
+         236.4 px of right-hand text, one or two words per line, and the row stood 113 px tall.
+         Notes now render ONE full-width wrapped span - label, then ' - ' and the right text
+         when there is one - so the sentence uses the popup's width and reads as a sentence.
+         Action rows below are untouched: label left, price nowrap right, same 44 px target. */
+      if (it.kind === 'note') {
+        row.style.display = 'block';
+        row.style.justifyContent = 'flex-start';
+        const n = document.createElement('span');
+        n.className = 'tp-l';
+        n.style.cssText = 'display:block;white-space:normal;text-align:left;line-height:1.35;'
+          + `color:${UI.popMuted}`;
+        n.textContent = it.right ? it.label + ' - ' + it.right : it.label;
+        row.append(n);
+        row.disabled = true;
+        row.style.cursor = 'default';
+        el.appendChild(row);
+        continue;
+      }
       const l = document.createElement('span');
       l.className = 'tp-l';
       l.textContent = it.label;
@@ -1767,11 +1864,7 @@ export class IsoPlotRenderer {
       r.textContent = it.right || '';
       r.style.cssText = `color:${UI.popMuted};font-variant-numeric:tabular-nums;white-space:nowrap;font-size:11.5px`;
       row.append(l, r);
-      if (it.kind === 'note') {
-        row.disabled = true;
-        row.style.cursor = 'default';
-        l.style.color = UI.popMuted;
-      } else if (it.disabled) {
+      if (it.disabled) {
         row.disabled = true;
         row.style.opacity = '0.42';
         row.style.cursor = 'not-allowed';
@@ -2239,20 +2332,38 @@ export class IsoPlotRenderer {
             g.restore();
           }
           roadTiles++;
-          /* Wheel lines, one per lane across the 2-tile band, per tile so they ride the
-             grade instead of cutting through it. Now CONTINUOUS with wear: the old gate
-             was `condition < 20`, which a real 240-day game never gets near (measured
-             70 -> 66 with no repairs at all), so a neglected road showed potholes and
-             cracks but never a rut. /60 rather than /100 so the ruts are fully there by
-             condition 40, where a driver is already picking their line around the holes. */
-          {
-            const midZ = (zc2[0] + zc2[1] + zc2[2] + zc2[3]) / 4;
-            const rDepth = rutDepth('gravel', clamp((100 - roadCond) / 60, 0, 1));
-            for (const lat2 of [-0.55, 0.55]) {
-              const a0 = side === 'S' || side === 'N' ? [rx + 0.12, ry + 0.5 + lat2] : [rx + 0.5 + lat2, ry + 0.12];
-              const a1 = side === 'S' || side === 'N' ? [rx + 0.88, ry + 0.5 + lat2] : [rx + 0.5 + lat2, ry + 0.88];
-              rutLine(a0[0], a0[1], a1[0], a1[1], midZ, rDepth, '28,22,15');
+          /* (the wheel lanes used to be drawn HERE, per tile - see the strip pass below) */
+        }
+        /* ---- the wheel lanes: ONE polyline per lane for the whole run ----
+           Owner 10-29: "road tracks/segments do not line up", and the photograph that proved
+           it is _shots/road-public.png (tools/asset-review.html frame 18): the lanes used to
+           be drawn inside the per-tile loop above, each a 0.76-tile segment at that tile's own
+           mid-height. That left a 0.24-tile gap at every tile boundary AND a vertical step
+           wherever the road crossed a level, so a long road read as a row of dashes that
+           shuffled sideways - which is also what "weird shadow lines on the main road" was.
+           Now each lane is one path whose vertices sit on the SHARED boundary corners
+           (`cE` at the plot edge, the same vertices the fence stands on since T9), so it is
+           continuous by construction and ramps with the grade instead of stepping.
+           Wear still drives it: /60 rather than /100 so the ruts are fully there by condition
+           40, where a driver is already picking their line around the holes. ---- */
+        {
+          const rDepth = rutDepth('gravel', clamp((100 - roadCond) / 60, 0, 1));
+          for (const lat2 of [-0.55, 0.55]) {
+            g.beginPath();
+            for (let i2 = 0; i2 <= roadLen; i2++) {
+              let gx2, gy2, zz;
+              if (side === 'S') { gx2 = i2; gy2 = p.h + k + 0.5 + lat2; zz = cE(i2, p.h); }
+              else if (side === 'N') { gx2 = i2; gy2 = -1 - k + 0.5 + lat2; zz = cE(i2, 0); }
+              else if (side === 'W') { gx2 = -1 - k + 0.5 + lat2; gy2 = i2; zz = cE(0, i2); }
+              else { gx2 = p.w + k + 0.5 + lat2; gy2 = i2; zz = cE(p.w, i2); }
+              const pt = project(gx2, gy2, zz, bake);
+              if (!i2) g.moveTo(pt[0], pt[1]); else g.lineTo(pt[0], pt[1]);
             }
+            g.strokeStyle = `rgba(28,22,15,${(0.34 + rDepth * 0.40).toFixed(3)})`;
+            g.lineWidth = Math.max(1.4, bz * (1.7 + rDepth * 1.7));
+            g.lineCap = 'butt';
+            g.lineJoin = 'round';
+            g.stroke();
           }
         }
       }
@@ -3175,7 +3286,16 @@ export class IsoPlotRenderer {
             // more than a day out is the early site, the last day the frame-up
             const day = (this.h && this.h.day) || 1;
             const left = (a.doneDay || 0) - day;
-            drawSprite(ctx, left > 1 ? 'site_early' : 'site_late', this.cam.zoom * this.dpr);
+            /* THE SITE COVERS THE GROUND IT RESERVES. `site_early`/`site_late` are fitted to a
+               2x2 footprint (128 px of ground), and this branch uses them for ANY unbuilt
+               accom - so a 4x3 camp reserved 224 px and painted 128 of them, leaving the front
+               half of the survey bare while the player was paying for it (measured in
+               tools/asset-review.html frame 20: 156 px painted into a 493 px reservation at
+               zoom 2.2). Scaling by (fw+fph)/4 keeps the plate's proportions - it is the same
+               symmetric diamond, drawn larger - and leaves every 2x2 rung at exactly 1.0, so
+               house and cabin are untouched. A 4x3 gets 1.75. */
+            const siteSpan = (af[0] + af[1]) / 4;
+            drawSprite(ctx, left > 1 ? 'site_early' : 'site_late', this.cam.zoom * this.dpr * siteSpan);
           }
           ctx.restore();
         });

@@ -1,4 +1,5 @@
 import { money } from './fmt.js';   // one money formatter for every log line (fmt.js)
+import { tickGoals } from './goals.js';   // gate 2: the subsidy goal ticks on the answer
 // subsidy.js — the village pays for a road it needs.
 //
 // Transport Tycoon's local authority subsidies, moved to Hogsback: in November the
@@ -48,6 +49,7 @@ export function acceptSubsidy(h) {
   if (h.subsidy.state !== 'offered') return err('there is no offer to accept');
   h.subsidy.state = 'accepted';
   h.log.push({ day: h.day, text: 'You took the December road subsidy.' });
+  tickGoals(h);
   return ok('accepted');
 }
 

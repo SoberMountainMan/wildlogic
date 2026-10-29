@@ -44,8 +44,11 @@ export const GOALS = [
   },
   {
     id: 'bills',
-    text: 'Pay a month of bills',
-    hint: 'They land on the 1st.',
+    // narrative audit 26: there is no pay verb - monthlyBills deducts on the 1st and
+    // billsPaid increments if the cash was there. The old text promised an action that
+    // does not exist; this one names what the check rewards.
+    text: 'See the first bills through',
+    hint: 'They come off the cash on the 1st — have it in hand.',
     check: (h) => (h.billsPaid || 0) > 0,
   },
   {
@@ -68,8 +71,10 @@ export const GOALS = [
   },
   {
     id: 'hire',
-    text: 'Outgrow your own two hands',
-    hint: 'Past twelve beds you cannot harvest alone — hire a casual for the day (H$180, six more beds in). Most here hire per day, not forever.',
+    // narrative audit 26: the check is beds > 12, not a hire. The old text was a mood;
+    // this is the condition, and the hint keeps LD-08's verb and rate.
+    text: 'Plant more beds than you can harvest',
+    hint: 'Past twelve beds you cannot harvest alone — hire a casual for the day (H$180, six more beds in).',
     // LD-08 (level-designer): checking casualsHired>0 stranded the goal under optimal
     // play — staggered planting never needs a casual in 540 days. The real milestone
     // is the moment labour starts to matter: holding more beds than you can harvest.
@@ -83,19 +88,22 @@ export const GOALS = [
     // wood was worth H$48,800 while the guest income from a cleaner bush was H$75,557
     // (weeds 14% → 7%, +61 nights). The axe is swung to clear the wattle, and the
     // firewood is what it leaves behind.
-    hint: 'Wattle and blackwood crowd out the pines, and the guests see it. A dozen stems out and the place reads different — the wood is what the axe leaves behind.',
+    hint: 'A dozen stems of any alien kind. Wattle and blackwood burn; pine pays at the mill.',
     check: (h) => ((h.plot && h.plot.felled) || 0) >= 12,
   },
   {
     id: 'subsidy',
-    text: 'Hold the road through December',
-    hint: 'The ratepayers pay H$15,000 if the road never drops below 60%.',
+    // narrative audit 26: the check ticks on accepted OR done OR failed - the old text
+    // named a win and the check celebrated a decision (and a loss). This text is what
+    // the check measures; the stake stays in the hint and promises nothing.
+    text: "Take the ratepayers' road deal",
+    hint: 'H$15 000 if the road never drops below 60% through December.',
     check: (h) => !!(h.subsidy && (h.subsidy.state === 'accepted' || h.subsidy.state === 'done' || h.subsidy.state === 'failed')),
   },
   {
     id: 'winter-night',
     text: 'Let a room in winter',
-    hint: 'Snow halves the bookings, but a warm house still lets. June proves the road.',
+    hint: 'Any winter month counts — May to August. The road decides it.',
     check: (h) => (h.nights || 0) > 0 && h.date.month >= 5 && h.date.month <= 8,
   },
   {

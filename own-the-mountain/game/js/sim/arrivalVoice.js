@@ -380,7 +380,13 @@ function idleLine(h) {
   const bill = h.bond && h.bond.monthly > 0
     ? `The bank takes ${money(h.bond.monthly)} on the 1st whether or not anything grows.`
     : 'The shop buys greens, not intentions.';
-  return `Day ${h.day} and nothing planted. Greens are three weeks out, and ${bill.charAt(0).toLowerCase()}${bill.slice(1)}`;
+  // NO DURATION IN THIS SENTENCE, deliberately. It said "Greens are three weeks out" for one
+  // release; then FARMING-SPEC Part 2 landed (greens 12 days, herbs 20, potato 32) and the
+  // line was quietly wrong - the exact drift the §21.2 words-not-digits hedge was supposed to
+  // avoid. Words drift too, and `CROPS` sits behind the same would-be cycle as `BED`. So the
+  // prompt states the fact and the clock and nothing that can go stale; the goal card carries
+  // the crop numbers, where they are checked against the table.
+  return `Day ${h.day} and nothing planted. Nothing you grow is growing yet, and ${bill.charAt(0).toLowerCase()}${bill.slice(1)}`;
 }
 
 /**

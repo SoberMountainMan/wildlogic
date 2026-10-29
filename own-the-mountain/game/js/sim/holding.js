@@ -10,6 +10,7 @@
 import { plotPrice } from './plotmap.js';
 import { CELL_M } from './plotmap.js';
 import { money } from './fmt.js';   // one money formatter for every log line (fmt.js)
+import { tickGoals } from './goals.js';   // gate 2: the land goal ticks on the purchase
 
 export const EXPANSION = {
   ha: 0.5,          // what you buy each time
@@ -101,6 +102,7 @@ export function expand(h) {
     day: h.day,
     text: `Bought the land next door — ${EXPANSION.ha} ha, ${added} more trees. −${money(price)}`,
   });
+  tickGoals(h);   // gate 2: the land goal ticks on the purchase, not the following morning
   return ok('expanded', { price, ha: p.ha, trees: added, w: p.w, bought: h.holding.bought });
 }
 

@@ -39,15 +39,18 @@ export function pressure(h) {
   return 'steady';
 }
 
+// Gate 1 (owner 10-28, narrative audit 25.1): a charged incident says so. The money has
+// already moved and nothing is owed - every cost line ends with the same promise, and the
+// one line that DOES leave work (the fallen pine) names the work and where to do it.
 const COST = [
-  { id: 'pipe', text: 'A pipe burst under the kitchen. −H$3 500', zar: -3500 },
-  { id: 'fence', text: 'The fence came down in the wind. −H$1 800', zar: -1800 },
-  { id: 'geyser', text: 'The geyser gave up. −H$4 500', zar: -4500 },
-  { id: 'tree', text: 'A pine came down across the road. −8% road', road: -8 },
+  { id: 'pipe', text: 'A pipe burst under the kitchen. −H$3 500 — seen to the same morning; nothing to do.', zar: -3500 },
+  { id: 'fence', text: 'The fence came down in the wind. −H$1 800 — paid on the spot and put back up; nothing to do.', zar: -1800 },
+  { id: 'geyser', text: 'The geyser gave up. −H$4 500 — replaced the same morning; nothing to do.', zar: -4500 },
+  { id: 'tree', text: 'A pine came down across the road. −8% road — patch it before the next rain (Siteworks).', road: -8 },
 ];
 
 const GAIN = [
-  { id: 'film', text: 'A film crew booked the place for three days. +H$6 000', zar: 6000 },
+  { id: 'film', text: 'A film crew paid for three quiet days. +H$6 000 — booked, not hosted.', zar: 6000 },
   { id: 'tip', text: 'A guest left a tip and a thank-you note. +H$900', zar: 900 },
   { id: 'neighbour', text: 'A neighbour bought your whole harvest. +H$1 200', zar: 1200 },
   { id: 'review', text: 'A guest told the whole of East London about you. ★ +0.15', rating: 0.15 },

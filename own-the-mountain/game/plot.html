@@ -40,6 +40,7 @@
   .alarm { font-size: 11px; line-height: 1.2; padding: 3px 9px; border-radius: 99px;
     border: 1px solid; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .alarm b { font-weight: 600; }
+  #alarms button.alarm { width: auto; margin: 0; flex: none; white-space: normal; max-width: 100%; }
   .alarm.hot { color: #f0b09a; border-color: #8a4530; background: rgba(224,138,106,.13); }
   .alarm.warn { color: #e8c98a; border-color: #7a6132; background: rgba(232,180,90,.10); }
   @media (max-width: 980px) { #alarms .alarm { padding: 2px 7px; font-size: 10px; } }
@@ -85,8 +86,41 @@
      in a 150px band at the canvas bottom-left, y H-24..H-7. The hint used to sit at
      bottom:10px, i.e. exactly on top of it — both were unreadable in every screenshot of the
      default screen. It now clears the band. */
-  #hint { position: absolute; left: 62px; bottom: 30px; font-size: 12px; color: #b9c4b3;
-    background: rgba(12,18,14,.82); padding: 5px 10px; border-radius: 6px; z-index: 5; }
+  #toolhint { position: absolute; left: 62px; right: 12px; bottom: 30px; width: fit-content;
+    max-width: calc(100% - 74px); font-size: 12px; color: #b9c4b3;
+    background: rgba(12,18,14,.92); padding: 5px 10px; border-radius: 6px; z-index: 35; }
+  #toolhint button { width: auto; margin: 4px 0 0; }
+  #plant-overlay-note { display: block; }
+  [hidden], #toolhint [hidden] { display: none !important; }
+  .guide-target { outline: 3px solid #e8b45a !important; outline-offset: -3px;
+    box-shadow: inset 0 0 0 5px rgba(232,180,90,.18); }
+  button.guide-target:disabled { opacity: .85; }
+  #notice, #attention { flex: none; padding: 6px 12px; border-bottom: 1px solid #7a6132;
+    background: #251e16; font-size: 12px; overflow-wrap: anywhere; }
+  #notice { display: flex; gap: 8px; align-items: flex-start; border-color: #8a4530; color: #f0b09a; }
+  #notice-messages { flex: 1; min-width: 0; max-height: 16vh; overflow-y: auto; }
+  #notice-dismiss { width: auto; min-height: 44px; margin: 0; flex: none; }
+  #attention summary { cursor: pointer; min-height: 28px; color: #e8c98a; }
+  #attentionbody { max-height: 22vh; overflow-y: auto; overscroll-behavior: contain; }
+  #attentionbody p { margin: 4px 0; }
+  #attentionbody button { width: auto; font-size: 12px; }
+  /* PR-06 (Phase A, 2026-10-29): the card genuinely scrolls (405 visible / 1194 content at
+     390x844) but a sentence cut at the bottom edge read as the end of the text, with no cue
+     that more was below. Pure-CSS scroll shadows: the two `local` layers scroll WITH the
+     content and cover the two `scroll` layers, so the fade exists only while there is more to
+     read - no JS, no height or position change. The solid stops are the card's own #17211b. */
+  #goalcard {
+    max-height: 48vh; overflow-y: auto; overscroll-behavior: contain;
+    background:
+      linear-gradient(#17211b 30%, rgba(23, 33, 27, 0)) top / 100% 14px no-repeat local,
+      linear-gradient(rgba(23, 33, 27, 0), #17211b 70%) bottom / 100% 22px no-repeat local,
+      radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, .45), rgba(0, 0, 0, 0)) top / 100% 10px no-repeat scroll,
+      radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, .45), rgba(0, 0, 0, 0)) bottom / 100% 10px no-repeat scroll,
+      #17211b;
+  }
+  .goal { padding: 6px 0; border-bottom: 1px solid #2f3f34; font-size: 12px; }
+  .goal p { margin: 4px 0; color: #b9c4b3; font-size: 11px; }
+  .goal button { margin: 4px 0 0; padding: 6px; font-size: 11px; }
 
   /* ---------- C · tool rail ---------- */
   #rail { position: absolute; left: 10px; top: 12px; display: flex; flex-direction: column;
@@ -100,7 +134,9 @@
   /* ---------- F · goal panel (pinned, collapsible) ---------- */
   #goalpanel { position: absolute; right: 12px; top: 12px; width: 252px; z-index: 25;
     background: rgba(19,27,22,.94); border: 1px solid #2f3f34; border-radius: 9px;
-    overflow: hidden; }
+    max-height: calc(100% - 24px); display: flex; flex-direction: column; overflow: hidden; }
+  #goalcard { min-height: 0; }
+  #goalhead { flex: none; }
   #goalhead { display: flex; justify-content: space-between; align-items: center;
     padding: 6px 11px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
     color: #7f8d7b; cursor: pointer; user-select: none; }
@@ -214,9 +250,10 @@
     .win .tbar .x { min-width: 44px; min-height: 44px; margin: -10px -6px -10px auto; }
     #rail { display: none; }
     /* the goal card stays reachable one-handed: small, top-right, still collapsible */
-    #goalpanel { display: block; width: 188px; right: 8px; top: 8px; }
-    #hint { left: 8px; right: 8px; font-size: 11px;
+    #goalpanel { display: flex; width: 188px; right: 8px; top: 8px; }
+    #toolhint { left: 8px; right: 8px; max-width: calc(100% - 16px); font-size: 11px;
       bottom: calc(30px + env(safe-area-inset-bottom, 0px)); }
+    #attention summary { min-height: 44px; }
     header { gap: 6px; padding: calc(6px + env(safe-area-inset-top, 0px)) 10px 6px; }
     .stat b { font-size: 12px; }
     .stat { font-size: 10px; padding: 0 7px; }
@@ -317,6 +354,7 @@
            line that used to sit on the single bed button. -->
       <div id="croprows"></div>
       <div class="note" id="bedcount"></div>
+      <button id="btn-suitable" data-suitable-ground aria-pressed="false">Show suitable ground <small>Flat, clear planting tiles only; water and crop cash are separate requirements.</small></button>
       <button id="btn-hive">Buy a hive <small id="lbl-hive"></small></button>
       <button id="btn-harvest">Harvest <small id="lbl-harvest"></small></button>
       <button id="btn-hire">Hire a casual for the day <small id="lbl-hire"></small></button>
@@ -354,10 +392,22 @@
     </div>
   </div>
 </nav>
+<div id="notice" hidden>
+  <div id="notice-messages" role="alert" aria-live="assertive" aria-relevant="additions" tabindex="0"></div>
+  <button id="notice-dismiss" type="button">Dismiss</button>
+</div>
+<details id="attention" hidden>
+  <summary id="attention-status">Needs attention</summary>
+  <div id="attentionbody"></div>
+</details>
 <main>
   <div id="stage">
     <canvas id="map"></canvas>
-    <div id="hint">Click a tree to inspect it.</div>
+    <div id="toolhint"><span id="hint">Click a tree to inspect it.</span>
+      <small id="plant-overlay-note" hidden>The green tiles are the only ground a bed can stand on - flat, clear and unoccupied; water and crop cash are separate. Choose a crop under Farm, then click a green tile.
+        <button data-suitable-ground type="button">Hide suitable ground</button></small>
+      <button id="stop-tool" type="button" hidden>Stop road/fence tool</button>
+    </div>
     <div id="report"></div>
     <div id="over"><div>
       <h2 id="over-title">The run is over</h2>
@@ -434,10 +484,10 @@ import {
 import { sellFirewood, sellPoles, inFirewoodSeason, FIREWOOD, lumberOff } from './js/sim/firewood.js';
 import { ACCOM, buildAccom, patchRoad, patchCost, getCleaner, PATCH_COST, tourismSummary,
   FACILITY, FACILITY_KINDS, buildFacility, setListed, setOpen,
-  MARKET, rateFor, setRate, priceDemand, canPlaceAccom, accomSurcharge, UNLISTED_ON_BUILD } from './js/sim/tourism.js';
+  MARKET, rateFor, setRate, priceDemand, canPlaceAccom, accomFootprint, accomSurcharge, UNLISTED_ON_BUILD } from './js/sim/tourism.js';
 import { FAULTS, bookRepair } from './js/sim/handyman.js';
-import { COST, layTrack, layMud, layFence, flatten, grade, dop, fenceConnects, FILL_PER_DAY,
-  driveWithin, damEstimate } from './js/sim/siteworks.js';
+import { COST, layTrack, layMud, layFence, removeFence, removeTrack, flatten, grade, dop, fenceConnects, FILL_PER_DAY,
+  driveWithin, damEstimate, trackAt, mudAt, fenceAt } from './js/sim/siteworks.js';
 import { acceptOffer, refuseOffer, acceptContract, declineContract, oppose, stanceSummary } from './js/sim/company.js';
 import { companyVoiceSummary } from './js/sim/companyVoice.js';
 import { restructure } from './js/sim/bank.js';
@@ -579,10 +629,12 @@ const VERB_SOUND = {
   sell: 'coins', fell: 'axe',
   track: 'gravel', gravel: 'gravel', mud: 'gravel',
   fence: 'post',
+  // demolition pulls the same material back out: a post creaks, a track scrapes
+  unfence: 'post', untrack: 'gravel',
   flatten: 'dozer', dop: 'dozer', raise: 'dozer', lower: 'dozer',
   bed: 'plant', hive: 'plant', harvest: 'plant',
   accom: 'build',
-  buildmenu: 'ui', buildpick: 'ui',
+  buildmenu: 'ui', buildpick: 'ui', guide: 'ui',
 };
 window.__verbSound = VERB_SOUND;
 
@@ -591,19 +643,22 @@ window.__verbSound = VERB_SOUND;
    everything about money and rules stays here, in the sim's terms. */
 function tileAction(a) {
   if (!a) return;
+  if (a.kind === 'guide') return revealControl(a.target);
   let res = null;
   let line = '';
   // where the sim's own log began, for a verb whose sentence the sim already writes
-  let simFrom = 0;
+  let simFrom = null;
   if (a.kind === 'bed') {
+    const why = plantSay(a.x, a.y);
+    if (why) return log(why, 'bad');
     simFrom = h.log.length;
     res = plantBed(h, a.x, a.y, a.crop || bedCrop);
   } else if (a.kind === 'hive') {
     res = buyHive(h, a.x, a.y);
     line = 'Bought a hive.';
   } else if (a.kind === 'accom') {
+    simFrom = h.log.length;
     res = buildAccom(h, a.accom, a.x, a.y);
-    line = `${ACCOM[a.accom].label} started — ready in ${ACCOM[a.accom].buildDays} days.`;
   } else if (a.kind === 'track' || a.kind === 'gravel') {
     // gravel is a stone finish on the same rate — the sim prices both at COST.track
     res = layTrack(h.plot, a.x, a.y, h, a.kind === 'gravel' ? 'gravel' : 'dirt');
@@ -614,6 +669,11 @@ function tileAction(a) {
   } else if (a.kind === 'fence') {
     res = layFence(h.plot, a.x, a.y, h);
     line = 'Fence post in.';
+  } else if (a.kind === 'unfence' || a.kind === 'untrack') {
+    // Demolition (sim `ed65ec4`): free, no refund, and the sim writes the sentence - echo it
+    // rather than keep a second copy of what a pull-up says.
+    simFrom = h.log.length;
+    res = a.kind === 'unfence' ? removeFence(h.plot, a.x, a.y, h) : removeTrack(h.plot, a.x, a.y, h);
   } else if (a.kind === 'flatten') {
     res = flatten(h.plot, a.x, a.y, 1, 1, h);
     line = 'Flattened.';
@@ -645,7 +705,7 @@ function tileAction(a) {
   // asserts no popup action is missing from it: the dead "Lay gravel road" row, in the ear.
   sfx(VERB_SOUND[a.kind] || 'ui');
   if (a.kind === 'fell') sfx('fell', 0.18);   // the axe thunk, then the canopy arrives
-  if (simFrom) echoSimLog(simFrom); else log(line);
+  if (simFrom !== null) echoSimLog(simFrom); else log(line);
   save(); refresh();
 }
 
@@ -660,6 +720,8 @@ const r = new RClass($('map'), {
   },
   onBuild(kind, x, y) {
     if (kind === 'bed') {
+      const why = plantSay(x, y);
+      if (why) return log(why, 'bad');
       const simFrom = h.log.length;
       const res = plantBed(h, x, y, bedCrop);
       if (!res.ok) return log(res.msg, 'bad');
@@ -714,6 +776,11 @@ const r = new RClass($('map'), {
     // only refuses an OVERLAPPING site, so this gate belongs to the page.
     hasHouse: hasHouse(),
     facilities: { ...(h.facilities || {}) },
+    // Read-only popup guidance; a guide descriptor only reveals the yard control.
+    facilityDefs: Object.fromEntries(FACILITY_KINDS.map((k) => {
+      const { label, cost, buildDays, where } = FACILITY[k];
+      return [k, { label, cost, buildDays, where: where || '' }];
+    })),
     costs: {
       // `bed` is now just the DEFAULT crop's price, kept for the standalone probes that
       // carry no page. The popup reads `crops` — every crop the sim has, keyed by crop so a
@@ -795,18 +862,33 @@ function groundName() {
   return h.site ? h.site.place : (h.groundLabel || h.name);
 }
 
-/** Why a bed cannot go on this tile, in the sim's own words — or '' when it can.
-    `plantBed` refuses rock and refuses unflat ground, but the popup was still OFFERING the
-    three crop rows on that ground, so the player's click came back as an error line where
-    the row should have been dead. Same two facts the sim reads (the ground kind and the
-    corner-flat rule), read through the sim's own `tileFlat()` — the SAME gate the verb
-    now uses (plantBed moved off orthogonal steep(), which let a raised DIAGONAL through,
-    the 517-cells gap the art seat measured). The row and the verb cannot disagree about
-    what flat means, which is the lesson the corner-model round already paid for. */
+/** Ground-only planting guidance and page-side placement guard. Water supply and crop
+    cash are separate prerequisites. Count whole footprints, including reserved facilities;
+    a green overlay must never offer ground occupied by something the player can see. */
 function plantSay(x, y) {
-  const p = h.plot;
-  if (!p) return '';
-  if (p.ground && p.ground[y * p.w + x] === 'rock') return 'rock — nothing takes root in stone';
+  const p = h && h.plot;
+  if (!p || !Number.isInteger(x) || !Number.isInteger(y)
+    || x < 0 || y < 0 || x >= p.w || y >= p.h) return 'off the plot';
+  const ground = p.ground && p.ground[y * p.w + x];
+  if (ground === 'rock') return 'rock — nothing takes root in stone';
+  if (ground === 'water') return 'water — choose dry ground';
+  const at = (o) => o.x === x && o.y === y;
+  const covers = (o, w, ht) => o.x != null && o.y != null
+    && x >= o.x && x < o.x + w && y >= o.y && y < o.y + ht;
+  if ((p.trees || []).some(at)) return 'a tree stands here — choose clear ground or fell it first';
+  if ((p.buildings || []).some((b) => {
+    const [w, ht] = accomFootprint(b.kind);
+    return covers(b, b.fw || Math.max(1, w), b.fh || Math.max(1, ht));
+  }) || (h.facilityBuilds || []).some((b) => covers(b, b.fw || 1, b.fh || 1))
+    || (h.accom || []).some((a) => {
+      const [w, ht] = accomFootprint(a.kind);
+      return covers(a, Math.max(1, w), Math.max(1, ht));
+    })) return 'a building or reserved building site occupies this ground';
+  if ((h.beds || []).some(at)) return 'there is already a bed there';
+  if ((h.hives || []).some(at)) return 'a hive sits here';
+  if (p.gate && at(p.gate)) return 'that is the gate — keep the entrance clear';
+  if (fenceAt(p, x, y)) return 'a fence occupies this tile';
+  if (trackAt(p, x, y) || mudAt(p, x, y) || ground === 'mud') return 'track or mud — choose clear, dry ground';
   if (!tileFlat(p, x, y)) return 'too steep to plant — flatten it first';
   return '';
 }
@@ -845,7 +927,7 @@ function ghostHint(g) {
   $('hint').textContent = `${label} — ${size} at ${g.x},${g.y} · ${money(b.price)}`
     + (b.drive > 0 ? ` (incl. ${money(b.drive)} of drive to the gate)` : '')
     + (b.used ? ` · ${b.used} of your lumber, −${money(b.off)}` : '')
-    + ` · ${d ? d.buildDays : '?'} days — click to place, Esc or right-click cancels`;
+    + ` · ${d ? d.buildDays : '?'} days · ready day ${d ? h.day + d.buildDays : '?'} — click to place, Esc or right-click cancels`;
 }
 
 /* U1 · the Log fills up while it is shut, and the button says so. A count, not a
@@ -859,8 +941,20 @@ function paintLogDot() {
   d.style.display = n ? 'inline-block' : 'none';
   d.textContent = n > 9 ? '9+' : String(n || '');
 }
+let replayingLog = true;
 function log(text, cls = '') {
-  if (cls === 'bad') sfx('error');
+  // Preserve the sim's camp warning, correcting its old menu route on this UI only.
+  if (String(text).startsWith('No ablution block yet')) {
+    text = text.replace('under Farm', 'under Windows → Guests → Bookings');
+  }
+  if (cls === 'bad' && !replayingLog) {
+    sfx('error');
+    $('notice').hidden = false;
+    const message = document.createElement('div');
+    message.textContent = text;
+    $('notice-messages').appendChild(message);
+    message.scrollIntoView({ block: 'nearest' });
+  }
   const el = document.createElement('div');
   if (cls) el.className = cls;
   el.textContent = text;
@@ -868,6 +962,10 @@ function log(text, cls = '') {
   while ($('log').children.length > 60) $('log').lastChild.remove();
   if (!$('win-log').classList.contains('show')) { logUnread++; paintLogDot(); }
 }
+$('notice-dismiss').onclick = () => {
+  $('notice').hidden = true;
+  $('notice-messages').replaceChildren();
+};
 
 function save() { try { localStorage.setItem(SAVE, toJSON(h)); } catch { /* private mode */ } }
 function load() {
@@ -893,6 +991,16 @@ function setMode(m, kind) {
     // a sidebar mode takes over the click, so the tile menu must get out of the way
     if (r.closePopup) r.closePopup();
   }
+  /* PR-01 (Phase A, 2026-10-29): the card and the hint told the player to click a highlighted
+     tile while the overlay was OFF unless they separately found "Show suitable ground" - and in
+     the 0-of-14 state that button sat below the card's fold, so the instruction was unfollowable
+     and the two-by-eye attempts were refused. The highlight now follows the tool: arming a crop
+     paints the ground, leaving the tool clears it. The manual toggle still works; both readers
+     (card, menu) read r.overlay, so their labels stay in sync with this. */
+  if (typeof r.setOverlay === 'function') {
+    if (m === 'bed') r.setOverlay('plant');
+    else if (r.overlay === 'plant') r.setOverlay(null);
+  }
   refresh();
 }
 
@@ -913,7 +1021,7 @@ function layRun(path, kind) {
   sfx(kind === 'fence' ? 'post' : 'gravel');
   const unit = kind === 'fence' ? 'post' : 'tile';
   log(`Laid ${laid} ${unit}${laid === 1 ? '' : 's'} · −${money(spent)}`
-    + (refused ? ` · ${refused} refused` : ''));
+    + (refused ? ` · ${refused} refused: ${firstErr}` : ''), refused ? 'bad' : '');
   save(); refresh();
 }
 
@@ -1000,10 +1108,14 @@ function renderYard() {
   for (const k of FACILITY_KINDS) {
     const d = FACILITY[k];
     const have = !!fac[k];
-    const going = builds.some((b) => b.kind === k && !b.built);
-    const sub = have ? 'built' : going ? 'going up'
-      : `${money(d.cost)} · ${d.buildDays}d${d.monthly ? ' + ' + money(d.monthly) + '/mo' : ''}`;
-    html += `<button data-act="facility" data-kind="${k}" ${have || going || h.cash < d.cost ? 'disabled' : ''}>${d.label} <small>${sub}</small></button>`;
+    const going = builds.find((b) => b.kind === k && !b.built);
+    const sub = have ? 'built — no purchase needed' : going
+      ? `going up · ready day ${going.doneDay} · ${Math.max(0, going.doneDay - h.day)}d left`
+      : `${money(d.cost)} · ${d.buildDays}d · ready day ${h.day + d.buildDays}`
+        + (h.cash < d.cost ? ` · need ${money(d.cost - h.cash)} more` : '');
+    const running = `${d.monthly ? ' · ' + money(d.monthly) + '/mo' : ''}${d.fuelPerDay ? ' · fuel ' + money(d.fuelPerDay) + '/day' : ''}`;
+    const location = d.where || (going && going.x != null ? `at tile ${going.x},${going.y}` : '');
+    html += `<button data-act="facility" data-kind="${k}" ${have || going || h.cash < d.cost || h.ended ? 'disabled' : ''}>${esc(d.label)} <small>${esc(sub + running)}${location ? '<br>' + esc(location) : ''}</small></button>`;
   }
 
   // A home is not a rung. `ACCOM.house.capacity` is 0 and `MARKET.house` does not exist, so
@@ -1032,31 +1144,208 @@ function renderYard() {
 
   for (const job of (h.repairs || [])) {
     const f = FAULTS[job.fault];
-    if (!f) continue;
-    html += `<div class="row" style="margin-top:8px"><span>${f.text}</span><span>${job.deadline ? 'by day ' + job.deadline : ''}</span></div>`;
+    html += `<div id="repair-${esc(job.id)}" style="margin-top:8px" tabindex="-1"><b>${esc(job.text || (f && f.text) || job.fault)}</b>`
+      + `<p>${esc(repairConsequence(job))}</p>`;
     if (job.booked) {
-      html += `<div class="row muted"><span>${job.booked.outside ? 'Outside company' : 'The handyman'} · day ${job.booked.day}</span><span></span></div>`;
-    } else {
-      html += `<button data-act="repair" data-id="${job.id}" data-outside="0" ${h.cash < f.cost ? 'disabled' : ''}>Call the handyman <small>${money(f.cost)} · may not come</small></button>`;
-      html += `<button data-act="repair" data-id="${job.id}" data-outside="1" ${h.cash < f.cost * 2 ? 'disabled' : ''}>Outside company <small>${money(f.cost * 2)} · tomorrow, guaranteed</small></button>`;
-    }
+      html += `<div class="row muted"><span>${job.booked.outside ? 'Outside company' : 'The handyman'} · booked day ${job.booked.day} · ${money(job.booked.cost)} paid at booking. Wait; do not book again.</span></div>`;
+    } else if (f) {
+      html += `<button data-act="repair" data-id="${esc(job.id)}" data-outside="0" ${h.cash < f.cost || h.ended ? 'disabled' : ''}>Call the handyman <small>${money(f.cost)} paid now · day ${h.day + 1}, may not come${h.cash < f.cost ? ' · not enough cash' : ''}</small></button>`;
+      html += `<button data-act="repair" data-id="${esc(job.id)}" data-outside="1" ${h.cash < f.cost * 2 || h.ended ? 'disabled' : ''}>Outside company <small>${money(f.cost * 2)} paid now · day ${h.day + 1}, guaranteed${h.cash < f.cost * 2 ? ' · not enough cash' : ''}</small></button>`;
+    } else html += '<p>Repair definition unavailable — no price or booking can be offered.</p>';
+    html += '</div>';
   }
   $('yardcard').innerHTML = html;
 }
 
-function renderGoals() {  const g = summary(h).goals;
+function repairConsequence(job) {
+  return (job.fault === 'plumbing' ? 'Guest bookings are blocked until fixed. ' : '')
+    + `Unfixed after day ${job.deadline}: guest reviews suffer. `
+    + (job.booked ? `Booked for day ${job.booked.day}; no new payment needed.` : 'Action needed: book a repair.');
+}
+
+function guideButton(target, route) {
+  return `<button type="button" data-reveal="${esc(target)}">Show: ${esc(route)}</button>`;
+}
+
+/** A cash incident is already settled; repairs are a separate queue of work. */
+function renderAttention() {
+  const jobs = h.repairs || [];
+  const unbooked = jobs.filter((j) => !j.booked).length;
+  const camp = (h.accom || []).some((a) => a.kind === 'camp') && !h.facilities.ablution;
+  const hit = h.lastHit;
+  let html = '';
+  if (hit) {
+    html += `<p><b>Cash event · day ${hit.day}: ${signedMoney(hit.amount)}</b> — ${esc(hit.why)}</p>`
+      + `<p>${hit.amount < 0 ? 'Already charged to' : 'Already added to'} your cash. No repair action is implied by this event. Review your remaining budget if needed.</p>`
+      + guideButton('#bankcard', 'Windows → Money');
+  }
+  for (const job of jobs) {
+    html += `<p><b>${esc(job.text || (FAULTS[job.fault] || {}).text || job.fault)}</b> ${esc(repairConsequence(job))}</p>`
+      + guideButton(`#repair-${job.id}`, `Windows → Guests → Bookings → ${job.booked ? 'Booked repair' : 'Call the handyman / Outside company'}`);
+  }
+  if (camp) {
+    const build = (h.facilityBuilds || []).find((b) => b.kind === 'ablution' && !b.built);
+    html += `<p><b>No ablution block yet.</b> The camp takes no guests until it is built. `
+      + (build ? `Already paid; ready day ${build.doneDay}. Wait for completion, then list the camp in Guests.`
+        : `Action needed: build the ${esc(FACILITY.ablution.label)} — ${money(FACILITY.ablution.cost)}, ${FACILITY.ablution.buildDays} days.`)
+      + '</p>' + guideButton('[data-act="facility"][data-kind="ablution"]', 'Windows → Guests → Bookings → Ablution block');
+  }
+  $('attention').hidden = !html;
+  if (html !== renderAttention._html) {
+    renderAttention._html = html;
+    $('attentionbody').innerHTML = html;
+    if (html) $('attention').open = true;
+  }
+  $('attention-status').textContent = [
+    unbooked ? `${unbooked} repair${unbooked === 1 ? '' : 's'} need booking` : '',
+    jobs.length > unbooked ? `${jobs.length - unbooked} repair(s) booked` : '',
+    camp ? 'Camp needs ablutions' : '',
+    hit ? `Cash event day ${hit.day}: ${signedMoney(hit.amount)} · already ${hit.amount < 0 ? 'charged' : 'received'}` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+const tankBill = () => Math.round(lumberOff(TANK.cost + TANK.delivery, TANK.lumber, h.lumber || 0).cost);
+function goalGuide(id, s) {
+  const crop = CROPS[bedCrop];
+  const cropTarget = `.cropbtn[data-crop="${bedCrop}"]`;
+  const cropRoute = `Farm → Plant ${crop.label.toLowerCase()}`;
+  const cash = (cost) => `${money(cost)}${h.cash < cost ? ` (need ${money(cost - h.cash)} more)` : ' available'}`;
+  const water = waterOk(h) ? 'Water available.' : h.water.tank
+    ? `Tank empty: Farm → Buy water, ${cash(WATER.deliveryCost)} for ${WATER.deliveryL} L.`
+    : `No water: Farm → Build a water tank, ${cash(tankBill())}, filled.`;
+  const crops = Object.values(CROPS).map((c) => `${c.label}: ${money(c.cost)}, ${c.growDays}d`).join(' · ');
+  const budget = `${money(s.billTotal)} bills in ${s.daysToBill}d; living ${money(LIVING_PER_DAY)}/day, plus ${money(FOOD.eatKg * FOOD.shopPerKg)}/day when buying food. Weather and facilities can add costs.`;
+  const unit = ACCOM[unitKind()];
+  const bookings = `Need a finished, listed letting unit and open bookings (currently ${h.open ? 'open' : 'closed'}). `
+    + (!(h.accom || []).some((a) => ACCOM[a.kind] && ACCOM[a.kind].capacity > 0)
+      ? `${unit.label}: ${money(unit.cost)} base, ${unit.buildDays}d, plus site drive less any lumber saving. ` : '')
+    + `Road ${s.tourism.road}%; patch ${cash(patchCost(h))}. `
+    + ((h.repairs || []).some((j) => j.fault === 'plumbing') ? 'Plumbing repair blocks all bookings. ' : '')
+    + (h.accom || []).filter((a) => ACCOM[a.kind] && ACCOM[a.kind].capacity > 0).map((a) => {
+      const d = ACCOM[a.kind];
+      const needs = (d.needs || []).filter((k) => !h.facilities[k]
+        && !(k === 'driveway' && driveWithin(h.plot, a.x, a.y)));
+      return `${d.label}: ${a.built ? a.listed ? 'listed' : 'needs listing in Guests' : 'ready day ' + a.doneDay}`
+        + (needs.length ? '; needs ' + needs.map((k) => `${FACILITY[k].label} (${money(FACILITY[k].cost)}, ${FACILITY[k].buildDays}d)`).join(', ') : '') + '.';
+    }).join(' ');
+  switch (id) {
+    case 'water': return {
+      why: `Without water, the run ends after ${WATER.deathDays} dry days. A stream or tank completes this step.`,
+      how: 'Use Farm to build a filled tank; later buy deliveries when it runs low. Building chooses a yard tile automatically.',
+      needs: `${water} Tank: ${money(TANK.cost)} + ${money(TANK.delivery)} delivery before any mill-lumber saving; today ${cash(tankBill())}.`,
+      links: [[h.water.tank ? '#btn-water' : '#btn-tank', h.water.tank ? 'Farm → Buy water' : 'Farm → Build a water tank']],
+    };
+    case 'bed': return {
+      why: `Home-grown food avoids the shop's ${money(FOOD.eatKg * FOOD.shopPerKg)}/day; surplus can be sold.`,
+      how: 'Choose a crop under Farm - the suitable ground turns green - then click a green tile. Harvest when ready.',
+      needs: `${crops}. ${water} Cash now ${money(h.cash)}; selected ${crop.label} needs ${cash(crop.cost)}. Ground must be flat and clear, not rock, water, mud or occupied.`,
+      links: [[cropTarget, cropRoute], [h.water.tank ? '#btn-water' : '#btn-tank', h.water.tank ? 'Farm → Buy water' : 'Farm → Build a water tank']],
+      ground: true,
+    };
+    case 'sale': return {
+      why: 'Turn harvested produce or honey into cash; smaller trips avoid the shop refusing excess stock.',
+      how: 'Farm → Harvest ready beds, then Trade → Take it to the shop. This goal counts a shop sale, not timber.',
+      needs: `${s.ready} beds ready; ${s.produce} kg produce + ${s.honey} kg honey stored. Fuel ${money(FUEL_PER_TRIP)}/trip, deducted from proceeds. Shop full-price veg appetite: ${s.shop.veg} kg at ${money(s.shop.vegPrice)}/kg.`,
+      links: [['#btn-harvest', 'Farm → Harvest'], ['#btn-sell', 'Trade → Take it to the shop']],
+    };
+    case 'tree': return {
+      why: 'Taking the company offer trades standing pine and future shade for immediate cash; refusal keeps the pine.',
+      how: 'Read the Company offer, then choose Take the money or Turn them down yourself. Either answer completes this goal; felling one tree does not.',
+      needs: s.company.offer ? `${s.company.offer.trees} pines; offer ${money(s.company.offer.zar)}. No purchase cost. Both decisions are permanent.`
+        : h.company.taken || h.company.refused ? 'Offer already answered; the next goal check records it.'
+          : h.plot.trees.length ? 'No pine remains; no company decision is required.'
+            : 'No trees remain and there is no offer. The current goal check does not complete on an entirely bare plot.',
+      links: s.company.offer ? [['#btn-accept', 'Windows → Company → The company → Take the money'], ['#btn-refuse', 'Windows → Company → The company → Turn them down']]
+        : [['#companycard', 'Windows → Company → The company']],
+    };
+    case 'bills': return {
+      why: 'Bills keep the household solvent; missed months put the plot at risk.',
+      how: 'Keep enough cash, then advance the calendar. Bills are paid automatically on calendar day 1; there is no Pay button.',
+      needs: `${budget} Cash now ${money(h.cash)}. ${h.cash < s.billTotal ? 'Earn the shortfall before the 1st.' : 'Keep that reserve unspent.'}`,
+      links: [['#bankcard', 'Windows → Money'], ['#endday', 'Status bar → End the day']],
+    };
+    case 'unit': {
+      const [x, y] = freeCell(unitKind());
+      const bill = siteBill(unitKind(), x, y);
+      return {
+        why: 'A letting unit can earn nightly income beyond crops. Your own house never takes bookings.',
+        how: `Build a ${unit.label.toLowerCase()}, then advance days until finished. The Build menu picks a site automatically. Any finished accommodation build ticks this step, including a house — but a house cannot earn bookings.`,
+        needs: `${unit.label}: ${money(unit.cost)} base, ${unit.buildDays}d; ready day ${h.day + unit.buildDays} if started now. Today's automatic site: ${cash(bill.price)} including drive and any lumber saving. Needs clear, flat ground${unit.only ? '; only for ' + unit.only : ''}.`,
+        links: [['#btn-unit', `Build → Build a ${unit.label.toLowerCase()}`], ['#yardcard', 'Windows → Guests → Bookings']],
+      };
+    }
+    case 'guest': return {
+      why: 'The first paid guest-night starts your hosting income and reviews.',
+      how: 'Finish a letting unit, list it in Guests if unlisted, and open bookings. Then End the day; a guest is not guaranteed each night.',
+      needs: bookings,
+      links: [['#yardcard', 'Windows → Guests → Bookings'], ['#btn-patch', 'Siteworks → Patch the road'], ['#btn-unit', `Build → Build a ${unit.label.toLowerCase()}`]],
+    };
+    case 'month': return {
+      why: 'A month proves that food, water and cash can last beyond the opening purchases.',
+      how: 'Reach game day 30 by ending days after tending the plot. Do not skip water or budget checks.',
+      needs: `Day ${h.day}/30. ${water} ${budget}`,
+      links: [['#plotcard', 'Windows → The plot'], ['#endday', 'Status bar → End the day']],
+    };
+    case 'hire': return {
+      why: 'A bigger crop patch eventually needs more hands at harvest.',
+      how: 'Hold more than 12 planted beds to complete this milestone. Hiring alone does not complete it; hire only when you need extra harvest capacity that day.',
+      needs: `${h.beds.length}/13 beds. ${crops}. ${water} Solo capacity ${LABOUR.bedSlots}; ${cash(LABOUR.wagePerDay)} hires +${LABOUR.perWorker} for today only.`,
+      links: [[cropTarget, cropRoute], ['#btn-hire', 'Farm → Hire a casual for the day'], ['#btn-harvest', 'Farm → Harvest']],
+    };
+    case 'wood': return {
+      why: 'Clearing invasive wattle and blackwood improves the bush; the firewood is useful for winter.',
+      how: 'Forestry → Fell trees arms the axe; inspect species and click chosen trees. The milestone counts at least 12 felled stems, not firewood sold or loads stored.',
+      needs: `${h.plot.felled || 0}/12 felled. Wattle/blackwood yield ${FIREWOOD.wattleYield} loads each; pine ${FIREWOOD.pineYield}. Indigenous trees cost a ${money(NATIVE_FINE)} fine and harm the forest; avoid native trees and oaks. ${s.trees ? 'Standing trees remain.' : 'No trees left here to fell.'}`,
+      links: [['#btn-fell', 'Forestry → Fell trees']],
+    };
+    case 'subsidy': return {
+      why: `The ratepayers offer ${money(SUBSIDY.pay)} for holding the road through month ${SUBSIDY.runMonth} (December).`,
+      how: `The offer arrives on day 1 of month ${SUBSIDY.offerMonth} (November). Review Village → Take the subsidy. Acceptance ticks this goal; payment still depends on the road.`,
+      needs: `Offer: ${s.subsidy.state}. Hold at least ${SUBSIDY.threshold}% every December day for full payment. Road ${s.tourism.road}%; a patch costs ${cash(patchCost(h))}. Acceptance itself costs nothing.`,
+      links: [[s.subsidy.state === 'offered' ? '#btn-sub-yes' : '#villagecard', s.subsidy.state === 'offered' ? 'Windows → Village → Take the subsidy' : 'Windows → Village'], ['#btn-patch', 'Siteworks → Patch the road']],
+    };
+    case 'winter-night': return {
+      why: 'Winter tests guest access, warmth and your cash reserve.',
+      how: 'Keep letting through May–August. The current milestone checks any recorded guest-night once the calendar is in those months, not a separate winter-night counter.',
+      needs: `${bookings} Wood: ${h.firewood || 0} loads; household burns ${FIREWOOD.householdBurn}/night in winter, guests ${FIREWOOD.guestBurn} per non-camp let. Empty household stack costs ${money(FIREWOOD.coldHouseNight)}/night.`,
+      links: [['#yardcard', 'Windows → Guests → Bookings'], ['#btn-fell', 'Forestry → Fell trees'], ['#btn-patch', 'Siteworks → Patch the road']],
+    };
+    case 'land': return {
+      why: 'More land gives you room to grow beyond this plot.',
+      how: 'Trade → Buy the land next door adds the neighbouring strip immediately when you choose to buy.',
+      needs: `${cash(expansionPrice(h))} for +${EXPANSION.ha} ha. ${s.holding.canExpand ? `${s.holding.bought} of ${EXPANSION.max} expansions bought.` : 'No more neighbouring land available.'} Keep bill and water reserves first.`,
+      links: [['#btn-expand', 'Trade → Buy the land next door']],
+    };
+    case 'year': return {
+      why: 'A full year tests whether the household can carry itself through winter.',
+      how: 'Reach game day 365. Keep earning, maintain water and the road, and check repairs before advancing days.',
+      needs: `Day ${h.day}/365. ${water} ${budget}`,
+      links: [['#bankcard', 'Windows → Money'], ['#plotcard', 'Windows → The plot'], ['#endday', 'Status bar → End the day']],
+    };
+    default: return {
+      why: `Guidance unavailable for goal “${id}”.`,
+      how: 'This goal has no mapped control. Do not guess a purchase; review the Log.',
+      needs: 'The goal definition needs UI guidance before this step can be explained.',
+      links: [['#log', 'Windows → Log']], error: true,
+    };
+  }
+}
+
+function renderGoals() {
+  const s = summary(h), g = s.goals;
   if (!g.next.length) {
     $('goalcard').innerHTML = '<div class="row muted"><span>You know what you are doing</span><span>—</span></div>';
     return;
   }
-  let html = `<div class="row muted" style="margin-bottom:6px"><span>${g.done} of ${g.total} done</span><span></span></div>`;
-  html += g.next.map((x, i) => `
-    <div style="padding:4px 0;border-bottom:1px solid #1c2620">
-      <div style="font-size:12.5px;color:${i === 0 ? '#e9e6db' : '#9aa79a'}">
-        <span style="color:#5f9e6d">○</span> ${x.text}
-      </div>
-      <div style="font-size:11px;color:#7f8d7b;padding-left:14px">${x.hint}</div>
-    </div>`).join('');
+  let html = `<div class="row muted"><span>${g.done} of ${g.total} done</span></div>`;
+  html += g.next.map((x) => {
+    const d = goalGuide(x.id, s);
+    return `<section class="goal" data-goal="${esc(x.id)}"${d.error ? ' role="status"' : ''}><b>${esc(x.text)}</b>`
+      + `<p><b>Why:</b> ${esc(d.why)}</p><p><b>How:</b> ${esc(d.how)}</p><p><b>Needs:</b> ${esc(d.needs)}</p>`
+      + d.links.map(([target, route]) => guideButton(target, route)).join('')
+      + (d.ground ? `<button type="button" data-suitable-ground aria-pressed="${r.overlay === 'plant'}">${r.overlay === 'plant' ? 'Hide' : 'Show'} suitable ground</button><p>Highlighting checks ground only, not water supply or cash.</p>` : '')
+      + '</section>';
+  }).join('');
   $('goalcard').innerHTML = html;
 }
 
@@ -1278,11 +1567,11 @@ function refresh() {
   if (!waterOk(h)) {
     const left = s.tank ? s.tank.daysLeft
       : Math.max(0, WATER.deathDays - (h.water.thirst || 0));
-    alarms.push(`<span class="alarm hot"><b>no water</b> ${
+    alarms.push(`<button type="button" class="alarm hot" data-reveal="${h.water.tank ? '#btn-water' : '#btn-tank'}"><b>no water</b> ${
       left > 1 ? `${left} days` : left === 1 ? '1 day' : 'final day'
-    } · ${h.water.tank ? 'buy water' : 'build a tank'}</span>`);
+    } · Show: Farm → ${h.water.tank ? 'Buy water' : 'Build a water tank'}</button>`);
   } else if (h.water.tank && !h.water.stream && s.tank && s.tank.pct <= 20) {
-    alarms.push(`<span class="alarm warn"><b>tank</b> ${s.tank.pct}%</span>`);
+    alarms.push(`<button type="button" class="alarm warn" data-reveal="#btn-water"><b>tank</b> ${s.tank.pct}% · Show: Farm → Buy water</button>`);
   }
   if (s.arrears > 0) {
     alarms.push(`<span class="alarm hot"><b>arrears</b> ${s.arrears} month${s.arrears === 1 ? '' : 's'}</span>`);
@@ -1297,8 +1586,7 @@ function refresh() {
   // dropped and only the Log dot blinked. A debit the player did not choose must announce
   // itself on the same bar as the other four, with the number and the reason.
   if (h.lastHit && h.lastHit.day === h.day && Math.abs(h.lastHit.amount) >= 500) {
-    alarms.push(`<span class="alarm hot"><b>${h.lastHit.amount < 0 ? '−' : '+'}${
-      money(Math.abs(h.lastHit.amount)).slice(1)}</b> ${esc(h.lastHit.why || 'out of the blue')}</span>`);
+    alarms.push(`<span class="alarm hot"><b>${signedMoney(h.lastHit.amount)}</b> already ${h.lastHit.amount < 0 ? 'charged' : 'received'} · see event panel</span>`);
   }
   const alarmKey = alarms.join('');
   const alarmEl = $('alarms');
@@ -1321,7 +1609,7 @@ function refresh() {
     <div class="row"><span>To the shop</span><span>${h.plot.kmFromShop} km</span></div>
     <div class="row"><span>Beds / hives</span><span>${s.beds} / ${s.hives}</span></div>
     <div class="row ${s.arrears ? '' : 'muted'}"><span>Arrears</span><span>${s.arrears} month${s.arrears === 1 ? '' : 's'}</span></div>
-    <div class="row muted"><span>Living</span><span>${money(LIVING_PER_DAY + foodCost)}/day</span></div>
+    <div class="row muted"><span>Living</span><span>${money(LIVING_PER_DAY)}/day</span></div>
     <div class="row"><span>Road</span><span>${s.tourism.road}% of ${s.tourism.roadCeil}</span></div>
     <div class="row"><span>Guests</span><span>${s.tourism.units} unit${s.tourism.units === 1 ? '' : 's'} · ★${s.tourism.rating}</span></div>
     <div class="row muted"><span>Nights sold</span><span>${s.tourism.nights} · ${money(s.tourism.earned)}</span></div>
@@ -1339,16 +1627,19 @@ function refresh() {
     // homesteader adds " · needs water" to it. Same four facts, room to breathe.
     b.querySelector('small').textContent = `${money(c.cost)} · ${c.growDays} days · `
       + `${signedMoney(c.yield - c.cost)} · ${cropRate(c).toFixed(1)} a day`
-      + (!waterOk(h) && !h.water.tank ? ' · needs water' : '');
+      + (!waterOk(h) ? ' · needs water' : '')
+      + (s.cash < c.cost ? ` · need ${money(c.cost - s.cash)} more` : '');
     b.disabled = !!s.ended || !waterOk(h) || s.cash < c.cost;
     b.classList.toggle('active', mode === 'bed' && bedCrop === b.dataset.crop);
   }
   $('bedcount').textContent = `${s.beds} of ${s.slots} beds planted — past your own hands, hire a casual on a harvest day.`;
   $('lbl-hive').textContent = `${money(HIVE.cost)} · ${HIVE.honeyPerDay} kg/day in season`;
-  $('lbl-tank').textContent = h.water.tank ? 'already have one' : `${money(TANK.cost)} + ${money(TANK.delivery)} delivery, filled`;
+  $('lbl-tank').textContent = h.water.tank ? 'already have one' : `${money(tankBill())} delivered and filled, after any mill-lumber saving`
+    + (h.cash < tankBill() ? ` · need ${money(tankBill() - h.cash)} more` : '');
   $('lbl-water').textContent = h.water.stream ? 'the stream does the job'
     : !h.water.tank ? 'nowhere to store it yet'
-      : `${money(WATER.deliveryCost)} · +${WATER.deliveryL} L (tank ${s.tank ? s.tank.pct : 0}%)`;
+      : `${money(WATER.deliveryCost)} · +${WATER.deliveryL} L (tank ${s.tank ? s.tank.pct : 0}%)`
+        + (h.cash < WATER.deliveryCost ? ` · need ${money(WATER.deliveryCost - h.cash)} more` : '');
   $('lbl-hire').textContent = `${money(LABOUR.wagePerDay)} today · +${LABOUR.perWorker} beds harvested today`;
   const unitKind = h.key === 'stayed' ? 'spare' : 'room';
   // the captions name the rung the sim names, the price line quotes the sim's rate — no
@@ -1359,7 +1650,9 @@ function refresh() {
   caption('btn-cabin', `Build a ${ACCOM.cabin.label.toLowerCase()}`);
   caption('btn-camp', `Open a ${ACCOM.camp.label.toLowerCase()}`);
   caption('btn-caravan', `Open a ${ACCOM.caravan.label.toLowerCase()}`);
-  $('lbl-unit').textContent = `${money(ACCOM[unitKind].cost)} · ${ACCOM[unitKind].buildDays} days · ${money(ACCOM[unitKind].rate)}/night`;
+  const unitBill = siteBill(unitKind, ...freeCell(unitKind));
+  $('lbl-unit').textContent = `${money(unitBill.price)} at the automatic site, incl. drive and any lumber saving · ${ACCOM[unitKind].buildDays} days · ${money(ACCOM[unitKind].rate)}/night`
+    + (h.cash < unitBill.price ? ` · need ${money(unitBill.price - h.cash)} more` : '');
   $('lbl-cabin').textContent = `${money(ACCOM.cabin.cost)} · ${ACCOM.cabin.buildDays} days · ${money(ACCOM.cabin.rate)}/night`;
   $('lbl-camp').textContent = `${money(ACCOM.camp.cost)} · ${ACCOM.camp.buildDays} days · ${money(ACCOM.camp.rate)}/pitch${h.facilities && h.facilities.ablution ? '' : ' · needs an ablution block'}`;
   $('lbl-caravan').textContent = `${money(ACCOM.caravan.cost)} · ${ACCOM.caravan.buildDays} days · ${money(ACCOM.caravan.rate)}/stand${h.facilities && h.facilities.driveway ? '' : ' · needs a driveway'}`;
@@ -1406,11 +1699,11 @@ function refresh() {
   // (the crop rows set their own disabled state in the loop above - each is priced by its
   // own crop, which is the whole point of showing three)
   $('btn-hive').disabled = !!s.ended || s.cash < HIVE.cost;
-  $('btn-tank').disabled = !!s.ended || h.water.tank || s.cash < TANK.cost + TANK.delivery;
+  $('btn-tank').disabled = !!s.ended || h.water.tank || s.cash < tankBill();
   $('btn-water').disabled = !!s.ended || h.water.stream || !h.water.tank || s.cash < WATER.deliveryCost;
   $('btn-hire').disabled = !!s.ended || s.cash < LABOUR.wagePerDay;
   $('btn-house').disabled = !!s.ended || hasHouse() || s.cash < ACCOM.house.cost;
-  $('btn-unit').disabled = !!s.ended || s.cash < ACCOM[unitKind].cost;
+  $('btn-unit').disabled = !!s.ended || s.cash < unitBill.price;
   $('btn-cabin').disabled = !!s.ended || s.cash < ACCOM.cabin.cost;
   $('btn-camp').disabled = !!s.ended || s.cash < ACCOM.camp.cost;
   $('btn-caravan').disabled = !!s.ended || s.cash < ACCOM.caravan.cost;
@@ -1427,12 +1720,17 @@ function refresh() {
   for (const b of document.querySelectorAll('.dragtool')) {
     b.classList.toggle('active', mode === 'drag' && r.dragKind === b.dataset.drag);
   }
+  $('stop-tool').hidden = mode !== 'drag';
+  $('stop-tool').textContent = r.dragKind === 'flatten' ? 'Stop flatten tool' : 'Stop road/fence tool';
+  $('plant-overlay-note').hidden = r.overlay !== 'plant';
+  $('btn-suitable').setAttribute('aria-pressed', String(r.overlay === 'plant'));
+  caption('btn-suitable', `${r.overlay === 'plant' ? 'Hide' : 'Show'} suitable ground`);
   if (r.ghost) ghostHint(r.ghost);       // a live placement outranks the mode hint
   else if (r._paint) { /* the drag hint owns the line while the finger is down */ }
   else $('hint').textContent = s.ended ? 'The run is over.'
     : mode === 'drag' ? dragModeHint()
     : mode === 'fell' ? 'Fell mode — click a tree.'
-      : mode === 'bed' ? `Click a cell to plant ${CROPS[bedCrop].label.toLowerCase()} — ${CROPS[bedCrop].growDays} days, ${money(CROPS[bedCrop].cost)} in.`
+      : mode === 'bed' ? `Click a green tile to plant ${CROPS[bedCrop].label.toLowerCase()} — ${CROPS[bedCrop].growDays} days, ${money(CROPS[bedCrop].cost)} in.`
         : mode === 'hive' ? 'Click a cell to place a hive.'
           : r._openPopup ? 'Click any tile to see what you can do there.'
             : 'Click a tree to inspect it.';
@@ -1450,6 +1748,7 @@ function refresh() {
   renderVoices();
   renderGoals();
   renderYard();
+  renderAttention();
   renderLegacy();
   renderVillage();
   renderBank();
@@ -1458,6 +1757,7 @@ function refresh() {
 }
 
 $('btn-fell').onclick = () => setMode('fell');
+$('stop-tool').onclick = () => setMode('inspect');
 // Drag-build tools (owner, 2026-10-21): click to arm, click again to disarm.
 for (const b of document.querySelectorAll('.dragtool')) {
   b.onclick = () => setMode(mode === 'drag' && r.dragKind === b.dataset.drag ? 'inspect' : 'drag',
@@ -1563,9 +1863,11 @@ function startedLine(kind) {
 }
 function buildRung(kind) {
   const [x, y] = freeCell(kind);
+  const simFrom = h.log.length;
   const res = buildAccom(h, kind, x, y);
   if (!res.ok) return log(res.msg, 'bad');
   sfx(VERB_SOUND.accom);   // the same sound as the popup's build verb (A11)
+  echoSimLog(simFrom);
   log(startedLine(kind));
   save(); refresh();
 }
@@ -1591,6 +1893,7 @@ $('yardcard').onclick = (e) => {
   const b = e.target.closest('button[data-act]');
   if (!b) return;
   const act = b.dataset.act;
+  const simFrom = h.log.length;
   let res;
   if (act === 'open') res = setOpen(h, !h.open);
   else if (act === 'facility') res = buildFacility(h, b.dataset.kind);
@@ -1602,11 +1905,9 @@ $('yardcard').onclick = (e) => {
   }
   if (!res) return;
   if (!res.ok) return log(res.msg, 'bad');
-  log(act === 'open' ? (h.open ? 'Open for bookings.' : 'Closed for bookings — no lets, no reviews.')
-    : act === 'facility' ? 'The yard is being improved.'
-      : act === 'list' ? 'Listed for bookings.'
-        : act === 'rate' ? 'Rate changed — the booking sites update overnight.'
-          : 'Repair booked.');
+  if (act === 'facility' || act === 'repair') echoSimLog(simFrom);
+  else log(act === 'open' ? (h.open ? 'Open for bookings.' : 'Closed for bookings — no lets, no reviews.')
+    : act === 'list' ? 'Listed for bookings.' : 'Rate changed — the booking sites update overnight.');
   save(); refresh();
 };
 $('btn-expand').onclick = () => {
@@ -1669,7 +1970,10 @@ function showReport(r, sticky) {
   if (r.ateHome) lines.push(`<div class="r"><span>Ate from the plot</span><span>—</span></div>`);
   if (r.food) lines.push(`<div class="r"><span>Food from the shop</span><span style="color:#e08a6a">${signedMoney(-r.food)}</span></div>`);
   if (r.tankPct != null && r.tankPct < 20) lines.push(`<div class="r"><span style="color:#e08a6a">The tank is at ${r.tankPct}%</span><span></span></div>`);
-  lines.push(`<div class="r"><span>Living and wages</span><span style="color:#e08a6a">${signedMoney(-r.living)}</span></div>`);
+  /* PR-04 (Phase A, 2026-10-29): `r.living` ALREADY includes `r.food` (homestead.js:537), so
+     printing both put -70 and -250 on a -250 day. The Food line above keeps its own figure;
+     this line prints what is left, and the components then sum to Down. */
+  lines.push(`<div class="r"><span>Living and wages</span><span style="color:#e08a6a">${signedMoney(-(r.living - (r.food || 0)))}</span></div>`);
   if (r.bills) lines.push(`<div class="r"><span>The month's bills</span><span style="color:#e08a6a">${signedMoney(-r.bills)}</span></div>`);
   const col = r.delta >= 0 ? '#9fd0a8' : '#e08a6a';
   lines.push(`<div class="r net"><span>${r.delta >= 0 ? 'Up' : 'Down'}</span><span style="color:${col}">${signedMoney(r.delta)}</span></div>`);
@@ -1712,6 +2016,8 @@ function placeMenu(m) {
   if (r.right > vw - 8) shift = (vw - 8) - r.right;      // pull it in from the right edge
   if (mr.left + shift < 8) shift = 8 - mr.left;          // never push it off the left instead
   dd.style.left = `${Math.round(shift)}px`;
+  dd.style.maxHeight = `${Math.max(100, window.innerHeight - r.top - 8)}px`;
+  dd.style.overflowY = 'auto';
 }
 menuAll.forEach((m) => {
   m.querySelector(':scope > button').addEventListener('click', (e) => {
@@ -1731,6 +2037,50 @@ window.addEventListener('resize', () => {
 });
 document.addEventListener('click', (e) => {
   if (!e.target.closest('#menubar')) closeMenus();
+});
+
+/** Navigation only: never click a target, purchase, arm a tool or advance the clock. */
+function revealControl(selector) {
+  let target = null;
+  try { if (typeof selector === 'string' && selector) target = document.querySelector(selector); } catch { /* invalid selector */ }
+  if (!target) return log(`Control unavailable: ${selector || 'no target supplied'}. No action was taken.`, 'bad');
+  closeMenus();
+  const win = target.closest('.win');
+  if (win) {
+    const panel = target.closest('.tabpanel');
+    if (panel) {
+      for (const p of win.querySelectorAll('.tabpanel')) p.hidden = p !== panel;
+      for (const tab of win.querySelectorAll('[data-tab]')) tab.classList.toggle('on', tab.dataset.tab === panel.id);
+    }
+    openWin(win.id);
+  }
+  const menu = target.closest('.mbtn');
+  if (menu && menu.querySelector('.dropdown')) {
+    menu.classList.add('open');
+    placeMenu(menu);
+  }
+  document.querySelectorAll('.guide-target').forEach((el) => el.classList.remove('guide-target'));
+  target.classList.add('guide-target');
+  // Native disabled controls cannot receive focus; focus their containing group instead,
+  // keeping the actual control highlighted and disabled, with its prerequisite visible.
+  const focus = target.disabled ? target.parentElement : target;
+  if (!focus.matches('button, a[href], input, select, textarea, [tabindex]')) focus.tabIndex = -1;
+  focus.focus({ preventScroll: true });
+  target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+// Registered after the outside-click closer so a goal's newly opened menu stays open.
+// Works for dynamic goals, alerts, yard controls and renderer guide descriptors alike.
+document.addEventListener('click', (e) => {
+  const guide = e.target.closest('[data-reveal]');
+  if (guide) { e.preventDefault(); revealControl(guide.dataset.reveal); return; }
+  if (e.target.closest('[data-suitable-ground]')) {
+    if (typeof r.setOverlay !== 'function') return log('Suitable-ground overlay is unavailable in this view. Use the isometric view; tile planting still checks the ground.', 'bad');
+    const overlay = r.overlay === 'plant' ? null : 'plant';
+    r.setOverlay(overlay);
+    if (overlay && r.overlay !== overlay) return log('This renderer does not support suitable ground yet. Tile planting still checks the ground.', 'bad');
+    refresh();
+  }
 });
 $('closeall-m').addEventListener('click', (e) => { e.preventDefault(); closeAllWins(); });
 
@@ -2130,6 +2480,7 @@ if (h.day === 1) {
 }
 // history is not news: the restored log is read, so the dot starts clean
 logUnread = 0; paintLogDot();
+replayingLog = false;
 // §12: the arrival line, display-side only — fires once, on day one, when a name exists
 if (playerName && h.day === 1) {
   log(`${playerName} arrived at the gate with ${money(h.cash)} and one plot${
@@ -2222,6 +2573,12 @@ if (menuQ) {
   // string, and `new RegExp('[` would throw and take the whole page's boot down with it
   const m = menus.find((x) => (x.querySelector(':scope > button').textContent || '').toLowerCase().includes(menuQ));
   if (m) m.querySelector(':scope > button').click();
+}
+/* QA hook: ?ground=1 turns the "show suitable ground" overlay on at boot, so the picture the
+   owner is asked to review is the same one the goal card's button produces. Query-gated like
+   ?paint / ?arm / ?bed / ?tile. */
+if (params.get('ground') === '1' && r && typeof r.setOverlay === 'function') {
+  r.setOverlay('plant');
 }
 window.__home = {
   get h() { return h; }, get r() { return r; }, option,

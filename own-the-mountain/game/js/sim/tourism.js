@@ -213,11 +213,21 @@ export const FACILITY_SITE = { ablution: [2, 1] };
 
 /** Where a sited facility should go: beside the unit it serves, else the plot's middle.
  *  Deterministic — same plot, same camp, same tile, forever. No rng is drawn, so no
- *  golden trace moves. */
+ *  golden trace moves.
+ *
+ *  A unit UNDER CONSTRUCTION anchors too (art inventory 10-28): filtering on `built`
+ *  meant an ablution bought the same day as the camp fell back to the plot centre and
+ *  landed at the middle of the map (32,33 reproduced next to a camp at 14,27). The
+ *  camp's tiles are already reserved by freeFacilityTile, so anchoring to an unbuilt
+ *  camp places the block in the yard it will serve, not inside it. */
 function facilityAnchor(h) {
   const p = h.plot;
-  const built = (h.accom || []).filter((a) => a.built && ACCOM[a.kind] && ACCOM[a.kind].footprint);
-  const serve = built.find((a) => a.kind === 'camp') || built.find((a) => a.kind === 'caravan') || built[0];
+  const units = (h.accom || []).filter((a) => ACCOM[a.kind] && ACCOM[a.kind].footprint);
+  const camp = units.find((a) => a.kind === 'camp');
+  const serve = camp
+    || units.find((a) => a.kind === 'caravan' && a.built)
+    || units.find((a) => a.built)
+    || units[0];
   if (serve) {
     const [fw, fh] = accomFootprint(serve.kind);
     return [Math.floor(serve.x + Math.max(1, fw) / 2), Math.floor(serve.y + Math.max(1, fh) / 2)];
@@ -915,7 +925,7 @@ export function buildAccom(h, kind, x, y) {
   // time now, while there is still money in the plan for the bathroom.
   if (kind === 'camp' && !h.facilities.ablution
       && !(h.facilityBuilds || []).some((b) => b.kind === 'ablution' && !b.built)) {
-    h.log.push({ day: h.day, text: 'No ablution block yet — the camp will take no guests until it is built (H$12,000, under Farm).' });
+    h.log.push({ day: h.day, text: `No ablution block yet — the camp will take no guests until it is built (${money(FACILITY.ablution.cost)}, under Windows → Guests → Bookings).` });
   }
   if (surcharge > 0) {
     h.log.push({ day: h.day, text: `Driveway to the site: ${drivewayTiles(h.plot, x, y)} tiles from the gate, +${money(surcharge)}.` });
@@ -1031,13 +1041,13 @@ export function tickTourism(h) {
     if (a.kind === 'caravan' && isWet(h) && !h.facilities.driveway && !laid) {
       blocked += 1;
       h.complaints += 1;
-      events.push('No caravan let tonight: "we got stuck at the gate and walked the last 400 metres".');
+      events.push('No caravan let tonight: "we got stuck at the gate and walked the last 400 metres". Gravel over the mud is the fix.');
       continue;
     }
     if (a.kind === 'camp' && !h.facilities.ablution) {
       blocked += 1;
       h.complaints += 1;
-      events.push('No camping let tonight: "guests are using the bush".');
+      events.push('No camping let tonight: "guests are using the bush". The ablution block is the fix.');
       continue;
     }
 
@@ -1049,7 +1059,7 @@ export function tickTourism(h) {
       if (access.tiles > 0 && nextRandom(h) < stuckChance(access.share, access.mudSlope)) {
         blocked += 1;
         h.complaints += 1;
-        events.push('No let tonight: "we got stuck in the mud at the gate".');
+        events.push('No let tonight: "we got stuck in the mud at the gate". Gravel over the mud is the fix.');
         continue;
       }
     }

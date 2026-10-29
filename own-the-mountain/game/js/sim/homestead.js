@@ -426,6 +426,7 @@ export function fell(h, treeId) {
     }
   }
   noteFelled(h, r.m3, r.kind);
+  tickGoals(h);   // gate 2 (owner 10-28): the wood goal ticks on the twelfth stem, not on the next End Day
   return r;
 }
 
@@ -616,7 +617,7 @@ export function endDay(h) {
     } else {
       h.arrears += 1;
       h.missedMonths += 1;
-      events.push(`Bills: ${money(bill.total)} due — you are ${money(Math.round(bill.total - h.cash))} short.`);
+      events.push(`Bills: ${money(bill.total)} due — you are ${money(Math.round(bill.total - h.cash))} short. Three months short and the plot is the bank's.`);
       note(h, `Missed the bills. ${money(bill.total)} was due.`);
       if (h.arrears >= 3) {
         h.ended = { result: 'lose', reason: 'Three months of unpaid bills. The bank has the plot.' };

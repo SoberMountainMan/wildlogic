@@ -145,7 +145,11 @@ export function maybeBreak(h) {
     booked: null,
   };
   h.repairs.push(job);
-  note(h, def.text + (key === 'plumbing' ? ' No water until it is fixed.' : ''));
+  // Gate 1 (owner 10-28, narrative audit 25.1): a fault is an unresolved repair, so the
+  // line says what it costs to settle and what the delay costs the review score.
+  note(h, def.text
+    + ` It costs ${money(def.cost)} to fix, and guests dock stars for it once it is past due.`
+    + (key === 'plumbing' ? ' No water until it is fixed.' : ''));
   initHandyman(h);
   return job;
 }
@@ -187,7 +191,7 @@ export function tickHandyman(h) {
       job.booked.day = h.day + 1;
       h.handyman.noShows += 1;
       noShows += 1;
-      note(h, handymanExcuse(h));
+      note(h, handymanExcuse(h) + ' He is booked again for tomorrow.');
       continue;
     }
 
@@ -195,9 +199,9 @@ export function tickHandyman(h) {
     fixed.push(job.id);
     note(h, job.booked.outside
       ? `Fixed by the company: ${job.text} ${money(job.booked.cost)}, paid when booked. `
-        + 'Both facts are reassuring and a little sad.'
+        + 'Both facts are reassuring and a little sad. Nothing more to do.'
       : `Fixed: ${job.text} ${money(job.booked.cost)}, paid when booked. `
-        + 'Not beautifully — but fixed, and he cleaned the tiles after, which nobody asked for.');
+        + 'Not beautifully — but fixed, and he cleaned the tiles after, which nobody asked for. Nothing more to do.');
   }
 
   initHandyman(h);
