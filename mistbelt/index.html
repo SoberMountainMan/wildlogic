@@ -135,6 +135,14 @@
   .daypill{right:12px;top:116px;background:rgba(255,255,255,.93);border-radius:14px;
     padding:5px 10px;box-shadow:0 2px 6px var(--shadow);color:#2f4a58;
     font-weight:600;font-size:12.5px;white-space:nowrap;opacity:.78;line-height:1.2}
+  /* A1a/N1 — the strip. Dark like the goalchip, so it reads as speech rather than as chrome, and
+     full-width because the lines are sentences, not statuses. It sits below both pill columns and
+     overlays the far rim, which is scenery; the instruments above it were not moved. */
+  .hillsays{left:12px;right:12px;top:150px;background:rgba(24,34,28,0.78);color:#dfe9e0;
+    border-radius:10px;padding:6px 10px;font-size:12px;line-height:1.35;cursor:pointer;z-index:5}
+  .hillsays .hlab{display:block;font-size:11px;font-weight:600;letter-spacing:.4px;
+    color:#8fae97;margin-bottom:1px}
+  .hillsays #hillText{display:block}
   .appill .apnum{display:flex;flex-direction:column;gap:1px}
   .appill b{font-size:13px;font-weight:800;line-height:1.1}
   .appill .aplab{font-size:9.5px;font-weight:700;color:#6b8390;white-space:nowrap}
@@ -358,7 +366,7 @@
          from the constant the explainer sheet also quotes. -->
     <button class="ov appill" id="apPill" title="Action points left today">
       <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M5.4 3h9.2v2.3L10 10l4.6 4.7V17H5.4v-2.3L10 10 5.4 5.3Z" fill="none" stroke="#c08a34" stroke-width="1.7" stroke-linejoin="round"/></svg>
-      <span class="apnum"><b id="apNow">24</b><span class="aplab aphas" id="apHas">left</span><span class="aplab apdone" id="apDone">+1 in 60 min</span></span>
+      <span class="apnum"><b id="apNow">48</b><span class="aplab aphas" id="apHas">left</span><span class="aplab apdone" id="apDone">+1 in 30 min</span></span>
     </button>
     <div class="ov tokens" id="tokenBar"></div>
     <!-- THE SCORE, AND IT WAS NOT ON SCREEN AT ALL.
@@ -383,6 +391,15 @@
          *"Next day in x hours sounds like a good plan."* The world rolls on a rolling 24-hour clock
          anchored to when the hillside was made, so this is the only place that clock is visible. -->
     <div class="ov daypill" id="dayPill" title="One world day every 24 hours, on a clock that started when you began"></div>
+    <!-- A1a/N1 — THE HILL SAYS. The game has had three voices saying one line a day since the day
+         card was written, and every line was delivered into #notes behind the Field notes button —
+         a panel a player reads as documentation, as entry 40 of a 40-entry log. The playtest played
+         thirty days and never quoted one: the channel was dead, not the writing. This strip is the
+         delivery — the day's line, non-blocking, refreshed on the day roll, and the SAME line the
+         field notes log holds, because both read state.hillSaid. It is a div with a click handler,
+         not a toast: BUG-004 already has the toast sitting on the goal chip, and a daily toast would
+         make that overlap permanent. -->
+    <div class="ov hillsays" id="hillSays" title="What the hillside has to say today — tap for the field notes"><span class="hlab">The hill says</span><span id="hillText"></span></div>
     <!-- THE DAY-1 GOAL, and the only tutorial element that is not a card. A first day with no goal is
          a sandbox, and the goal is what teaches the loop by REQUIRING it: "fill the bin and empty it
          once" cannot be done without learning the bin's capacity, the baboon, the weather token and
@@ -490,7 +507,7 @@
          the day-1 beats, at the moment each one becomes true. See DESIGN-BRIEF-DAY-ONE-2026-09-29.md -->
     <div class="notes">
       <p><b>Clear the alien trees off the hillside and plant the indigenous forest back.</b> You get
-      <b id="introAp">24</b> action points a day and have <b id="introLeft">24</b> left today. One
+      <b id="introAp">48</b> action points a day and have <b id="introLeft">48</b> left today. One
       comes back every hour. Cutting spends them; planting is free.</p>
       <p><b>Cutting one leaves its seed in the ground</b>, so it comes back. That is why a cleared
       patch does not stay cleared.</p>
@@ -510,7 +527,7 @@
       That is how the hillside comes back: a patch at a time, and the dead trees you leave standing are
       what the birds nest in.</p>
       <p class="dim">The bin holds <b id="introBinCap">12</b> cuttings, and the baboon trades the
-      bin’s cuttings for the day’s token, one each, and needs at least <b id="introBin">3</b> to
+      bin’s cuttings for the day’s token, one for every two, and needs at least <b id="introBin">3</b> to
       start; the nursery is where you spend it. <b>Hold a tile</b> to ask what it is.</p>
       <!-- THE ONE THING A PLAYER MUST KNOW BEFORE THEY INVEST A WEEK IN IT. Owner, 2026-09-30:
            "i dont think people want to lose their progress and im not sure its obvious how to keep
@@ -684,7 +701,7 @@ var WY0 = BH + TH / 2 + 4;                     /* cache pixel of world y = 0 */
    that gets "fixed" by somebody who has not read this comment. */
 var GCX = -WX0, GCY = -WY0;
 
-var AP_MAX = 24;
+var AP_MAX = 48;
 /* ONE ACTION POINT AN HOUR, ACCRUED WHILE YOU ARE AWAY.
    Owner, 2026-09-30: "what would the math be if we made it 24 AP and let it tick up +1 every hours?
    instead of waiting til midnight, you start on 24 first day, but they replenish one every hours, so
@@ -697,7 +714,7 @@ var AP_MAX = 24;
    THE CEILING IS THE SAFETY. 24 is both the daily grant and the cap, so a week away is still 24 and
    not 168, and a player who plays once a day gets exactly what an hourly player gets. The trickle
    does not hand out more than the lump did -- it only removes the wall. */
-var AP_MS = 60 * 60 * 1000;
+var AP_MS = 30 * 60 * 1000;
 var BIN_LOAD = 3;
 /* THE EXCHANGE RATE, AND IT WAS 3 UNTIL 2026-10-11.
    Owner: *"15 sun tokens for a yellowwood seems high."* It was: a yellowwood costs 5 MIST, and on a sun
@@ -2525,7 +2542,11 @@ function tickDay(w) {
   /* THE BLOCK SEEDS THE HILLSIDE, on wet days only — see plantationSeed(). */
   if (k.wet) plantationSeed();
   rollBoard(w);
-  note(voiceFor(w), 'dim');
+  /* N1/A1a — the strip and the log take the SAME line, computed once, here. Both read
+     state.hillSaid, so they cannot disagree — see the note on voiceFor for why that is a
+     correctness property and not a nicety. */
+  state.hillSaid = hillLine(w);
+  note(state.hillSaid, 'dim');
   parrotCheck();
   /* THE HOLD, COUNTED HERE AND NOWHERE ELSE. One number advanced once per day, so "five days in a
      row" means five days and not five calls. It resets the moment the run fails, which is what makes
@@ -3168,7 +3189,34 @@ function voiceFor(w) {
   var k = classify(w, true);
   var key = k.snow ? 'snow' : k.wet ? 'wet' : k.mist ? 'mist' : k.frost ? 'frost' : k.berg ? 'berg' : 'clear';
   var arr = VOICES[key];
-  return arr[Math.floor(Math.random() * arr.length)];
+  /* N1/A1a — THE DAY'S LINE IS SEEDED, NOT RANDOM, AND THAT IS A CORRECTNESS FIX NOT A PREFERENCE.
+     The HUD strip and the field notes must show the SAME line for the same day: a player who reads
+     "The hill says X" and finds Y in the log has caught the game contradicting itself, which is the
+     defect class BUG-006 (pill vs board) already put on the board. A Math.random() pick cannot agree
+     with anything — not even with itself across a reload. Seeded off the day, with the same LCG
+     rollBoard() uses, the line is stable within a day, different across days, and identical in both
+     places that show it. */
+  var _seed = ((state ? state.day : 1) * 7919 + 13) & 0x7fffffff;
+  _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
+  return arr[_seed % arr.length];
+}
+
+/* N4/A2 — THE FIRST THING THE HILL SAYS IS THE PROMISE, AND IT IS BUILT FROM THE CODE'S NUMBERS.
+   The playtest's finding: "the intro never says 'you will not see a parrot for a month'". Day 25 is
+   only a betrayal if nobody said so. This line says so, on day 1, before the player has invested
+   anything — and it states the rule the code actually runs while it is at it: PARROT_PATCH_TREES,
+   PARROT_PATCH_SPECIES, and a nest that needs a dead tree that has stood long enough to go hollow
+   (isNestSite is dead && hollow; SNAG_DAYS is how long that takes). The numbers are READ from the
+   constants, not typed, so the line cannot drift from the game the way a hand-written "12" would.
+   Day 1 only, and deterministic — no seen flag, so a reload mid-day shows the same thing twice
+   rather than two different things. Day 2 is a weather line again. */
+function hillLine(w) {
+  if (state && state.day === 1) {
+    return 'The parrot monitor: "You will not see a parrot this week. It wants ' + PARROT_PATCH_TREES +
+      ' trees, ' + PARROT_PATCH_SPECIES + ' species, around one dead tree left standing long enough ' +
+      'to go hollow. That is not a week\u2019s work."';
+  }
+  return voiceFor(w);
 }
 
 /* THE BOARD'S REWARD, AND WHY IT IS THREE AND NOT TEN.
@@ -3405,7 +3453,7 @@ function clearAt(c, r, pull) {
       state.seen.binwaste = true;
       card('The bin is full',
         'That is ' + BIN_MAX + ' cuttings, which is all the bin holds. The baboon trades them for ' +
-        'the day\u2019s token \u2014 tap the bin in the dock. ' +
+        'the day\u2019s token \u2014 tap the bin at bottom left. ' +
         'Anything you cut before you empty it is wasted, so this is the moment to stop cutting and ' +
         'start emptying. Cutting faster than you empty does not earn more, it earns less.', null);
     }
@@ -3666,7 +3714,12 @@ function recycle() {
   /* A GUESSED DAY PAYS SUN, NOT THE PREMIUM TOKEN IT IS GUESSING (DISPATCH-MISTBELT-03). */
   var tk = payToken();
   binItems -= items;
-  state.tokens[tk] += items;
+  /* THE NOTE BELOW QUOTES `paid`, NOT `items` — NARRATIVE, 2026-10-31. The rate changed under its
+     own string: the note read "N items, N tokens" from when the rate was 1:1, so the shipped rate
+     had the baboon announcing three tokens for three cuttings and paying one. Right mechanic, wrong
+     words, live on every trade — the same defect as the trade toast (BUG-013) and the seed pile. */
+  var paid = Math.floor(items / 2);   /* OWNER GO 2026-10-31: 1 token per 2 cuttings, so doubling the session does not double the income. */
+  state.tokens[tk] += paid;
   state.recycled += items;
   boardProgress('recycles', items);
   boardProgress('tokens', items);
@@ -3680,7 +3733,7 @@ function recycle() {
       'the weather is doing today.', null);
   }
   note('The baboon emptied the bin: ' + items + ' item' + (items === 1 ? '' : 's') + ', ' +
-       items + ' ' + tk + ' token' + (items === 1 ? '' : 's') + '.', 'good');
+       paid + ' ' + tk + ' token' + (paid === 1 ? '' : 's') + '.', 'good');
   return true;
 }
 
@@ -6866,7 +6919,7 @@ function renderGoal() {
      token, and doing both teaches the rhythm. After day one the game stops setting goals. */
   if (state.day !== 1 || state.recycled >= BIN_LOAD) { el.hidden = true; return; }
   el.innerHTML = '<b>Day 1:</b> fill the bin and empty it once — ' + binItems + '/' +
-    BIN_MAX + ' cuttings, then tap the bin in the dock.';
+    BIN_MAX + ' cuttings, then tap the bin at bottom left.';
   el.hidden = false;
 }
 
@@ -6917,6 +6970,12 @@ function renderHud() {
         Math.round(w.wind) + " km/h \u00b7 " + weatherWord(w) + " \u00b7 " + _clock;
     }
   }
+  /* N1/A1a — THE HILL SAYS. Lazy-init covers three paths with one line: a fresh boot, a save from
+     before this element existed (old saves carry no hillSaid), and any path that reaches a render
+     before the first day roll. The strip is refreshed by tickDay() at the roll, so it cannot show
+     yesterday's line after the world has moved. */
+  if (!state.hillSaid) state.hillSaid = hillLine(state.weather);
+  if (els.hillText) els.hillText.textContent = state.hillSaid;
   renderTokens();
   /* The day's other budget, and the one thing on the HUD that changes what the player can DO. */
   if (els.apNow) els.apNow.textContent = String(state.ap);
@@ -7586,9 +7645,22 @@ function describeTile(c, r) {
     } else {
       L.push('A seep \u2014 wet ground where the hill keeps it damp. Nothing grows on it and nothing can ' +
              'be planted in it.');
-      L.push('An Amathole toad sits here when the ' + MB_SEEP_RUN_N() + ' tiles along the river carry ' +
-             'no more than ' + TOAD_RUN_WEEDS + ' weeds between them, for ' + TOAD_HOLD_DAYS +
-             ' wet days running. That run is this tile and four either side of it.');
+      /* N6 — THE TOAD'S RULE, IN THE NEIGHBOUR'S VOICE, ON LEVEL'S NUMBERS, BUILT FROM THE CONSTANTS.
+         The line this replaces taught a number the gate refuses. It said the nine tiles may "carry no
+         more than TOAD_RUN_WEEDS weeds" — but seepRunWeeds() counts ALL NINE and the seep is ALWAYS
+         one of them (L3011: it is never clear grass, so it counts whether or not anything is on it),
+         which caps the weeds the player can actually cut at TOAD_RUN_WEEDS - 1. A player who took the
+         old line at its word — six weeds — sat at a count of 7 and the gate refused. Right mechanic,
+         wrong words: the defect class this seat exists for, live on the one card that states the rule.
+         Level's L2 return supplied the framing (the seep sits 5th of 9, so "below the seep" was wrong
+         too) and the arithmetic; the numbers here are COMPUTED, not typed — TOAD_RUN - TOAD_RUN_WEEDS
+         is the clear count, TOAD_RUN_WEEDS - 1 the take — so the sentence cannot drift from the gate.
+         Sign-off: Level's L2 numbers verified against seepRunWeeds() L2998 and placeSeep() L3057. */
+      L.push('The neighbour up the pass: "' + TOAD_RUN + ' tiles run past that seep. Keep the seep bare ' +
+             'and ' + (TOAD_RUN - TOAD_RUN_WEEDS) + ' of the other ' + (TOAD_RUN - 1) + ' clear \u2014 ' +
+             (TOAD_RUN_WEEDS - 1) + ' may be taken, no more \u2014 and hold it ' + TOAD_HOLD_DAYS +
+             ' wet days. Then the toad will sit."');
+      L.push('That run is this tile and four either side of it.');
       /* EVERY TILE COUNTS, AND THE CARD HAS TO SAY SO OR THE NUMBER ON IT IS A SURPRISE.
          Owner, 2026-10-11: *"toad is too easy."* The count now reads all nine -- this seep included,
          which can never be cleared or planted -- so 'X of 9' is the whole run and not a subset of it.
@@ -7828,10 +7900,23 @@ function act(c, r) {
            **6** was reported as **4**. The player's whole problem is the pile under the tile; a line
            that understates it by the amount it just grew is worse than silence. Measured in the same
            probe that caught the price. */
+        /* A3/N2 — THE TELL, ONCE PER SPECIES, IN THE TOAST THE PLAYER IS ALREADY READING.
+           The playtest called alien-vs-indigenous "the single biggest comprehension gap in the
+           build": the intro says "clear the alien trees" and every tree looks like a tree. The field
+           guide answers it, and the answer arrives AFTER the mistake — too late and too small. The
+           `tell` is the guide's own identification line, written per species to be readable from the
+           tile (see the note on ALIENS: art and tell are kept together deliberately). Delivering it
+           on the FIRST cut of that species, inside the toast that already names the weed, costs five
+           strings that were already written and no new art. Once per species via seen, so it teaches
+           and then gets out of the way — a line the player reads every cut is chrome, not help. */
+        var _tellKey = 'tell_' + t.lastAlien;
+        var _tell = (cd.tell && !state.seen[_tellKey])
+          ? (state.seen[_tellKey] = true, ' ' + cd.tell) : '';
         toast((_pulled ? 'Pulled ' : 'Cut ') + cd.name + ' \u2014 ' + _spent + ' action point' +
               (_spent === 1 ? '' : 's') + '. ' +
               (_pulled ? 'It came out with its roots, so this tile keeps whatever seed it already had.'
                        : t.seeds + ' lot' + (t.seeds === 1 ? '' : 's') + ' of seed in this tile now.') +
+              _tell +
               (lastOfDay ? ' ' + dayDoneLine() : ''), 'good');
       } else if (lastOfDay) {
         toast(dayDoneLine(), 'warn');
@@ -8006,7 +8091,7 @@ function boot() {
                 page check caught it only because it compared the words and the words were wrong;
                 the gate now asserts every els.* name is bound (see BOUND_IDS). */
              'apPill', 'apNow', 'apHas', 'apDone', 'goalChip', 'parrotPill', 'parrotNow', 'parrotCap',
-             'dayPill',
+             'dayPill', 'hillSays', 'hillText',
              'parrotOf', 'parrotLab',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
              'mIntro', 'btnIntro', 'introClose', 'introAp', 'introLeft', 'introBin', 'introBinCap',
@@ -8903,6 +8988,9 @@ function boot() {
   }
   if (els.notesClose) els.notesClose.addEventListener('click', function () { hideModal(els.mNotes); });
   if (els.btnNotes) els.btnNotes.addEventListener('click', function () { renderOlder(); showModal(els.mNotes); });
+  /* N1/A1a — the strip opens the field notes, where the same line sits in the log. A tap on it is
+     the player asking "what else was said?", which is exactly the sheet that answers. */
+  if (els.hillSays) els.hillSays.addEventListener('click', function () { renderOlder(); showModal(els.mNotes); });
   if (els.btnGuide) els.btnGuide.addEventListener('click', function () { renderGuide(); showModal(els.mGuide); });
   if (els.guideClose) els.guideClose.addEventListener('click', function () { hideModal(els.mGuide); });
   if (els.introClose) els.introClose.addEventListener('click', function () { hideModal(els.mIntro); });
@@ -9040,7 +9128,7 @@ var API = {
   TOKEN_ICON: TOKEN_ICON,
   rollBoard: rollBoard, boardTasks: boardTasks, boardProgress: boardProgress,
   boardDone: boardDone, claimBoard: claimBoard, taskGot: taskGot, taskDone: taskDone,
-  voiceFor: voiceFor, VOICES: VOICES,
+  voiceFor: voiceFor, hillLine: hillLine, VOICES: VOICES,
   parrotState: function () {
     return parrot ? { x: parrot.x, y: parrot.y, tx: parrot.tx, ty: parrot.ty, t: parrot.t } : null;
   },
