@@ -6727,6 +6727,7 @@ function frame(ts) {
   var dt = _last ? Math.max(0, Math.min(60, t - _last)) : 16;
   _last = t;
   if (!ctx) return;
+  ICON_H = 0;
   var w = state.weather || fallbackFor(new Date().getMonth());
 
   /* Everything above the world — sky, weather, the bin flash — is drawn in viewport CSS pixels with
@@ -7502,6 +7503,15 @@ function renderGuide() {
    it is that the form being clipped is the one that reads as a spire. Cut the tip off a spire and it
    is a different tree. */
 var ICON_MARGIN = 3;
+/* THE GUIDE DRAWS EVERY WEED AT ONE CELL HEIGHT.
+   The field guide sizes every weed from ONE frame (iconGeom's 1.15 units) while stature is carried by
+   SIZE, which spans 0.32 to 1.75 -- a 5.5x range no single frame can hold, so bramble and bugweed drew
+   at 10 and 16 px and the pine and blackwood ran 25 px past the top of the 44 px cell.
+   SIZE IS A LOCAL INSIDE THE SPR CLOSURE and iconGeom cannot see it, so the fix cannot live there.
+   This flag is module scope, which both sides can reach: drawShopIcon sets it, put() reads it, and the
+   world never sets it -- a weed on the hillside is drawn exactly as it was yesterday.
+   (A1 / BUG-009 -- art measured and designed, the Lead applied the patch to 726050a.) */
+var ICON_H = 0, ICON_H_PX = 34;
 function iconGeom(key, size) {
   var m = ICON_MARGIN;
   if (DECOR[key]) {
@@ -7533,6 +7543,8 @@ function drawShopIcon(canvasEl, key, size0, cx0, base0, unit0) {
   if (!g) return;
   var saved = ctx;
   ctx = g;
+  /* WEEDS ONLY. A tree icon is normalised by its own species `tall` and must not be flattened to 34. */
+  ICON_H = ALIENS[key] ? ICON_H_PX : 0;
   var geo = iconGeom(key, size0 === undefined ? 38 : size0);
   var cx = cx0 === undefined ? geo.cx : cx0;
   var base = base0 === undefined ? geo.base : base0;
@@ -7555,6 +7567,7 @@ function drawShopIcon(canvasEl, key, size0, cx0, base0, unit0) {
   else if (!(drawDecorSprite && drawDecorSprite(key, cx, base, unit, 0, 0))) {
     drawDecor(key, cx, base, unit, 0);
   }
+  ICON_H = 0;
   ctx = saved;
 }
 
@@ -9315,6 +9328,9 @@ var SPR = (function () {
     if (!e || !e.img || !e.img.width) return false;
     var H = (e.cell[1] / PPWW) * (s / sRef(f || e.family));
     if (!(H > 1)) return false;
+    /* ONE HEIGHT FOR EVERY WEED IN THE GUIDE, AND ONLY IN THE GUIDE. `W` is derived from `H` below, so
+       the plant keeps its own proportions -- a bramble stays wide and low, a pine stays a spire. */
+    if (ICON_H) H = ICON_H;
     /* A HEIGHT-ONLY STRETCH, FOR A SPRITE PAINTED AT THE WRONG HEIGHT.
        **`W` is derived from `H`, so scaling `s` makes a tree FAT as well as tall** -- which is why the
        variant-height problem could not be fixed by passing a bigger number. **The foot stays on the
