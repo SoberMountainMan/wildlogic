@@ -101,7 +101,7 @@
   .tk[data-today]{background:rgba(90,168,90,.22);border-radius:5px}
   .tk svg{display:block}
   .hudrow{left:12px;top:80px;display:flex;gap:6px;line-height:1}
-  .hudrow button{width:33px;height:33px;border-radius:10px;border:none;cursor:pointer;
+  .hudrow button{width:44px;height:44px;border-radius:10px;border:none;cursor:pointer;
     background:rgba(255,255,255,.95);box-shadow:0 2px 6px var(--shadow);color:#2f4a58;
     font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
   .hudrow button svg{display:block}
@@ -166,7 +166,9 @@
   @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
   @media (prefers-reduced-motion: reduce){.boxbtn.ready{animation:none}}
 
-  .dock{display:flex;gap:6px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none}
+  .dock{display:flex;gap:6px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(90deg,#000 82%,transparent 100%);
+    mask-image:linear-gradient(90deg,#000 82%,transparent 100%)}
   .dock::-webkit-scrollbar{display:none}
   .dock button{flex:0 0 auto;font:inherit;font-size:12.5px;font-weight:800;color:#e8f0e6;
     background:rgba(36,56,45,.94);border:1.5px solid #34503f;border-radius:13px;padding:7px 11px;cursor:pointer;
@@ -178,7 +180,7 @@
 
   /* The newest field note, over the map. The log itself lives in a sheet now, so this is the only
      thing that tells the player their tap did something. */
-  .toast{position:absolute;left:50%;bottom:78px;transform:translate(-50%,10px);z-index:7;
+  .toast{position:absolute;left:50%;bottom:144px;transform:translate(-50%,10px);z-index:7;
     max-width:86%;padding:9px 14px;border-radius:14px;background:rgba(20,34,26,.93);color:#dfeee2;
     font-size:12.5px;line-height:1.35;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.4);
     opacity:0;pointer-events:none;transition:opacity .22s,transform .22s}
@@ -7014,8 +7016,10 @@ function renderHud() {
   } else {
     if (els.wxIcon) els.wxIcon.textContent = _night ? _moon : "\u2600";
     if (els.wxText) {
-      els.wxText.textContent = Math.round(w.temp) + "\u00b0C \u00b7 " +
-        Math.round(w.wind) + " km/h \u00b7 " + weatherWord(w) + " \u00b7 " + _clock;
+      /* BUG-003 (A5): the CONDITION is the rule -- it decides the day's token -- so it goes first
+         and the clipping eats the temperature instead. Wind is gone entirely: no player action reads
+         it, and it was the reason the text ran 169 px in a 127 px box. */
+      els.wxText.textContent = weatherWord(w) + " \u00b7 " + Math.round(w.temp) + "\u00b0C \u00b7 " + _clock;
     }
   }
   /* N1/A1a — THE HILL SAYS. Lazy-init covers three paths with one line: a fresh boot, a save from
