@@ -7725,6 +7725,25 @@ function describeTile(c, r) {
              (TOAD_RUN_WEEDS - 1) + ' may be taken, no more \u2014 and hold it ' + TOAD_HOLD_DAYS +
              ' wet days. Then the toad will sit."');
       L.push('That run is this tile and four either side of it.');
+      /* N7 — THE TRICK, NOT JUST THE RULE. Owner, 2026-10-31: *"the winning trick is in your head and
+         not in the game."* He is right, and it is the difference between a rule and a strategy: the
+         card asked for nine clear tiles and never said HOW a player holds them through five wet days
+         of regrowth. The trick is that shade reaches across tiles — matureAround() counts the eight
+         NEIGHBOURS of a run tile, so trees planted BESIDE the run close the seed under the run itself,
+         while a tree ON the run counts against you (seepRunWeeds counts t.sp like any weed). Clear
+         once under shade and it stays clear; clear alone and every wet day is a fight. The speaker is
+         the grower because the trick is a planting trick, and the numbers are read, not typed —
+         SHADE_CLOSES_SEED is the same constant the shade card teaches.
+         AND THE HONEST COST, because a gate that surprises is a gate that reads as a bug: five wet
+         days is about 12 days of weather at the measured season-average wet rate (5 / 0.414 — see the
+         hold comment in tickDay). The 12 is typed: there is no wet-rate constant to read it from, and
+         the Tester's online run (T1) may move it — real October gave 17 wet in 30. Flagged on the
+         return. */
+      L.push('The nursery grower: "Plant beside the run, not on it. A tree on the run counts against ' +
+             'you \u2014 but its shade reaches across. ' + SHADE_CLOSES_SEED + ' mature trees beside a ' +
+             'run tile and the seed under it shuts for good, so you clear it once and it stays clear."');
+      L.push('The neighbour up the pass: "And the honest cost: ' + TOAD_HOLD_DAYS + ' wet days is about ' +
+             '12 days of weather. It is not a weekend\u2019s work."');
       /* EVERY TILE COUNTS, AND THE CARD HAS TO SAY SO OR THE NUMBER ON IT IS A SURPRISE.
          Owner, 2026-10-11: *"toad is too easy."* The count now reads all nine -- this seep included,
          which can never be cleared or planted -- so 'X of 9' is the whole run and not a subset of it.
