@@ -716,6 +716,10 @@ var AP_MAX = 48;
    does not hand out more than the lump did -- it only removes the wall. */
 var AP_MS = 30 * 60 * 1000;
 var BIN_LOAD = 3;
+/* OWNER GO 2026-10-31: the bin pays 1 token per BIN_RATE cuttings, so doubling the
+   session does not double the income. Narrative flagged the drift: the 2 was typed in
+   Math.floor(items / 2) and in the intro prose. One constant, read by both. */
+var BIN_RATE = 2;
 /* THE EXCHANGE RATE, AND IT WAS 3 UNTIL 2026-10-11.
    Owner: *"15 sun tokens for a yellowwood seems high."* It was: a yellowwood costs 5 MIST, and on a sun
    day you had to trade 3 sun for 1 mist — FIFTEEN sun tokens for one tree, against a day's income of
@@ -3718,7 +3722,7 @@ function recycle() {
      own string: the note read "N items, N tokens" from when the rate was 1:1, so the shipped rate
      had the baboon announcing three tokens for three cuttings and paying one. Right mechanic, wrong
      words, live on every trade — the same defect as the trade toast (BUG-013) and the seed pile. */
-  var paid = Math.floor(items / 2);   /* OWNER GO 2026-10-31: 1 token per 2 cuttings, so doubling the session does not double the income. */
+  var paid = Math.floor(items / BIN_RATE);
   state.tokens[tk] += paid;
   state.recycled += items;
   boardProgress('recycles', items);
@@ -8625,7 +8629,7 @@ function boot() {
     }
     if (trade(give, def.token)) {
       saveLocal(); renderShop(); renderHud();
-      note('Traded 3 ' + give + ' for 1 ' + def.token + '.', 'good');
+      note('Traded ' + TRADE_IN + ' ' + give + ' for 1 ' + def.token + '.', 'good');
     }
   });
   if (els.btnSave) els.btnSave.addEventListener('click', function () {
@@ -9071,7 +9075,7 @@ var API = {
   tickDay: tickDay, clearAt: clearAt, plantAt: plantAt, placeDecor: placeDecor, pickUpDecor: pickUpDecor,
   /* `digAt` is exported for the lever's own gate: the rule is that a SAPLING can be lifted and a
      TAKEN tree cannot, and a check cannot see that without calling the function that does it. */
-  digAt: digAt, PULL_COST: PULL_COST,
+  digAt: digAt, PULL_COST: PULL_COST, TRADE_IN: TRADE_IN, BIN_RATE: BIN_RATE,
   /* `act` is the TAP — the one entry point a finger actually reaches. It is exported because the
      three actions above it are the *decision* and `act` is the *reply*: a gate that only calls
      clearAt() can prove the weed was not cut, but not that the player was left in silence. Owner,
