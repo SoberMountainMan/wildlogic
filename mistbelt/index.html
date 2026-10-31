@@ -758,7 +758,15 @@ var PULL_COST = 2;
    exchange twice."* Measured: 24 cuts with a trade in between yield 27 tokens over NINE trades at
    BIN_MAX 6 and the SAME 27 over TWO at BIN_MAX 12. **So the only thing the small bin bought was seven
    extra taps a day.** 12 keeps a batch worth emptying and stops throwing taps at the player. */
-var BIN_MAX = 12;
+/* CORRECTION 2026-11-01, on the owner's GO for the AP change: the GO was "double the session and
+   KEEP THE ECONOMY", and the Tester's re-measure (REMEASURE-2026-11-01.md) showed the economy was NOT
+   kept -- 38 cuttings a day against a bin of 12 means 26 are DISCARDED (the clamp in clearAt() drops
+   the cutting a full bin cannot hold), so the day paid 6 tokens where the ruling promised 13, and the
+   30-day arc went from 4 parrots to NONE. The bin has to hold a day's cuttings or the doubled session
+   is spent throwing work away. 48 = one cutting per AP point, so even a bar spent entirely on the
+   cheapest cuts fits. Exported, so the gate can
+   hold the cap against the budget it was sized for. */
+var BIN_MAX = 48;   /* one cutting per AP point: a full bar of the cheapest cuts fits, nothing discarded */
 var binWasted = 0;   /* cuttings lost to a full bin this session; not saved, it is narration */
 
 var TOKENS = ['sun', 'mist', 'rain', 'snow'];
@@ -9114,7 +9122,7 @@ var API = {
   tickDay: tickDay, clearAt: clearAt, plantAt: plantAt, placeDecor: placeDecor, pickUpDecor: pickUpDecor,
   /* `digAt` is exported for the lever's own gate: the rule is that a SAPLING can be lifted and a
      TAKEN tree cannot, and a check cannot see that without calling the function that does it. */
-  digAt: digAt, PULL_COST: PULL_COST, TRADE_IN: TRADE_IN, BIN_RATE: BIN_RATE,
+  digAt: digAt, PULL_COST: PULL_COST, TRADE_IN: TRADE_IN, BIN_RATE: BIN_RATE, BIN_MAX: BIN_MAX,
   closedGround: closedGround, closedDen: function(){ return closedDen; }, renderHud: renderHud,
   /* `act` is the TAP — the one entry point a finger actually reaches. It is exported because the
      three actions above it are the *decision* and `act` is the *reply*: a gate that only calls
