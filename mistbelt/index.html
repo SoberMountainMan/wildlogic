@@ -1155,9 +1155,14 @@ function objCodeRead(ch) {
   return 0;
 }
 var OBJ_CODE = { house: 1, nursery: 2, bin: 3, sign: 4, jetty: 5,
-                 bench: 6, birdbath: 7, hide: 8, lantern: 9, azalea: 10, hydrangea: 11 };
+                 bench: 6, birdbath: 7, hide: 8, lantern: 9, azalea: 10, hydrangea: 11,
+                 arum: 12 };
 var OBJ_FROM = [null, 'house', 'nursery', 'bin', 'sign', 'jetty',
-                'bench', 'birdbath', 'hide', 'lantern', 'azalea', 'hydrangea'];
+                'bench', 'birdbath', 'hide', 'lantern', 'azalea', 'hydrangea', 'arum'];
+/* ARUM IS CODE 12 (2026-11-01, found by the L6b sunbird gate). It was MISSING from both tables:
+   the encoder wrote objCode(0) -- '0' -- for every planted lily, and objCodeRead('0') returns 0,
+   which the decoder refuses (v must be 1..35) -- so ANY SAVE CODE CONTAINING A PLANTED ARUM
+   FAILED TO LOAD AT ALL. Append-only: codes 1-11 are inside save codes players are holding. */
 /* Codes 1-4 are frozen \u2014 they are already inside save codes players are holding. The four new
    species take 5-8, so an old code still reads exactly as it did; it simply has none of the new
    trees in it. That is why the palette could grow without breaking anybody's forest. */
@@ -1750,6 +1755,9 @@ function primeState() {
      all of it is derivable from the seep. So it is re-derived here, beside the seep, on every load
      path (boot, restart, load-a-code, load-a-copy), which is exactly what primeState() is for. */
   if (state.seen.toad && state.seep && !toad) toad = { c: state.seep.c, r: state.seep.r, t: 0 };
+  /* the sunbird re-derives too: seen records that she came once; the RUN decides whether she is
+     here now (a broken line on the save means she has gone looking, and the boot must agree) */
+  if (state.seen.sunbird) sunbirdCheck();
   /* AND CLEAR ANY ROAD WEED A SAVE IS CARRYING, because the other three only govern from now on. */
   clearRoads();
   /* A SAVE CAN CARRY A PINE ON THE TOAD SEAT, AND CLEARING IT HERE IS THE ONLY WAY TO REACH IT.
@@ -2737,6 +2745,7 @@ function tickDay(w) {
     }
   }
   toadCheck();
+  sunbirdCheck();
   SFX('day');
   return line;
 }
@@ -3324,6 +3333,51 @@ function matureNear(c, r, rad) {
   return n;
 }
 
+/* L6b -- THE SUNBIRD, the second site's reward. The wet bank is 80 tiles of ground the forest
+     cannot use, and Level's design gives it its own resident: six arum lilies in an unbroken line on
+     ONE bank bring a sunbird, and it STAYS while the line holds. One resident, not a count -- the
+     parrot stays the only score. Presence is DERIVED, like the toad's: plant the run and she is on
+     the line, break the line and she has gone looking. The leaving is visual only -- a gone bird
+     needs no announcement (the toad's arrival-line ruling: receipts under a creature are
+     bookkeeping). */
+var SUNBIRD_RUN = 6;    /* Level's dial: arrival at six, of a 4-10 range */
+var sunbird = null;     /* { c, r } -- the tile she is perched on, while a qualifying run holds */
+function sunbirdRun() {
+  var best = 0, side, r, cur;
+  for (side = -1; side <= 1; side += 2) {
+    cur = 0;
+    for (r = 0; r < ROWS; r++) {
+      var t = state.tiles[r * COLS + (streamC(r) + side * (STREAM.half + 1))];
+      if (t && t.obj === 'arum') { cur++; if (cur > best) best = cur; } else cur = 0;
+    }
+  }
+  return best;
+}
+function sunbirdCheck() {
+  var best = 0, bestC = -1, bestR = -1, side, r, cur;
+  for (side = -1; side <= 1; side += 2) {
+    cur = 0;
+    for (r = 0; r < ROWS; r++) {
+      var c = streamC(r) + side * (STREAM.half + 1);
+      var t = state.tiles[r * COLS + c];
+      if (t && t.obj === 'arum') {
+        cur++;
+        if (cur > best) { best = cur; bestC = c; bestR = r; }
+      } else cur = 0;
+    }
+  }
+  if (best >= SUNBIRD_RUN) {
+    sunbird = { c: bestC, r: bestR };
+    if (!state.seen.sunbird) {
+      state.seen.sunbird = true;
+      /* the line carries its own speaker (the strip's static label is gone) and the number is read
+         from the constant, so the sentence cannot drift from the mechanic */
+      state.hillSaid = 'The nursery grower: "A sunbird, in the lilies. It stays while the line ' +
+        'holds -- ' + SUNBIRD_RUN + ' of them along the water. Break the line and it goes looking."';
+      note('A sunbird took up residence in the lilies on the wet bank.', 'good');
+    }
+  } else sunbird = null;
+}
 function toadCheck() {
   if (state.seen.toad) return false;
   /* THE SEEP IS THE ADDRESS AND THE HOLD IS THE GATE — see the block above TOAD_RUN for why a
@@ -3930,6 +3984,9 @@ function placeDecor(c, r, key) {
   if (!DECOR[key] || !(state.decor[key] > 0)) return false;
   state.decor[key] -= 1;
   t.obj = key;
+  /* the sunbird lands on the tap that completes the line, the way the toad lands on the cut that
+     opened the grass (that pattern is the house's own) */
+  if (key === 'arum') sunbirdCheck();
   return true;
 }
 
@@ -4233,7 +4290,7 @@ function encodeSave(s) {
              /* bit 512: has the player been shown where the seep is (L5a). Same reason as bit 256 —
                 decodeSave rebuilds `seen` from this mask, so a flag outside it dies every load and
                 the reveal re-pans for ever. */
-             (s.seen.seepReveal ? 512 : 0);
+             (s.seen.seepReveal ? 512 : 0) | (s.seen.sunbird ? 1024 : 0);
   var bag = '', dec = '', i;
   for (i = 0; i < SP_KEYS.length; i++) bag += clamp(s.bag[SP_KEYS[i]] || 0, 0, 9);
   for (i = 0; i < DECOR_KEYS.length; i++) dec += clamp(s.decor[DECOR_KEYS[i]] || 0, 0, 9);
@@ -4296,7 +4353,7 @@ function decodeSave(code) {
   s.lastTickAt = p.z || (s.lastDayKey === dayKey(new Date()) ? Date.now() : Date.now() - 86400000);
   s.seen = { seedbank: !!(p.s & 1), baboon: !!(p.s & 2), parrot: !!(p.s & 4), shade: !!(p.s & 8),
              toad: !!(p.s & 16), binbaboon: !!(p.s & 32), needshade: !!(p.s & 64),
-             parrotwait: !!(p.s & 128), intro: !!(p.s & 256), seepReveal: !!(p.s & 512) };
+             parrotwait: !!(p.s & 128), intro: !!(p.s & 256), seepReveal: !!(p.s & 512) , sunbird: !!(p.s & 1024)};
   var tk = String(p.tk || '0.0.0.0').split('.');
   s.tokens = { sun: +tk[0] || 0, mist: +tk[1] || 0, rain: +tk[2] || 0, snow: +tk[3] || 0 };
   var g = String(p.g || '0000'), d = String(p.c || '00000'), i;
@@ -6185,6 +6242,23 @@ function drawBinBaboon(cx, base, s) {
    distinct pale stripe down the middle of its back, well-developed parotoid glands behind the
    eyes and small flattened warts all over. It lives in the grassland around Hogsback and nowhere
    else on earth, and the plantations are what took that grassland away. */
+/* THE SUNBIRD, code-art in the toad's style: flat shapes, no outline, legible at 14 px. A male
+     malachite is emerald over a scarlet band -- two saturated shapes -- and the long decurved bill is
+     the one part that says "sunbird" and nothing else does. Art may replace it with ani_sunbird; the
+     draw call and the perch do not change. */
+function drawSunbird(cx, base, s) {
+  shadow(cx, base, s * 0.20, s * 0.06);
+  ctx.fillStyle = '#1f6f43';
+  ctx.beginPath(); ctx.ellipse(cx - s * 0.06, base - s * 0.50, s * 0.20, s * 0.12, -0.38, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#b8322c';
+  ctx.beginPath(); ctx.ellipse(cx + s * 0.07, base - s * 0.42, s * 0.095, s * 0.085, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#173f2c';
+  ctx.beginPath(); ctx.ellipse(cx + s * 0.15, base - s * 0.34, s * 0.11, s * 0.065, 0.45, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#173f2c'; ctx.lineWidth = Math.max(1, s * 0.04); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx - s * 0.22, base - s * 0.55); ctx.lineTo(cx - s * 0.33, base - s * 0.66); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + s * 0.23, base - s * 0.36); ctx.lineTo(cx + s * 0.33, base - s * 0.28); ctx.stroke();
+}
+
 function drawToad(cx, base, s) {
   shadow(cx, base, s * 0.26, s * 0.075);
   var i;
@@ -6535,6 +6609,7 @@ function drawTileProp(c, r) {
      mechanic exists to reward was invisible, and nothing numeric could see it: the toad's tile was
      on the glass and the tile was in the visible set, so every cull and framing check passed. */
   var isToad = !!(toad && toad.c === c && toad.r === r);
+  var isSunbird = !!(sunbird && sunbird.c === c && sunbird.r === r);
   /* AND THE SEEP HAS TO SURVIVE THE SAME BAIL, for the third time in this function's history.
      A seep is a BARE grass tile once the player has cleared its run — no alien, no tree, no object,
      no seed bank — which is exactly what the bail below throws away. So the seep drew while its tile
@@ -6726,6 +6801,7 @@ function drawTileProp(c, r) {
   if (isMouth) SPR.mouth(cx, base, TW * 1.30);
 
   if (isToad) drawToad(cx, base - TH * 0.06, TW * 0.78);
+  if (isSunbird) drawSunbird(cx, base - TH * 0.02, TW * 0.62);
 }
 
 function drawCritter(kind, cx, base, s) {
@@ -9985,6 +10061,7 @@ var API = {
   digAt: digAt, PULL_COST: PULL_COST, TRADE_IN: TRADE_IN, BIN_RATE: BIN_RATE, BIN_MAX: BIN_MAX, wetRateYear: wetRateYear,
   closedGround: closedGround, closedDen: function(){ return closedDen; }, renderHud: renderHud,
   loadLocal: loadLocal, loadFailNow: function () { return loadFail; }, wetRateYear: wetRateYear,
+  SUNBIRD_RUN: SUNBIRD_RUN, sunbirdRun: sunbirdRun, sunbirdCheck: sunbirdCheck, streamC: streamC,
   SAVE_KEY: SAVE_KEY,
   /* `act` is the TAP — the one entry point a finger actually reaches. It is exported because the
      three actions above it are the *decision* and `act` is the *reply*: a gate that only calls
