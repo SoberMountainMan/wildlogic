@@ -2596,6 +2596,27 @@ function tickDay(w) {
      correctness property and not a nicety. */
   state.hillSaid = hillLine(w);
   note(state.hillSaid, 'dim');
+  /* L5a — THE REVEAL. Joint with Level, who designed the channel and measured why it cannot be
+     words alone: the seep is drawn deliberately unobtrusive (0.92 of a tile, alpha 0.42, no marker)
+     and lands a median 16.5 tiles from the village — 2.6 screens away at phone zoom. A strip line
+     saying "there is a seep on the bank" would send the player panning for a slightly darker patch
+     of grass. So the channel is the game's own locating gesture, panTo(), which already does this
+     job for the parrot's nest and the arriving toad — plus this line on the same morning, saying
+     what the player is looking at and why it matters. No modal (BUG-010), no marker (the seep's
+     subtlety is what makes it read as wet ground), no lore, no finish line.
+     DAY 3, NOT DAY 3 EXACTLY. tickDay() can advance several days in one load, so `day === 3` would
+     silently never fire for a player who skips days — and a daily game is played by people who skip
+     days. `>= 3` with the flag is the only version that survives a gap.
+     THE FLAG IS IN THE SAVE MASK (bit 512, encodeSave/decodeSave) because decodeSave REBUILDS `seen`
+     from the mask: a flag kept outside it is dropped on every load and the pan would re-fire for
+     ever. That is the exact failure the `intro` comment at the mask records. */
+  if (state.seep && state.day >= 3 && !state.seen.seepReveal && !state.seen.toad) {
+    state.seen.seepReveal = true;
+    panTo(state.seep.c, state.seep.r);
+    state.hillSaid = SEEP_REVEAL_LINE;
+    note(SEEP_REVEAL_LINE, 'dim');
+    if (els.hillText) els.hillText.textContent = state.hillSaid;
+  }
   parrotCheck();
   /* THE HOLD, COUNTED HERE AND NOWHERE ELSE. One number advanced once per day, so "five days in a
      row" means five days and not five calls. It resets the moment the run fails, which is what makes
@@ -2846,7 +2867,21 @@ function parrotCheck() {
     state.parrots += 1;
     if (state.seen.parrot) {
       saveLocal();
-      note('Another Cape parrot moved in \u2014 ' + state.parrots + ' in the forest now.', 'good');
+      /* N8 — THE ARRIVAL IS SPOKEN, AND IT LANDS WHERE THE PLAYER IS LOOKING. The old path wrote one
+         generic sentence into the field-notes log — a panel a player reads as documentation — so the
+         second bird, the third, the half-way mark all passed unremarked on the HUD. The line now goes
+         to the strip as well as the log, the same channel the day's voice uses, so a resident arriving
+         is an event on the screen rather than a line in a file. Strip and log get the SAME string, so
+         the two surfaces cannot disagree — the correctness property N1 established. An ordinary
+         arrival (no beat) keeps the plain note, so no bird ever arrives in silence. */
+      var _arr = parrotArrivalLine(state.parrots);
+      if (_arr) {
+        state.hillSaid = _arr;
+        note(_arr, 'good');
+        if (els.hillText) els.hillText.textContent = state.hillSaid;
+      } else {
+        note('Another Cape parrot moved in \u2014 ' + state.parrots + ' in the forest now.', 'good');
+      }
       return true;
     }
     state.seen.parrot = true;
@@ -3216,22 +3251,60 @@ function toadCheck() {
 
 /* ============================================================ the day's board */
 
+/* L5a — THE WORDS FOR THE REVEAL, handed over by Level's channel design and written to its brief:
+   where · stays open · beside not on · what for, and NO COUNT. The count (3 of the other 8 clear,
+   5 wet days) lives on the tap card, which is where a player who has found the seep will ask. Putting
+   numbers in a one-line strip is how the old toad card came to teach a rule the gate refuses.
+   "On the stream bank" is a real locator, not a flourish: the stream is a continuous ribbon, so the
+   player can find the bank again after the pan. Contractions are avoided like the rest of the hill's
+   voice — "There is", not "There's" — and nothing here promises a finish. */
+var SEEP_REVEAL_LINE = 'The neighbour up the pass: "There is a seep on the stream bank \u2014 wet ' +
+  'ground the hill keeps damp. Leave the strip along it open. Plant your trees beside it, not on it, ' +
+  'and the Amathole toad will come."';
+
 var VOICES = {
   /* WET DOES NOT MAKE CUTTING EASIER.  spends a fixed cost per species and the weather
      never touches it — the only thing wet does is bring the seed bank up (see the sprout guard).
      So this line was teaching a false rule, in the same breath as a day card saying the true one:/n     a player who believed it would wait for rain to do the cutting that rain makes harder. */
+  /* N8 — THE CAST GETS MORE TO SAY. Owner, 2026-10-31: *"the winning trick is in your head and not
+     in the game"* — the same is true of a voice pool two lines deep. With the day-seeded strip the
+     same sentence came round every second day of its weather, which reads as a decoration rather
+     than as people. Twelve lines became thirty-two, five or six per weather, so a given speaker's
+     line for a given sky returns about once a fortnight instead of every other day. Every line is
+     attributed in the game's own format, none shouts, and none promises an ending — the gate holds
+     all three. */
   wet: ['The nursery grower: "Rain. Everything in the ground is up today \u2014 you will be busy."',
-        'The parrot monitor: "Good rain for the seedlings. Good rain for the seed in the ground, too."'],
+        'The parrot monitor: "Good rain for the seedlings. Good rain for the seed in the ground, too."',
+        'The nursery grower: "Three wet days and the weeds are ahead of you. Cut before you plant, not after."',
+        'The nursery grower: "Wild peach and Cape chestnut are ready. They take open ground \u2014 that is what open ground is for."',
+        'The parrot monitor: "Wet ground, and the hillside gives. This is the day it pays you back."',
+        'The neighbour up the pass: "Rain on the pass. The road will be a river by tonight."'],
   mist: ['The neighbour up the pass: "Mist like this is what a yellowwood wants."',
-         'The nursery grower: "A mist day. Good day for putting things in the ground."'],
+         'The nursery grower: "A mist day. Good day for putting things in the ground."',
+         'The nursery grower: "Old-growth will not go in until it has neighbours. Two mature trees, minimum. That is the rule, not mine."',
+         'The parrot monitor: "Days like this you hear them before you see them."',
+         'The parrot monitor: "Mist sits in the canopy. That is where a parrot feeds \u2014 up top, out of the wind."',
+         'The neighbour up the pass: "You cannot see the ridge from here. Nothing is coming, and nothing is going."'],
   frost: ['The nursery grower: "Cold one. The tender seedlings will feel it tonight."',
-          'The parrot monitor: "The old forest takes frost. A seedling does not."'],
+          'The parrot monitor: "The old forest takes frost. A seedling does not."',
+          'The nursery grower: "Frost takes the soft ones. Plant the pioneer first \u2014 it holds the ground, and it holds the cold."',
+          'The parrot monitor: "Cold like this and the parrots drop down the valley. They will be back when it lifts."',
+          'The neighbour up the pass: "Frost on the pass before the sun is up. Winter is not finished with us."'],
   berg: ['The neighbour up the pass: "Berg wind. It will carry seed clean off the ridge."',
-         'The parrot monitor: "Wind like this moves seed a long way downhill."'],
+         'The parrot monitor: "Wind like this moves seed a long way downhill."',
+         'The nursery grower: "Wind like this dries a seedling out in a day. Water it, or leave it in the rack."',
+         'The parrot monitor: "Everything loose on this hill ends up at the bottom of it."',
+         'The neighbour up the pass: "Berg wind. Keep your hat and your temper."'],
   snow: ['The parrot monitor: "Snow on the Hogs. The parrots will be low today."',
-         'The neighbour up the pass: "Snow. Not much grows on a day like this."'],
+         'The neighbour up the pass: "Snow. Not much grows on a day like this."',
+         'The nursery grower: "The nursery stays shut. Nothing in my racks wants to go out in that."',
+         'The parrot monitor: "One snow day will not kill a forest. Ten in a row will."',
+         'The neighbour up the pass: "Snow on the Hogs. The tourists will be up the pass by nine."'],
   clear: ['The nursery grower: "Clear and warm. A good day for the hillside."',
-          'The parrot monitor: "Quiet day. Nothing moves much up here."']
+          'The parrot monitor: "Quiet day. Nothing moves much up here."',
+          'The nursery grower: "Sun tokens buy the cheap trees. The cheap trees make the shade. That is how it starts."',
+          'The parrot monitor: "Sun. The hillside holds what it has and offers nothing new."',
+          'The neighbour up the pass: "Clear. You can see the whole valley from the top of the pass today."']
 };
 
 function voiceFor(w) {
@@ -3266,6 +3339,38 @@ function hillLine(w) {
       'to go hollow. That is not a week\u2019s work."';
   }
   return voiceFor(w);
+}
+
+/* N8 — EVERY PARROT GETS A VOICE, AND THE CEILING REFUSES TO BE AN ENDING.
+   The playtest's sharpest line about this game was the reward cadence: first parrot day 25, and the
+   only thing before it a tree count nobody displayed. The first bird has had a card since day one;
+   birds 2, 3, 6, 9 and 12 arrived as one generic sentence in a log nobody opens. These are the beats
+   the count deserves — the pair, the neighbour who has not seen three in years, the half-way mark,
+   the ninth (which points at the real limiter: hollows, not food), and the ceiling.
+   THE CEILING LINE IS THE MOST IMPORTANT SENTENCE IN THIS FILE. It states the cap, it says the rule
+   that produces it, and it refuses to be a finish line in the same breath — "more canopy, more birds"
+   is the ladder rung that replaces an ending, and the design has no ending on purpose.
+   Numbers are read: PARROT_MAX for the cap and the half. The 2, 3 and 9 are hand-picked beats, and
+   the gate asserts 9 sits below the ceiling so no beat is unreachable. Returns null for an ordinary
+   arrival, so the plain note still runs and no bird arrives in silence. */
+function parrotArrivalLine(n) {
+  if (n === 2) {
+    return 'The parrot monitor: "Two. That is a pair, not a flock \u2014 but it is a pair."';
+  }
+  if (n === 3) {
+    return 'The neighbour up the pass: "Three parrots. I have not seen three on this side in years."';
+  }
+  if (n * 2 === PARROT_MAX) {
+    return 'The parrot monitor: "Half. ' + n + ' in the canopy. The hill is starting to look like itself."';
+  }
+  if (n === 9) {
+    return 'The parrot monitor: "Nine. Watch the dead trees \u2014 a hollow is what limits them now, not food."';
+  }
+  if (n >= PARROT_MAX) {
+    return 'The parrot monitor: "' + PARROT_MAX + '. That is every bird this hill can hold today. ' +
+           'More canopy, more birds \u2014 that is the whole arithmetic, and it does not stop here."';
+  }
+  return null;
 }
 
 /* THE BOARD'S REWARD, AND WHY IT IS THREE AND NOT TEN.
@@ -4018,7 +4123,11 @@ function encodeSave(s) {
                 new top-level field, because decodeSave REBUILDS `seen` from the mask — a flag kept
                 outside it is dropped on every load and the sheet would reopen forever. An old save
                 code has the bit clear, so a returning player sees the explainer once. */
-             (s.seen.intro ? 256 : 0);
+             (s.seen.intro ? 256 : 0) |
+             /* bit 512: has the player been shown where the seep is (L5a). Same reason as bit 256 —
+                decodeSave rebuilds `seen` from this mask, so a flag outside it dies every load and
+                the reveal re-pans for ever. */
+             (s.seen.seepReveal ? 512 : 0);
   var bag = '', dec = '', i;
   for (i = 0; i < SP_KEYS.length; i++) bag += clamp(s.bag[SP_KEYS[i]] || 0, 0, 9);
   for (i = 0; i < DECOR_KEYS.length; i++) dec += clamp(s.decor[DECOR_KEYS[i]] || 0, 0, 9);
@@ -4081,7 +4190,7 @@ function decodeSave(code) {
   s.lastTickAt = p.z || (s.lastDayKey === dayKey(new Date()) ? Date.now() : Date.now() - 86400000);
   s.seen = { seedbank: !!(p.s & 1), baboon: !!(p.s & 2), parrot: !!(p.s & 4), shade: !!(p.s & 8),
              toad: !!(p.s & 16), binbaboon: !!(p.s & 32), needshade: !!(p.s & 64),
-             parrotwait: !!(p.s & 128), intro: !!(p.s & 256) };
+             parrotwait: !!(p.s & 128), intro: !!(p.s & 256), seepReveal: !!(p.s & 512) };
   var tk = String(p.tk || '0.0.0.0').split('.');
   s.tokens = { sun: +tk[0] || 0, mist: +tk[1] || 0, rain: +tk[2] || 0, snow: +tk[3] || 0 };
   var g = String(p.g || '0000'), d = String(p.c || '00000'), i;
@@ -9216,7 +9325,8 @@ var API = {
   TOKEN_ICON: TOKEN_ICON,
   rollBoard: rollBoard, boardTasks: boardTasks, boardProgress: boardProgress,
   boardDone: boardDone, claimBoard: claimBoard, taskGot: taskGot, taskDone: taskDone,
-  voiceFor: voiceFor, hillLine: hillLine, VOICES: VOICES,
+  voiceFor: voiceFor, hillLine: hillLine, parrotArrivalLine: parrotArrivalLine, VOICES: VOICES,
+  SEEP_REVEAL_LINE: SEEP_REVEAL_LINE,
   parrotState: function () {
     return parrot ? { x: parrot.x, y: parrot.y, tx: parrot.tx, ty: parrot.ty, t: parrot.t } : null;
   },
