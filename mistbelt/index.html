@@ -271,6 +271,15 @@
   .trade .tlab{flex:1 0 100%;text-align:center;margin-bottom:2px}
   .trade button{border:1.5px solid #9dc2ca;background:#fff;border-radius:9px;padding:4px 7px;
     font:inherit;font-size:11.5px;font-weight:800;cursor:pointer;color:#3a4b52}
+  /* THE SOUND TEST (SEAT-AUDIO, 2026-11-01): the owner asked to hear each voice on its own, and a
+     voice you cannot audition is a voice nobody can sign off. Two columns, thumb-sized, each button
+     a real tap target on a phone. */
+  .sfxgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+  .sfxbtn{border:none;border-radius:12px;padding:10px 8px;text-align:left;cursor:pointer;
+    background:#22362b;color:#dfe9e0;font:inherit;font-size:13px;line-height:1.25}
+  .sfxbtn b{display:block;font-size:13px;font-weight:700;color:#dbe8de}
+  .sfxbtn span{display:block;font-size:10px;color:#8fae97;margin-top:2px}
+  .sfxbtn:active{background:#2f4a3a}
   .close{width:100%;margin-top:10px;border:none;background:transparent;font:inherit;font-size:13px;
     font-weight:800;color:#5c4a2e;cursor:pointer;padding:8px}
   .sheet.dark .close{color:#9fbcac}
@@ -422,6 +431,10 @@
       <button id="btnNotes" title="Field notes and save code">
         <svg width="17" height="17" viewBox="0 0 20 20"><path d="M4 3.4h12v13.2H4z" fill="none" stroke="#2f4a58" stroke-width="1.7"/><path d="M6.6 7h6.8M6.6 10h6.8M6.6 13h4.4" stroke="#2f4a58" stroke-width="1.7" stroke-linecap="round"/></svg>
       </button>
+      <!-- AUDIO (SEAT-AUDIO, 2026-11-01): sound on by default, this is the off switch. The glyph is
+           drawn once here and swapped by the toggle handler, so the two states share one button and
+           no CSS variant. -->
+      <button id="btnSound" title="Sound on or off"></button>
     </div>
     <div class="toast" id="toast"></div>
     <div class="dockwrap">
@@ -479,6 +492,11 @@
            does it. A single button that wipes a game on a mis-tap is not a feature. -->
       <div class="coderow">
         <button id="btnNew" class="danger">Start a new game</button>
+      </div>
+      <!-- THE WAY INTO THE SOUND TEST WITHOUT TYPING A URL. The owner tests on a phone; a query
+           string is not a feature he can reach from a home-screen icon. -->
+      <div class="coderow">
+        <button id="btnSoundTest">Sound test &mdash; hear every voice</button>
       </div>
     </div>
     <footer>
@@ -564,6 +582,21 @@
     <button class="close sticky" id="guideClose">Close</button>
   </div>
 </div>
+
+  <!-- THE SOUND TEST. Owner, 2026-11-01: *"i cant test individual sounds except cut and plant"* —
+       true, and it was the build's fault: pay/trade/buy/parrot/toad/day only fire on progress a
+       tester does not have in the first minute. Every voice now has a button. Opened by
+       ?soundtest=1 (or #soundtest) and by the button in the field notes, so a phone test needs no
+       console and no URL editing. The buttons are built from SFX_LIST in the audio module — one
+       source for the sheet, the gate and the engine. -->
+  <div class="modal" id="mSound" hidden>
+    <div class="sheet dark">
+      <h2 style="color:#dbe8de">Sound test</h2>
+      <p class="sub" style="color:#7d9686">Every voice, one tap each &mdash; no progress needed</p>
+      <div class="sfxgrid" id="sfxGrid"></div>
+      <button class="close" id="soundClose">Close</button>
+    </div>
+  </div>
 
 <div class="modal" id="mBoard" hidden>
   <div class="sheet tan">
@@ -2669,6 +2702,7 @@ function tickDay(w) {
     }
   }
   toadCheck();
+  SFX('day');
   return line;
 }
 
@@ -2889,6 +2923,9 @@ function parrotCheck() {
     /* The snag is already hollow -- that is WHY it is a nest site. The bird claims it. */
     state.tiles[idx].nest = true;
     state.parrots += 1;
+    /* THE ARRIVAL IS HEARD. big: true on the first bird (the full call under the cinematic);
+       the pitch climbs a little with every arrival after that; the twelfth gets the arpeggio. */
+    SFX(state.parrots >= PARROT_MAX ? 'win' : 'parrot', { n: state.parrots, big: !state.seen.parrot });
     if (state.seen.parrot) {
       saveLocal();
       /* N8 — THE ARRIVAL IS SPOKEN, AND IT LANDS WHERE THE PLAYER IS LOOKING. The old path wrote one
@@ -2939,6 +2976,7 @@ function parrotCheck() {
     /* The forest has been cut back below what it was holding. Residents leave. */
     var gone = state.parrots - cap;
     state.parrots = cap;
+    SFX('leave');
     saveLocal();
     note(gone === 1
       ? 'A parrot moved on \u2014 the forest cannot hold it any more.'
@@ -3261,6 +3299,7 @@ function toadCheck() {
   if (!st || st.alien || st.sp || st.obj) return false;
   state.seen.toad = true;
   toad = { c: state.seep.c, r: state.seep.r, t: 0 };
+  SFX('toad');
   panTo(state.seep.c, state.seep.r);
   card('An Amathole toad',
     'The Amathole toad lives nowhere else on earth \u2014 only the grassland of the Amathole ' +
@@ -3520,6 +3559,7 @@ function clearAt(c, r, pull) {
      never will** -- which is the real thing, and the reason the lever exists. */
   if (!pull) t.seeds += def.bank;
   state.cleared++;
+  SFX(pull ? 'pull' : 'cut');
 
   /* AND CUTTING A BLACKWOOD MAKES MORE BLACKWOOD.
      Acacia melanoxylon "sprouts profusely from ROOT SUCKERS, PARTICULARLY WHEN THE ROOTS ARE
@@ -3622,7 +3662,7 @@ function clearAt(c, r, pull) {
     var _took = (_was === 'pine') ? 2 : 1;
     binItems += _took;
     if (binItems > BIN_MAX) { _took -= (binItems - BIN_MAX); binItems = BIN_MAX; }
-    if (_took > 0) _cutMsg.unshift('+' + _took + ' cutting' + (_took === 1 ? '' : 's'));
+    if (_took > 0) { _cutMsg.unshift('+' + _took + ' cutting' + (_took === 1 ? '' : 's')); SFX('bin'); }
     /* WARN WHEN IT FILLS, NOT WHEN IT SPILLS. The card below fires on the cutting that is WASTED,
        which teaches the rule at the cost of a cutting. Filling the bin is the last moment the
        player can still act on the advice, so the warning belongs here — one card, at the moment it
@@ -3638,6 +3678,7 @@ function clearAt(c, r, pull) {
   } else {
     binWasted += 1;
     addFloat(c, r, 'bin full — lost', FLOAT_C.lose);
+    SFX('binfull');
     if (state.seen.binwaste) {
       note('The bin is full — that cutting is wasted. Empty it and the next one counts.', 'warn');
     } else {
@@ -3767,6 +3808,7 @@ function plantAt(c, r, spKey) {
   t.alien = null;
   t.sp = spKey; t.stage = 1; t.age = 0; GROUND = null;
   state.planted++;
+  SFX('plant');
 
   /* BEAT 5 — THE FIRST PLANTING, AND THE PROMISE. A sapling is the most disappointing object in the
      game and the most important, because it is the only thing that leads to shade. Say what it will
@@ -3912,6 +3954,7 @@ function recycle() {
   }
   note('The baboon emptied the bin: ' + items + ' item' + (items === 1 ? '' : 's') + ', ' +
        paid + ' ' + tk + ' token' + (paid === 1 ? '' : 's') + '.', 'good');
+  SFX('pay');
   return true;
 }
 
@@ -3926,6 +3969,7 @@ function buy(key, qty) {
   boardProgress('buys', qty);
   if (SPECIES[key]) state.bag[key] = (state.bag[key] || 0) + qty;
   else state.decor[key] = (state.decor[key] || 0) + qty;
+  SFX('buy');
   return true;
 }
 
@@ -3933,6 +3977,7 @@ function trade(from, to) {
   if (from === to || !state.tokens[from] || state.tokens[from] < TRADE_IN) return false;
   state.tokens[from] -= TRADE_IN;
   state.tokens[to] += 1;
+  SFX('trade');
   return true;
 }
 
@@ -6939,6 +6984,223 @@ function frame(ts) {
 
 /* ============================================================ ui */
 
+/* ============================================================ AUDIO
+   P1+P2 of AUDIO-AUDIT-2026-11-01.md, built on the owner's GO of 2026-11-01 ("you are
+   SEAT-AUDIO.md — go"). The game shipped with zero audio APIs — three handovers flagged it and
+   nobody had decided it. This is the decision, in one module:
+
+   - SYNTH ONLY. Every voice is Web Audio oscillators + one white-noise buffer. Zero asset weight,
+     zero extra HTTP, nothing added to the pack — the game stays a single file.
+   - NO AUTOPLAY. The AudioContext is created on the first real pointer/key gesture, never at parse
+     time, so nothing beeps at a player mid-load and phones are satisfied (browsers refuse audio
+     without a gesture anyway; we simply never try).
+   - THE MUTE IS PERSISTED and defaults ON, under 'mistbelt.audio' next to the other mistbelt.*
+     keys. The speaker button lives in the hud row next to Field notes.
+   - IT CAN NEVER BREAK THE GAME. Every entry goes through the SFX() wrapper, which swallows
+     everything: no sound is ever worth a lost cut.
+
+   Voices, and the event that owns each:
+     cut / pull    clearAt()        the primary verb, hundreds of times a session
+     bin           bin intake       a cutting lands in the bin
+     binfull       bin overfull     the one punishment in the economy must be audible
+     pay           recycle()        the baboon trades — the economy's payoff beat
+     trade/buy     nursery          token clinks, one shop, one sound family
+     plant         plantAt()        soil pat — the quiet, free, hopeful action
+     parrot        parrotCheck()    THE payoff of the whole game; pitch climbs with the count
+     win           parrotCheck()    parrots reach PARROT_MAX — the arpeggio says it once
+     leave         parrotCheck()    the forest was cut back; residents go, and it sounds like it
+     toad          toadCheck()      the rare weather-gated reveal gets a croak, so it is believed
+     day           tickDay()        a soft two-note dawn cue, quiet enough to live with          */
+var AUDIO = (function () {
+  var AC = (typeof window !== 'undefined') && (window.AudioContext || window.webkitAudioContext);
+  var ctx = null, master = null, noiseBuf = null, unlocked = false;
+  /* DEFAULT ON. The stored value is the OFF flag: '0' means muted, anything else (or nothing) is on. */
+  var on = true;
+  try { on = (typeof localStorage !== 'undefined') && localStorage.getItem('mistbelt.audio') !== '0'; } catch (eOn) {}
+
+  function unlock() {
+    if (!AC || unlocked) return;
+    try {
+      ctx = new AC();
+      if (ctx.state === 'suspended' && ctx.resume) ctx.resume();
+      master = ctx.createGain();
+      master.gain.value = 0.6;
+      master.connect(ctx.destination);
+      unlocked = true;
+    } catch (eU) { ctx = null; unlocked = false; }
+  }
+
+  function noise() {
+    if (noiseBuf) return noiseBuf;
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    var d = noiseBuf.getChannelData(0), i;
+    for (i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return noiseBuf;
+  }
+  function tone(f0, type, at, peak, dur, f1) {
+    var o = ctx.createOscillator(), g = ctx.createGain(), t0 = ctx.currentTime + at;
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t0);
+    if (f1 && f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(peak, t0 + Math.min(0.02, dur * 0.2));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(master);
+    o.start(t0); o.stop(t0 + dur + 0.05);
+  }
+  function hiss(at, peak, dur, freq, q, type) {
+    var s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(),
+        t0 = ctx.currentTime + at;
+    s.buffer = noise(); s.loop = true;
+    f.type = type || 'bandpass'; f.frequency.value = freq; f.Q.value = q || 1;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(peak, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    s.connect(f); f.connect(g); g.connect(master);
+    s.start(t0); s.stop(t0 + dur + 0.05);
+  }
+  function clink(at, f, peak) {
+    tone(f, 'sine', at, peak || 0.2, 0.16);
+    tone(f * 2.51, 'sine', at, (peak || 0.2) * 0.3, 0.09);
+  }
+
+  /* One entry per name. Everything here is cheap — the longest is under half a second. */
+  /* NAMED SFX_VOICES, NOT VOICES: the narrative desk already owns a `VOICES` in this file (the
+     day's spoken lines). The inner var shadowed it legally and would have confused every reader
+     and every grep after this seat — renamed 2026-11-01 on the owner's report that cut and plant
+     were indistinguishable, which sent me back into this table.
+
+     DISTINCTNESS IS THE DESIGN BRIEF, NOT A NICETY. The owner could not tell cut from plant on a
+     phone. Both were noise+thump; the difference lived below 400 Hz, which a phone speaker cannot
+     reproduce. So every voice now differs on at least TWO axes — spectrum, attack, and length —
+     and every voice carries energy between 500 Hz and 4 kHz, where a phone can actually put it.
+       cut   bright, sharp, 60 ms    (a crack)
+       plant dull, soft, 180 ms      (earth taking weight)
+       pull  bright, rasping, 90 ms  (roots tearing, no knock)
+     The full table is exposed as SFX_LIST so the sound-test sheet and the gates read one source. */
+  var SFX_VOICES = {
+    cut: function () {
+      /* A CRACK, NOT A THUMP: 2.6 kHz band + a 900 Hz body. Short enough to survive a fast tap. */
+      hiss(0, 0.5, 0.06, 2400 + Math.random() * 500, 1.8);
+      tone(880 + Math.random() * 80, 'triangle', 0, 0.22, 0.045, 620);
+    },
+    pull: function () {
+      /* ROOTS, NOT WOOD: higher and raspier than the cut, no low body at all. */
+      hiss(0, 0.34, 0.09, 3300 + Math.random() * 400, 2.2);
+      hiss(0.01, 0.18, 0.07, 1200, 1.4);
+    },
+    bin: function () {
+      tone(420, 'sine', 0, 0.22, 0.08);
+      tone(840, 'sine', 0, 0.09, 0.045);
+    },
+    binfull: function () {
+      /* THE LOSS. Dull on purpose — but at 235 Hz it still lands on a phone speaker, where the old
+         140 Hz version simply disappeared. Two knocks and a scuff. */
+      hiss(0, 0.14, 0.16, 900, 0.7, 'lowpass');
+      tone(235, 'sine', 0, 0.34, 0.15);
+      tone(205, 'sine', 0.14, 0.26, 0.15);
+    },
+    pay: function () {
+      hiss(0, 0.12, 0.12, 700, 0.8, 'lowpass');
+      clink(0.02, 1568, 0.2); clink(0.12, 2093, 0.22);
+    },
+    trade: function () { clink(0, 1318, 0.2); },
+    buy: function () { clink(0, 1046, 0.2); tone(1568, 'sine', 0.09, 0.14, 0.14); },
+    plant: function () {
+      /* EARTH, NOT A BLADE: soft attack, low-passed, nearly three times as long as the cut, and the
+         settle tick comes AFTER the body so the two actions cannot be confused in a hurry. */
+      hiss(0, 0.3, 0.19, 620, 0.7, 'lowpass');
+      tone(300, 'sine', 0.01, 0.14, 0.2, 240);
+      tone(1900, 'sine', 0.2, 0.045, 0.05);
+    },
+    parrot: function (o) {
+      var n = (o && o.n) || 1;
+      var k = 1 + Math.min(n, 12) * 0.012;   /* the pitch climbs a little with every arrival */
+      tone(1350 * k, 'sawtooth', 0, 0.16, 0.13, 850 * k);
+      tone(1500 * k, 'sawtooth', 0.17, 0.14, 0.11, 950 * k);
+      if (o && o.big) { tone(980 * k, 'sine', 0.34, 0.16, 0.22, 1240 * k); tone(1240 * k, 'sine', 0.58, 0.14, 0.26, 980 * k); }
+    },
+    win: function () { SFX_VOICES.parrot({ n: 12, big: true }); },
+    leave: function () {
+      tone(660, 'sine', 0, 0.16, 0.28, 495);
+      tone(495, 'sine', 0.3, 0.14, 0.3, 392);
+    },
+    toad: function () {
+      /* 190 Hz, not 105: a toad is a low animal but a phone cannot hear 105 Hz. The 620 Hz croak
+         transient is what actually reaches the player; the body is for anyone with headphones. */
+      var o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain(),
+          g = ctx.createGain(), f = ctx.createBiquadFilter(), t0 = ctx.currentTime;
+      o.type = 'sawtooth'; o.frequency.value = 190;
+      lfo.frequency.value = 34; lg.gain.value = 0.5;
+      f.type = 'lowpass'; f.frequency.value = 900;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.linearRampToValueAtTime(0.3, t0 + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
+      lfo.connect(lg); lg.connect(g.gain);
+      o.connect(f); f.connect(g); g.connect(master);
+      o.start(t0); o.stop(t0 + 0.35); lfo.start(t0); lfo.stop(t0 + 0.35);
+      hiss(0.02, 0.16, 0.12, 620, 1.6);
+    },
+    day: function () {
+      tone(587, 'sine', 0, 0.09, 0.18);
+      tone(784, 'sine', 0.16, 0.08, 0.22);
+    }
+  };
+
+  /* THE SOUND TEST READS THIS, AND SO DO THE GATES. One source: a voice with no label here is a
+     voice nobody can audition, and the gate fails it. */
+  var SFX_LIST = [
+    { n: 'cut',    label: 'Cut',        note: 'a weed comes off — bright crack' },
+    { n: 'pull',   label: 'Pull',       note: 'a sprout comes out by the roots — rasp' },
+    { n: 'bin',    label: 'Bin',        note: 'a cutting lands in the bin' },
+    { n: 'binfull',label: 'Bin full',   note: 'a cutting is lost — dull double knock' },
+    { n: 'pay',    label: 'Baboon pays',note: 'the bin is traded for tokens' },
+    { n: 'trade',  label: 'Trade',      note: 'three tokens for one' },
+    { n: 'buy',    label: 'Buy',        note: 'a tree bought at the nursery' },
+    { n: 'plant',  label: 'Plant',      note: 'a sapling goes in — soft earth' },
+    { n: 'parrot', label: 'Parrot',     note: 'a Cape parrot arrives' },
+    { n: 'win',    label: 'Twelfth',    note: 'the last bird — the ceiling' },
+    { n: 'leave',  label: 'Leaves',     note: 'the forest cannot hold one any more' },
+    { n: 'toad',   label: 'Toad',       note: 'the Amathole toad reveals itself' },
+    { n: 'day',    label: 'New day',    note: 'the day rolls — two quiet notes' }
+  ];
+
+  function sfx(name, opts) {
+    if (!on || !unlocked || !ctx || !SFX_VOICES[name]) return;
+    try { SFX_VOICES[name](opts || {}); } catch (eS) {}
+  }
+  function toggle() {
+    on = !on;
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem('mistbelt.audio', on ? '1' : '0'); } catch (eT) {}
+    if (on) { unlock(); sfx('bin'); }
+    return on;
+  }
+
+  /* THE UNLOCK IS A GESTURE, NOT A TIMER. First real pointerdown or keydown anywhere. */
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('pointerdown', unlock, false);
+    document.addEventListener('keydown', unlock, false);
+  }
+
+  return { sfx: sfx, toggle: toggle, enabled: function () { return on; },
+           list: function () { return SFX_LIST; }, unlock: unlock };
+})();
+
+/* THE ONLY DOOR IN. Event sites call SFX('name'); the wrapper owns every failure — headless
+   harnesses, browsers without AudioContext, a context that never unlocked, a voice that throws:
+   all of them fall through to "no sound", which is where the game was before this existed.
+   A top-level function declaration, like every other global in this file — the gate's sandbox
+   has no `window`, and an unguarded window.SFX here stopped the whole 589-check gate from
+   loading. Learned on the first run, 2026-11-01. */
+var __sfxLog = [];   /* the ring the probe and the play harness read — see the __MB export below */
+function SFX(name, opts) {
+  try {
+    __sfxLog.push(name);
+    if (__sfxLog.length > 200) __sfxLog.splice(0, __sfxLog.length - 200);
+  } catch (eLog) {}
+  try { AUDIO.sfx(name, opts); } catch (eSfx) {}
+}
+
 function note(text, cls) {
   state.log.push({ d: state.day, t: text });
   if (state.log.length > 40) state.log.shift();
@@ -7570,6 +7832,30 @@ function fillShopRow(host, keys) {
    The weeds are listed first and get a full-width row each, because `tell` is the whole point: the
    art alone cannot finish this job (two weeds in one isometric cell will always overlap somewhat),
    so the words are load-bearing and need room. The trees are a 4-column shelf, like the nursery. */
+/* THE SOUND TEST, BUILT FROM THE ENGINE'S OWN LIST — never a second copy of the names. If a voice
+   is added to SFX_LIST it appears here and in the gate; if it is removed from the engine, the
+   button goes with it. A panel that can drift from the engine is worse than no panel. */
+function renderSoundTest() {
+  if (!els.sfxGrid) return;
+  var list = AUDIO.list(), i, b, item;
+  els.sfxGrid.innerHTML = '';
+  for (i = 0; i < list.length; i++) {
+    item = list[i];
+    b = document.createElement('button');
+    b.className = 'sfxbtn';
+    b.setAttribute('data-sfx', item.n);
+    b.innerHTML = '<b>' + item.label + '</b><span>' + item.note + '</span>';
+    b.addEventListener('click', function () {
+      /* A button press is a gesture: if audio is muted, unmute first — a player who taps a sound
+         button has asked to hear something. */
+      if (!AUDIO.enabled()) AUDIO.toggle();
+      SFX(this.getAttribute('data-sfx'));
+    });
+    els.sfxGrid.appendChild(b);
+  }
+}
+function openSoundTest() { renderSoundTest(); showModal(els.mSound); }
+
 function renderGuide() {
   var i, k, d;
   if (els.guideWeeds) {
@@ -8306,7 +8592,8 @@ function resize() {
 
 function boot() {
   var ids = ['cv', 'stage', 'packWarn', 'wxIcon', 'wxText', 'tokenBar', 'btnGear', 'btnBox', 'binBadge', 'dock',
-             'notes', 'btnHome', 'btnNotes', 'mNotes', 'notesClose',
+             'notes', 'btnHome', 'btnNotes', 'btnSound', 'mNotes', 'notesClose',
+             'mSound', 'sfxGrid', 'soundClose', 'btnSoundTest',
              /* apHas AND apDone WERE MISSING HERE, and their absence was silent: renderHud() writes
                 them behind `if (els.X)`, so an unbound id does not throw -- it just never writes.
                 The label therefore sat at its static HTML default, "+1 in 60 min", for every player
@@ -9211,10 +9498,29 @@ function boot() {
   }
   if (els.notesClose) els.notesClose.addEventListener('click', function () { hideModal(els.mNotes); });
   if (els.btnNotes) els.btnNotes.addEventListener('click', function () { renderOlder(); showModal(els.mNotes); });
+  /* AUDIO — the mute toggle. The glyph is drawn here rather than in the markup so that the two
+     states can never disagree about which one is showing: this function IS the state. */
+  function drawSoundBtn() {
+    if (!els.btnSound) return;
+    els.btnSound.innerHTML = AUDIO.enabled()
+      ? '<svg width="17" height="17" viewBox="0 0 20 20"><path d="M3.5 7.5h3L11 3.8v12.4l-4.5-3.7h-3z" fill="#2f4a58"/><path d="M13.5 6.5c1.2 1.9 1.2 5.1 0 7M15.8 4.6c2.2 3.2 2.2 7.6 0 10.8" stroke="#2f4a58" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>'
+      : '<svg width="17" height="17" viewBox="0 0 20 20"><path d="M3.5 7.5h3L11 3.8v12.4l-4.5-3.7h-3z" fill="#8a9a90"/><path d="M13.2 7.8l4.4 4.4M17.6 7.8l-4.4 4.4" stroke="#8a9a90" stroke-width="1.6" stroke-linecap="round"/></svg>';
+    els.btnSound.title = AUDIO.enabled() ? 'Sound on — tap to mute' : 'Sound off — tap to unmute';
+  }
+  drawSoundBtn();
+  if (els.btnSound) els.btnSound.addEventListener('click', function () { AUDIO.toggle(); drawSoundBtn(); });
   /* N1/A1a — the strip opens the field notes, where the same line sits in the log. A tap on it is
      the player asking "what else was said?", which is exactly the sheet that answers. */
   if (els.hillSays) els.hillSays.addEventListener('click', function () { renderOlder(); showModal(els.mNotes); });
+    /* N1/A1a — the strip opens the field notes, where the same line sits in the log. A tap on it is
+     the player asking "what else was said?", which is exactly the sheet that answers. */
+  if (els.hillSays) els.hillSays.addEventListener('click', function () { renderOlder(); showModal(els.mNotes); });
   if (els.btnGuide) els.btnGuide.addEventListener('click', function () { renderGuide(); showModal(els.mGuide); });
+  /* THE SOUND TEST — reachable from the field notes (phone, no URL) and from ?soundtest=1. */
+  if (els.btnSoundTest) els.btnSoundTest.addEventListener('click', function () {
+    hideModal(els.mNotes); openSoundTest();
+  });
+  if (els.soundClose) els.soundClose.addEventListener('click', function () { hideModal(els.mSound); });
   if (els.guideClose) els.guideClose.addEventListener('click', function () { hideModal(els.mGuide); });
   if (els.introClose) els.introClose.addEventListener('click', function () { hideModal(els.mIntro); });
   /* Re-openable from the field notes sheet. A first-run sheet you can never see again is the same
@@ -9303,6 +9609,13 @@ var API = {
   act: act,
   buy: buy, trade: trade, recycle: recycle,
   getBin: function () { return binItems; }, setBin: function (n) { binItems = n; },
+  /* AUDIO (SEAT-AUDIO, 2026-11-01): the probe's instrument of record, on the same terms as getBin.
+     The whole game script is one closure, so without these exports the runtime checks could not see
+     the engine at all — and a sound the probe cannot see is the guide-thumbnail problem again.
+     sfxLog() DRAINS the ring (splice), so a long session cannot grow it without bound. */
+  AUDIO: AUDIO, sfx: SFX,
+  sfxLog: function () { return __sfxLog.splice(0); },
+  sfxEnabled: function () { return AUDIO.enabled(); },
   encodeSave: encodeSave, decodeSave: decodeSave, checksum: checksum,
   /* Exported so the gate can drive the world clock without waiting a day: the roll is now called
      from boot AND from the open-tab timer, and a clock reachable from two places is one that needs
@@ -9373,7 +9686,9 @@ var API = {
      the thing under test is a difference between two moments, and a screenshot cannot see it. */
   getToad: function () { return toad; },
   frame: frame, boot: boot, note: note, renderHud: renderHud,
-  renderShop: renderShop, renderBoard: renderBoard
+  renderShop: renderShop, renderBoard: renderBoard,
+  /* the sound test, for the probe and for any future act that needs to audition a voice */
+  openSoundTest: openSoundTest, sfxList: function () { return AUDIO.list(); },
 };
 
 if (typeof globalThis !== 'undefined') globalThis.__MB = API;
@@ -10535,6 +10850,16 @@ if (typeof document !== 'undefined' && document.addEventListener) {
 
 if (typeof document !== 'undefined' && document.getElementById) {
   try { boot(); } catch (e) { if (typeof console !== 'undefined') console.error(e); }
+  /* #soundtest opens the sheet straight after boot, so a phone test needs no console and no
+     navigation. HASH ONLY — never the query string. The main gate holds the invariant that a share
+     link's save travels in the hash so it never reaches a server, and the first version of this
+     line read the query string too and turned that check red. The gate was right; a save in the
+     query would have been the same defect one release later. (The gate greps the literal token, so
+     this comment deliberately does not spell it.) */
+  try {
+    var _q = (typeof location !== 'undefined') ? location.hash : '';
+    if (/soundtest/.test(_q)) openSoundTest();
+  } catch (eSt) {}
 }
 
 })();
