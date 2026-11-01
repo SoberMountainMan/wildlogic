@@ -4311,6 +4311,12 @@ function decodeSave(code) {
      the opposite of what the field is for. "Now" keeps the points they had and starts the clock
      when they load. */
   s.apAt = p.at ? p.at * 60000 : Date.now();
+  /* A SAVE OLDER THAN WEATHER BOOTS WITH NO SKY AT ALL (Miki, ENTRY 4c: "Cannot read properties of
+     null (reading rain)" on load). decodeSave never built a weather object, and the first
+     classify(w, day=true) on the load path read w.rain off it -- caught by the banner, so the game
+     "appeared fine", but every load of an old save crashed once. Seed the same guess a fresh game
+     gets: fallback:true, replaced the moment a real forecast lands. */
+  if (!s.weather) s.weather = fallbackFor(new Date().getMonth());
   return s;
 }
 
@@ -4409,6 +4415,24 @@ function loadLocal() {
         if (c) window.__MB_BADSAVE = c;
         sb.restoredFromBackup = true;
         return sb;
+      }
+    }
+    /* THE RECOVERY KEY, READ AT LAST (2026-11-01, owner GO). When a save is unreadable AND every
+       backup in the ring fails, a fresh game starts and saves to SAVE_KEY + '.new' so the dead save
+       is never overwritten -- and until today NOTHING EVER READ IT, so a player in the total-loss
+       state went back to day 1 on every reload, for ever. Miki lost 17 days that way (ENTRY 4b,
+       "AGAIN"); the 17 Oct audit flagged the key as written and never read. LAST resort: reached only
+       when the main save AND all three backups failed. A successful restore migrates back to the main
+       key on the player's next save, because the boot only sets saveWarning when state is null. */
+    var nk = null;
+    try { nk = localStorage.getItem(SAVE_KEY + '.new'); } catch (e4) {}
+    if (nk) {
+      var sn = decodeSave(nk);
+      if (sn) {
+        loadFail = (c ? 'unreadable' : 'missing') + ', restored from the recovery copy';
+        if (c) window.__MB_BADSAVE = c;
+        sn.restoredFromBackup = true;
+        return sn;
       }
     }
     if (c) { loadFail = 'unreadable'; window.__MB_BADSAVE = c; }
@@ -9600,6 +9624,8 @@ var API = {
      TAKEN tree cannot, and a check cannot see that without calling the function that does it. */
   digAt: digAt, PULL_COST: PULL_COST, TRADE_IN: TRADE_IN, BIN_RATE: BIN_RATE, BIN_MAX: BIN_MAX, wetRateYear: wetRateYear,
   closedGround: closedGround, closedDen: function(){ return closedDen; }, renderHud: renderHud,
+  loadLocal: loadLocal, loadFailNow: function () { return loadFail; }, wetRateYear: wetRateYear,
+  SAVE_KEY: SAVE_KEY,
   /* `act` is the TAP — the one entry point a finger actually reaches. It is exported because the
      three actions above it are the *decision* and `act` is the *reply*: a gate that only calls
      clearAt() can prove the weed was not cut, but not that the player was left in silence. Owner,
