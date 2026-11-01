@@ -6681,6 +6681,14 @@ function drawWorld() {
   /* Second pass: the stream's head. It stands on row 0 and spills onto rows 1..3, all of which the
      first pass has already painted, so it has to be drawn after them. */
   drawStreamHead();
+  /* AND THE SUNBIRD, in the same second pass. Owner, live: "6 brings sunbird, has no sprite." She
+     drew INSIDE the tile pass, at ground level, directly behind the 360x470 arum she perches on --
+     hidden by the flower she came for. Now she is drawn AFTER every tile, perched on the bloom:
+     base lifted above the arum's flower head, exactly where the mechanic says she sits. */
+  if (sunbird) {
+    var sp = project(sunbird.c, sunbird.r, groundZ(sunbird.c, sunbird.r));
+    drawSunbird(sp[0], sp[1] - TH * 1.05, TW * 0.55);
+  }
 }
 
 function drawTileProp(c, r) {
@@ -6694,7 +6702,7 @@ function drawTileProp(c, r) {
      mechanic exists to reward was invisible, and nothing numeric could see it: the toad's tile was
      on the glass and the tile was in the visible set, so every cull and framing check passed. */
   var isToad = !!(toad && toad.c === c && toad.r === r);
-  var isSunbird = !!(sunbird && sunbird.c === c && sunbird.r === r);
+
   /* AND THE SEEP HAS TO SURVIVE THE SAME BAIL, for the third time in this function's history.
      A seep is a BARE grass tile once the player has cleared its run — no alien, no tree, no object,
      no seed bank — which is exactly what the bail below throws away. So the seep drew while its tile
@@ -6886,7 +6894,7 @@ function drawTileProp(c, r) {
   if (isMouth) SPR.mouth(cx, base, TW * 1.30);
 
   if (isToad) drawToad(cx, base - TH * 0.06, TW * 0.78);
-  if (isSunbird) drawSunbird(cx, base - TH * 0.02, TW * 0.62);
+
 }
 
 function drawCritter(kind, cx, base, s) {
@@ -10299,7 +10307,7 @@ var SPR = (function () {
        and its cell is 360 x 470 against the bench's 350 x 350. Owner: *"arum is too big."* At the
        decor scale that is 65 world px against the bench's 49. 0.72 brings it to 47 -- the same size as
        everything else on the shelf, which is what a decoration should be. */
-    obj_arum: 0.72,
+    obj_arum: 0.6,   /* owner, live: "arum sprite is a bit too big" -- 0.72 -> 0.6 */
     alien_pine: 1.65,      /* Pinus patula, 20-30 m — a plantation pine is TALLER than the natives */
     /* THE BLOCK'S PINE IS THE SAME TREE AT THE SAME SIZE. `alien_pine_b` is a repaint, not a second
        species, so it must measure identically here or the stage floor would be computed against a
