@@ -438,7 +438,6 @@
          the rhythm. Shown on day one, hidden the moment it is done or the day rolls. -->
     <div class="ov goalchip" id="goalChip" hidden></div>
     <div class="ov hudrow">
-      <button id="btnRot" title="Turn the hillside a quarter turn — reach what the tall trees hide">&#10227;</button>
       <button id="btnGear" title="The day's board">&#9881;</button>
       <button id="btnHome" title="Back to the village">
         <svg width="17" height="17" viewBox="0 0 20 20"><path d="M10 2.6 3 8.4v8.2h5.2v-5h3.6v5H17V8.4Z" fill="#2f4a58"/></svg>
@@ -4614,30 +4613,8 @@ function loadLocal() {
    the whole tile-and-cliff renderer survive the camera unchanged. */
 var gx = 0, gy = 0;
 
-/* T8 -- THE VIEW ROTATES, in 90-degree steps (ashfolk's steal: a rotatable map reaches the hidden
-     tiles behind tall trees). The 2:1 diamond is symmetric under a quarter turn of the GRID, so this
-     is a coordinate transform, not a new renderer: project() rotates the world grid into VIEW
-     coords, hitTest() inverts through the same transform, and every sprite, hover and camera
-     follower inherits the rotation because they all sit on project(). VIEW_ROT lives for the
-     session only -- the save carries the world, not which way you last looked at it. */
-var VIEW_ROT = 0;
-function vrot(c, r) {
-  var N = COLS;
-  if (VIEW_ROT === 1) return [r, N - 1 - c];
-  if (VIEW_ROT === 2) return [N - 1 - c, N - 1 - r];
-  if (VIEW_ROT === 3) return [N - 1 - r, c];
-  return [c, r];
-}
-function vrotInv(vc, vr) {
-  var N = COLS;
-  if (VIEW_ROT === 1) return [N - 1 - vr, vc];
-  if (VIEW_ROT === 2) return [N - 1 - vc, N - 1 - vr];
-  if (VIEW_ROT === 3) return [vr, N - 1 - vc];
-  return [vc, vr];
-}
 function project(c, r, z) {
-  var v = vrot(c, r);
-  return [(v[0] - v[1]) * (TW / 2) + gx - camX, (v[0] + v[1]) * (TH / 2) - z * BH + gy - camY];
+  return [(c - r) * (TW / 2) + gx - camX, (c + r) * (TH / 2) - z * BH + gy - camY];
 }
 
 /* Where a world point lands in the BAKED GROUND CACHE — which is NOT where project() puts it.
@@ -4738,17 +4715,15 @@ function hitTest(x, y) {
      that tile's real height — otherwise a tap on the raised part of a rim tile picks the neighbour
      behind it, which is a maddening bug to find from a screenshot. */
   var wx = camX + x / zoom, wy = camY + y / zoom;
-  var vc = 0, vr = 0, i, a, b, w;
+  var c = 0, r = 0, i, a, b;
   for (i = 0; i < 2; i++) {
     a = wx / (TW / 2);
-    w = vrotInv(vc, vr);
-    b = (wy + groundZ(w[0], w[1]) * BH) / (TH / 2);
-    vc = Math.round((a + b) / 2);
-    vr = Math.round((b - a) / 2);
+    b = (wy + groundZ(c, r) * BH) / (TH / 2);
+    c = Math.round((a + b) / 2);
+    r = Math.round((b - a) / 2);
   }
-  if (vc < 0 || vc >= COLS || vr < 0 || vr >= ROWS) return null;
-  w = vrotInv(vc, vr);
-  return { c: w[0], r: w[1] };
+  if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return null;
+  return { c: c, r: r };
 }
 
 /* ============================================================ drawing */
@@ -6606,19 +6581,16 @@ function eachVisible(fn) {
   var dmax = (COLS - 1) + (ROWS - 1);
   if (d0 < 0) d0 = 0;
   if (d1 > dmax) d1 = dmax;
-  var d, c0, c1, c, w;
+  var d, c0, c1, c;
   for (d = d0; d <= d1; d++) {
-    /* view x = (2vc - d) * TW/2, so for a fixed view band the visible stretch of vc is a division.
-       The band math is unchanged -- it always ran in VIEW coords -- and vrotInv hands the caller
-       the WORLD tile, whose state lookup and draw both stay exactly as they were. */
+    /* world x = (2c - d) * TW/2, so for a fixed d the visible stretch of c is a division. */
     c0 = Math.ceil((camX / (TW / 2) + d) / 2) - 3;
     c1 = Math.floor(((camX + W / zoom) / (TW / 2) + d) / 2) + 3;
     if (c0 < 0) c0 = 0;
     if (c1 > COLS - 1) c1 = COLS - 1;
     for (c = c0; c <= c1; c++) {
       if (d - c < 0 || d - c >= ROWS) continue;
-      w = vrotInv(c, d - c);
-      fn(w[0], w[1]);
+      fn(c, d - c);
     }
   }
 }
@@ -9146,7 +9118,7 @@ function boot() {
                 the gate now asserts every els.* name is bound (see BOUND_IDS). */
              'apPill', 'apNow', 'apHas', 'apDone', 'goalChip', 'parrotPill', 'parrotNow', 'parrotCap',
              'dayPill', 'hillSays', 'hillText',
-             'parrotOf', 'parrotLab', 'closedNow', 'shopTokens', 'btnRot', 'closedOf', 'closedDen', 'closedLab',
+             'parrotOf', 'parrotLab', 'closedNow', 'shopTokens', 'closedOf', 'closedDen', 'closedLab',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
              'mIntro', 'btnIntro', 'introClose', 'introAp', 'introLeft', 'introBin', 'introBinCap',
              'codeIn', 'btnSave', 'btnLoad', 'btnLink', 'btnFile', 'btnNew', 'mBoard', 'boardDate', 'boardList', 'boardClaim',
@@ -9581,15 +9553,7 @@ function boot() {
   if (els.boardClose) els.boardClose.addEventListener('click', function () { hideModal(els.mBoard); });
   if (els.shopClose) els.shopClose.addEventListener('click', function () { hideModal(els.mShop); });
   if (els.cardOk) els.cardOk.addEventListener('click', function () { hideModal(els.mCard); });
-    if (els.btnRot) els.btnRot.addEventListener('click', function () {
-    VIEW_ROT = (VIEW_ROT + 1) % 4;
-    /* the ground bake is painted in VIEW coords, so a turn re-paints it -- the same buildGround the
-       boot runs, and the same pause the first load already taught the player to expect */
-    buildGround();
-    renderHud();
-    note('The hillside turns a quarter turn. Same ground \u2014 seen from the other side.', 'info');
-  });
-if (els.btnGear) els.btnGear.addEventListener('click', function () { renderBoard(); showModal(els.mBoard); });
+  if (els.btnGear) els.btnGear.addEventListener('click', function () { renderBoard(); showModal(els.mBoard); });
   if (els.btnBox) els.btnBox.addEventListener('click', function () {
     /* THE BIN RECYCLES; THE NURSERY SELLS — and this opened the SHOP, the same modal the nursery
        opens, so the bin had no job of its own and everything in the game happened at the nursery.
@@ -10164,7 +10128,6 @@ var API = {
   loadLocal: loadLocal, loadFailNow: function () { return loadFail; }, wetRateYear: wetRateYear,
   SUNBIRD_RUN: SUNBIRD_RUN, sunbirdRun: sunbirdRun, sunbirdCheck: sunbirdCheck, streamC: streamC,
   groundZ: groundZ, DEM_Z: DEM_Z, hitTest: hitTest,
-  setRot: function (k) { VIEW_ROT = ((k % 4) + 4) % 4; buildGround(); return VIEW_ROT; }, getRot: function () { return VIEW_ROT; }, vrot: vrot, vrotInv: vrotInv,
   SAVE_KEY: SAVE_KEY,
   /* `act` is the TAP — the one entry point a finger actually reaches. It is exported because the
      three actions above it are the *decision* and `act` is the *reply*: a gate that only calls
