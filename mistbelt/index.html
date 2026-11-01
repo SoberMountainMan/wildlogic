@@ -7316,54 +7316,71 @@ var AUDIO = (function () {
       bus = null;   /* the nodes are connected; bus is only read at connect time */
     }
   }
-  /* ============================================================ P3 — THE BED
-     Events make a game; a bed makes a place. Between cuts this hillside was silent, and a player who
-     takes ~38 cuts a day was hearing clicks in a vacuum. This is one bed, weather-crossfaded,
-     synthesised like everything else here: no files, no licence, nothing to download.
+  /* ============================================================ P3 — THE FOREST
+     Owner, 2026-11-01: *"the only ambience we really need is sound of an amathole forest. and forest
+     with rain. otherwise it sounds like ocean which we dont want."*
 
-     DESIGN CONSTRAINTS, all deliberate:
-     - IT IS QUIET. The bed sits at roughly a fifth of the stingers. It should be noticed only when
-       it stops.
-     - THE WEATHER PICKS THE MIX, because weather is the game's economy — it decides which token the
-       bin pays. Rain you can hear is information, not decoration.
-     - WATER IS LOCAL. The stream layer rises as the camera comes near the water, so the river is a
-       place on the map rather than a global hiss.
-     - NO PARROT CALLS. The call belongs to an arrival; used as wallpaper it would spend the payoff.
-     - IT DUCKS TO SILENCE WHEN THE TAB IS HIDDEN, and respects the same mute as the SFX.          */
-  var BED_MIX = {
-    clear:  { wind: 0.05, rain: 0.00, water: 0.06, birds: 1 },
-    cloudy: { wind: 0.07, rain: 0.00, water: 0.06, birds: 1 },
-    rain:   { wind: 0.06, rain: 0.10, water: 0.07, birds: 0 },
-    heavy:  { wind: 0.08, rain: 0.17, water: 0.08, birds: 0 },
-    mist:   { wind: 0.03, rain: 0.02, water: 0.07, birds: 0 },
-    berg:   { wind: 0.13, rain: 0.00, water: 0.04, birds: 0 },
-    frost:  { wind: 0.03, rain: 0.00, water: 0.05, birds: 0 },
-    snow:   { wind: 0.02, rain: 0.00, water: 0.04, birds: 0 }
+     HE IS RIGHT, AND THE REASON IS SPECIFIC. The first bed was continuous noise layers with a slow
+     gust LFO — which is the recipe for surf. Broadband noise plus a slow swell IS the ocean, to any
+     ear, whatever the label says. A forest is not a wash: it is QUIET WITH EVENTS — leaves moving in
+     short irregular gusts, a branch, a bird, long gaps between them.
+
+     So the bed is granular now: short filtered noise grains at irregular intervals, no continuous
+     rumble, no slow modulation. TWO STATES, as asked — FOREST, and FOREST WITH RAIN. The weather names
+     still exist but they only choose one of the two and a density: a berg wind is a busier forest, a
+     snow day a quieter one, heavy rain a denser rain. Nothing else is in the mix.
+
+     THE BIRDS ARE THE PLACE. A generic chirp could be anywhere; the low fluty "korr-korr" of a Knysna
+     turaco is the signature of these Afromontane forests, so that is the second voice, rare and low.  */
+  var BED_PRESET = {
+    clear:  { forest: 1.0, rain: 0.0, birds: 1.0 },
+    cloudy: { forest: 1.0, rain: 0.0, birds: 0.8 },
+    mist:   { forest: 0.9, rain: 0.0, birds: 0.4 },
+    frost:  { forest: 0.7, rain: 0.0, birds: 0.3 },
+    snow:   { forest: 0.5, rain: 0.0, birds: 0.0 },
+    berg:   { forest: 1.6, rain: 0.0, birds: 0.3 },
+    rain:   { forest: 0.9, rain: 1.0, birds: 0.2 },
+    heavy:  { forest: 0.8, rain: 1.8, birds: 0.0 }
   };
-  var BED_KEYS = ['wind', 'rain', 'water'];
-  var bed = null, bedKind = '', bedOn = true, bedHidden = false,
-      _bedAt = 0, _birdAt = 0, _previewKind = '', _previewUntil = 0;
+  var bedOn = true, bedHidden = false, bedKind = '', bedNode = null, bedHiss = null,
+      bedNow = { forest: 0, rain: 0 },
+      _bedAt = 0, _birdAt = 0, _turacoAt = 0, _previewKind = '', _previewUntil = 0;
   try { bedOn = (typeof localStorage !== 'undefined') && localStorage.getItem('mistbelt.ambience') !== '0'; } catch (eBed) {}
 
-  function bedLayer(freq, q, type) {
-    var s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+  /* One grain: a 20-70 ms band of noise. This is a leaf, a twig, a drop — never a wash. */
+  function grain(at, freq, dur, peak, pan) {
+    var s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain(),
+        t0 = ctx.currentTime + at;
     s.buffer = noise(); s.loop = true;
-    f.type = type; f.frequency.value = freq; f.Q.value = q;
-    g.gain.value = 0;
-    s.connect(f); f.connect(g); g.connect(master);
-    s.start();
-    return { s: s, f: f, g: g };
+    f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 1.4;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(peak, t0 + Math.min(0.008, dur * 0.4));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    s.connect(f); f.connect(g);
+    if (ctx.createStereoPanner) {
+      var pn = ctx.createStereoPanner(); pn.pan.value = pan; g.connect(pn); pn.connect(bedNode);
+    } else { g.connect(bedNode); }
+    s.start(t0); s.stop(t0 + dur + 0.04);
   }
   function bedStart() {
-    if (bed || !ctx) return;
-    bed = { wind: bedLayer(420, 0.6, 'lowpass'), rain: bedLayer(2600, 0.5, 'bandpass'),
-            water: bedLayer(900, 1.1, 'bandpass') };
-    /* A gust is a slow movement of the filter, not a louder hiss: 0.06 Hz into the cutoff. */
-    var lfo = ctx.createOscillator(), lg = ctx.createGain();
-    lfo.frequency.value = 0.06; lg.gain.value = 150;
-    lfo.connect(lg); lg.connect(bed.wind.f.frequency); lfo.start();
-    bed.lfo = lfo;
+    if (bedNode || !ctx) return;
+    bedNode = ctx.createGain();
+    bedNode.gain.value = 0;
+    bedNode.connect(master);
+    bedNode.gain.linearRampToValueAtTime(0.9, ctx.currentTime + 1.2);
+    /* RAIN ON LEAVES IS BRIGHT AND GRAINY, NOT A RUSH. One high-passed, unmodulated sliver of noise
+       gives rain its continuity; everything above it is grains. Deliberately tiny: at 0.012 it glues
+       the drops without ever becoming the surf the owner heard. */
+    bedHiss = ctx.createBufferSource();
+    var hf = ctx.createBiquadFilter(), hg = ctx.createGain();
+    bedHiss.buffer = noise(); bedHiss.loop = true;
+    hf.type = 'highpass'; hf.frequency.value = 2600;
+    hg.gain.value = 0;
+    bedHiss.connect(hf); hf.connect(hg); hg.connect(bedNode);
+    bedHiss.start();
+    bedHissGain = hg;
   }
+  var bedHissGain = null;
   function kindOf(w) {
     var k = classify(w || (state && state.weather) || null, true);
     if (!k) return 'clear';
@@ -7374,85 +7391,95 @@ var AUDIO = (function () {
     if (k.berg) return 'berg';
     return (w && w.cloud >= 60) ? 'cloudy' : 'clear';
   }
-  /* The camera's centre tile, from the inverse of project() at z = 0. Ambience does not need the
-     exact ground height — a tile of error in the water mix is inaudible. */
+  /* The camera's centre tile, from the inverse of project() at z = 0. */
   function camTile() {
     var a = (W / 2 - gx + camX) / (TW / 2);   /* c - r */
     var b = (H / 2 - gy + camY) / (TH / 2);   /* c + r */
     return { c: Math.round((a + b) / 2), r: Math.round((b - a) / 2) };
   }
-  /* Weather changes fade over 1.6 s so a sky turning does not click; a mute fades in a third of a
-     second, because a player who tapped silence wants silence now, not a slow goodbye. */
-  function bedRamp(mix, dur) {
-    if (!bed) return;
-    var t0 = ctx.currentTime, i, k, d = dur || 1.6;
-    for (i = 0; i < 3; i++) {
-      k = BED_KEYS[i];
-      bed[k].g.gain.cancelScheduledValues(t0);
-      bed[k].g.gain.setValueAtTime(bed[k].g.gain.value, t0);
-      bed[k].g.gain.linearRampToValueAtTime(mix[k], t0 + d);
-    }
+  /* A Knysna turaco: low, fluty, two falling notes — the sound of this forest, not of any forest. */
+  function turaco() {
+    var prev = bus; bus = bedNode;
+    var f0 = 500 + Math.random() * 70;
+    tone(f0, 'sine', 0, 0.055, 0.17, f0 * 0.93);
+    tone(f0 * 1.5, 'sine', 0.02, 0.028, 0.15, f0 * 1.38);
+    tone(f0, 'sine', 0.30, 0.05, 0.19, f0 * 0.9);
+    bus = prev;
   }
   function chirp() {
+    var prev = bus; bus = bedNode;
     var n = 2 + Math.floor(Math.random() * 2), i, at = 0,
         base = 2100 + Math.random() * 900;
-    var g = ctx.createGain(); g.gain.value = 0.55;
-    if (ctx.createStereoPanner) {
-      var pn = ctx.createStereoPanner(); pn.pan.value = (Math.random() * 2 - 1) * 0.7;
-      g.connect(pn); pn.connect(master);
-    } else { g.connect(master); }
-    var prev = bus; bus = g;
     for (i = 0; i < n; i++) {
-      tone(base * (0.9 + Math.random() * 0.3), 'sine', at, 0.05, 0.09, base * (1.2 + Math.random() * 0.4));
+      tone(base * (0.9 + Math.random() * 0.3), 'sine', at, 0.028, 0.09, base * (1.2 + Math.random() * 0.4));
       at += 0.12 + Math.random() * 0.1;
     }
     bus = prev;
   }
-  /* Called from the frame loop; throttled to 400 ms, which is far faster than a weather change. */
+  /* Called from the frame loop; throttled to 400 ms, and it schedules the NEXT 400 ms of grains so the
+     rustle stays irregular instead of arriving in ticks. */
   function tick(ts) {
     if (!unlocked || !ctx) return;
     var t = (typeof ts === 'number') ? ts : (typeof performance !== 'undefined' ? performance.now() : Date.now());
     if (t - _bedAt < 400) return;
     _bedAt = t;
     if (!on || !bedOn || bedHidden) {
-      if (bed) { bedRamp({ wind: 0, rain: 0, water: 0 }, 0.35); bedKind = ''; }
+      if (bedNode) { bedNode.gain.setTargetAtTime(0, ctx.currentTime, 0.12); bedKind = ''; }
+      bedNow = { forest: 0, rain: 0 };
       return;
     }
     bedStart();
-    if (!bed) return;
+    if (!bedNode) return;
+    bedNode.gain.setTargetAtTime(0.9, ctx.currentTime, 0.3);
     var kind = (_previewUntil > t) ? _previewKind : kindOf(state && state.weather);
-    var m = BED_MIX[kind] || BED_MIX.clear;
-    /* WATER IS LOCAL: within ten tiles of the stream the river is present, then it fades out. */
-    var water = m.water;
-    try {
-      var ct = camTile();
-      water += Math.max(0, 1 - streamDist(ct.c, ct.r) / 10) * 0.05;
-    } catch (eW) {}
-    if (kind !== bedKind) { bedKind = kind; bedRamp({ wind: m.wind, rain: m.rain, water: water }); }
-    else {
-      /* the water level follows the camera without re-ramping the whole bed */
-      bed.water.g.gain.setTargetAtTime(water, ctx.currentTime, 0.8);
+    var pre = BED_PRESET[kind] || BED_PRESET.clear;
+    bedKind = kind;
+    bedNow = { forest: pre.forest, rain: pre.rain };
+
+    /* FOREST GRAINS — leaves. Density scales with the preset; each grain is placed in the stereo field
+       by where it would be on screen, so the rustle sits around the player rather than in the middle. */
+    var i, at, g, forestN = Math.round(pre.forest * 3.2);   /* ~8/s at full forest over a 400 ms window */
+    for (i = 0; i < forestN; i++) {
+      at = Math.random() * 0.4;
+      grain(at, 2200 + Math.random() * 2600, 0.02 + Math.random() * 0.05,
+            0.012 + Math.random() * 0.02, (Math.random() * 2 - 1) * 0.85);
     }
-    if (m.birds && t > _birdAt) { _birdAt = t + 5000 + Math.random() * 8000; chirp(); }
+    /* RAIN — denser, finer, brighter: many small drops plus a few heavier ones on leaves. */
+    if (pre.rain > 0) {
+      var rainN = Math.round(pre.rain * 11);
+      for (i = 0; i < rainN; i++) {
+        at = Math.random() * 0.4;
+        grain(at, 3200 + Math.random() * 3000, 0.012 + Math.random() * 0.03,
+              0.008 + Math.random() * 0.014, (Math.random() * 2 - 1) * 0.9);
+      }
+      if (bedHissGain) bedHissGain.gain.setTargetAtTime(0.012 * Math.min(1.4, pre.rain), ctx.currentTime, 0.4);
+    } else if (bedHissGain) {
+      bedHissGain.gain.setTargetAtTime(0, ctx.currentTime, 0.4);
+    }
+    /* BIRDS — rare, and rarer in the wet. A turaco now and then, chirps between. */
+    if (pre.birds > 0) {
+      if (t > _turacoAt) { _turacoAt = t + 22000 + Math.random() * 40000; if (Math.random() < pre.birds) turaco(); }
+      if (t > _birdAt) { _birdAt = t + 6000 + Math.random() * 12000; if (Math.random() < pre.birds) chirp(); }
+    }
   }
   function ambience(on2) {
     bedOn = (typeof on2 === 'boolean') ? on2 : !bedOn;
     try { if (typeof localStorage !== 'undefined') localStorage.setItem('mistbelt.ambience', bedOn ? '1' : '0'); } catch (eA) {}
     return bedOn;
   }
-  /* The sound-test sheet uses this: force a weather mix for a few seconds so every state can be
-     heard without waiting for the weather. It never touches game state. */
+  /* The sound sheet: force a bed for a few seconds so it can be heard without waiting for weather. */
   function preview(kind) {
-    _previewKind = BED_MIX[kind] ? kind : 'clear';
+    _previewKind = BED_PRESET[kind] ? kind : 'clear';
     _previewUntil = (typeof performance !== 'undefined' ? performance.now() : Date.now()) + 8000;
-    bedKind = '';   /* force a re-ramp on the next tick */
+    bedKind = '';
   }
   function bedState() {
+    var live = (on && bedOn && !bedHidden);
     return {
       on: bedOn, hidden: bedHidden, kind: bedKind,
-      wind: bed ? +bed.wind.g.gain.value.toFixed(3) : 0,
-      rain: bed ? +bed.rain.g.gain.value.toFixed(3) : 0,
-      water: bed ? +bed.water.g.gain.value.toFixed(3) : 0
+      forest: live ? bedNow.forest : 0,
+      rain: live ? bedNow.rain : 0,
+      nodes: bedNode ? 1 : 0
     };
   }
   if (typeof document !== 'undefined' && document.addEventListener) {
@@ -8153,8 +8180,10 @@ function renderSoundTest() {
 /* THE BED CONTROLS. Eight mixes, so the owner can hear every weather without waiting for the
    weather — which is the whole point of a test sheet. A chip forces its mix for eight seconds and
    never touches game state; the bed returns to the real sky on the next tick. */
-var BED_KINDS = [['clear', 'Clear'], ['cloudy', 'Cloudy'], ['rain', 'Rain'], ['heavy', 'Heavy'],
-                 ['mist', 'Mist'], ['berg', 'Berg'], ['frost', 'Frost'], ['snow', 'Snow']];
+/* Two beds, as the owner asked, plus the heavy-rain density — not eight skies. The weather still
+   picks the density behind them (berg is a busier forest, snow a quieter one); these are the three a
+   player can actually name. */
+var BED_KINDS = [['clear', 'Forest'], ['rain', 'Forest + rain'], ['heavy', 'Heavy rain']];
 function renderBedControls() {
   var on = AUDIO.bed().on;
   if (els.bedToggle) {
