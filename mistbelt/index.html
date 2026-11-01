@@ -7892,8 +7892,11 @@ function renderTokens() {
      close it, read the pill, and re-open. The SAME bar renders inside the sheet now, and renderShop
      refreshes it on every purchase, so affordability is visible where the decision is made. */
   if (els.shopTokens) els.shopTokens.innerHTML = html;
-  /* SPEC §3 -- the caption shows until the first purchase, then never again */
-  if (els.tokenCap) els.tokenCap.hidden = !!state.seen.tokens;
+  /* SPEC §3 -- the caption shows until the first purchase, then never again. THE FLAG IS NOT
+     ENOUGH: a save from before the flag existed decodes with tokens:false, and a returning player
+     who has bought plenty would see a beginners caption for ever. The purchase count is the truth:
+     the caption belongs only to a player who has never bought anything. */
+  if (els.tokenCap) els.tokenCap.hidden = !!state.seen.tokens || state.bought > 0;
 }
 
 function renderGoal() {
