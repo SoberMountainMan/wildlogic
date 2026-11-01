@@ -6595,65 +6595,16 @@ function eachVisible(fn) {
   }
 }
 
-/* THE STREAM'S HEAD — THE FALL AT THE FAR RIM. DRAWN IN A SECOND PASS.
-   See isWaterfall() for why this cannot be drawn alongside the tile it stands on. The fall lands on
-   rows 1..3, which the tile loop has already painted, so it is drawn here, after it.
-
-   NO CODE CRAG. I built one — six stepped slabs meant to read as rock — and it photographed as grey
-   tombstones standing in the mist, worse than the nothing it replaced. It is not needed: the pack's
-   ter_waterfall_v1 is not just water, it is a rock face with the fall coming out of it, so the water
-   already has something to come out of. What is genuinely missing is a CRAG MASSIF — a landform
-   bigger than the fall, standing at the head of the stream on the far rim — and that is a painted
-   asset, not six rectangles. It is in ART-BRIEF-2026-09-27.md as `obj_crag`. */
-function drawStreamHead() {
-  var c = streamC(0), r = 0;
-  if (!isWaterfall(c, r)) return;
-  /* THE WATERFALL IS ANCHORED TWO TILES BACK AND TWO TILES UP FROM THE HEAD TILE.
-     Owner, 2026-09-28: "im talking about putting its base on r=0. its not currently on 0, and not on
-     midway. we dont need to move the stream, just move the waterfall to the start of the stream.
-     2 tiles back and 2 tile up."
-     The head tile is (streamC(0), 0) = (26, 0) and that IS where the anchor was. But a waterfall
-     sprite does not sit ON its base, it HANGS from it: the pack's ter_waterfall_v1 has its base_point
-     40/617 of the way down the cell, so 93.5% of an 85.6px sprite — about 80px, or five screen
-     tile-steps — is painted BELOW the anchor. Anchored on the head tile, the fall therefore stood
-     two to three tiles down-stream of the water it belongs to: in the `falls` shot it sat down-right
-     of the blue band's end with a wedge of green between them, floating on the bank rather than
-     being the source. The predicate was right and the anchor was wrong, which is why
-     `isWaterfall()` returning true on (26,0) proved nothing about the picture.
-     -2 in c and -2 in r is NOT a diagonal on screen. project() maps (c,r) to ((c-r)*TW/2,
-     (c+r)*TH/2), so subtracting 2 from BOTH leaves x untouched and lifts the sprite by 4 screen
-     tile-steps = 2 * TH = 62px — a straight vertical move on the glass, which is exactly the
-     "2 tiles back and 2 tile up" the owner described.
-     z comes from the HEAD tile, not from (c-2, r-2): that point is off the plateau and has no height
-     of its own. The fall stands at the head's elevation; only its screen position moves. */
-  var p = project(c, r, groundZ(c, r));
-  /* ONE TILE IN FROM THE EDGE.
-     Owner, 2026-10-03: *"waterfall sprite needs to move in by one tile to stop hanging over the edge
-     of map."* The head tile is (streamC(0), 0) — r = 0 IS the map's far rim — so anchoring the crag
-     on it and hanging the fall two tiles above put the whole assembly out over the void. In this
-     projection one tile-step down-screen is `TH` (see the note below: c and r moving together leaves
-     x alone and moves y by 2 * TH per two tiles), so `+ TH` moves the pair one tile INTO the map
-     while leaving the stream exactly where it is. The fall keeps its offset from the crag, so the two
-     move together and the lip stays against the rock face. */
-  var cx = p[0], base = p[1] + TH * 0.46 + TH;
-  /* TWO DIFFERENT ANCHORS, because the two sprites are anchored differently and the maker flagged
-     it: ter_waterfall_v1 is RIM-anchored at y = 40 of a 617 cell, so its anchor is the LIP and the
-     whole fall hangs 85.6px below it; obj_crag is FOOT-anchored like every other sprite, so its base
-     is where it meets the ground and it rises from there.
-     So the crag stands ON the head tile and the fall is lifted 2 * TH, which puts its lip against the
-     crag's face and its landing on the first water tile. Anchoring the fall on the tile instead puts
-     its lip on the water and the whole fall two to three tiles downstream — a rock on the bank with a
-     wedge of green between it and the stream, which is exactly what the owner saw. */
-  SPR.crag(cx, base, TW * 1.90);
-  drawWaterfall(cx, base - 2 * TH, TW * 1.5);
-}
-
+/* THE STREAM'S HEAD AND THE STREAM MOUTH ARE REMOVED BY OWNER RULING (2026-11-02 00:1x).
+   T8's rotation exposed both as ORIENTED props -- lips drawn to the unrotated channel direction --
+   and rotated sprite variants would have been an art brief for two one-off landmarks. The head and
+   mouth tiles are ordinary water now, painted by the same edge autotiles as the rest of the channel.
+   The predicate isWaterfall() survives (it names the stream's head), and drawWaterfall/SPR.mouth
+   stay in the file dormant. When T8's rotation returns, the oriented-props art brief can bring them
+   back -- drawn for all four views this time. */
 function drawWorld() {
   eachVisible(drawTileProp);
-  /* Second pass: the stream's head. It stands on row 0 and spills onto rows 1..3, all of which the
-     first pass has already painted, so it has to be drawn after them. */
-  drawStreamHead();
-  /* AND THE SUNBIRD, in the same second pass. Owner, live: "6 brings sunbird, has no sprite." She
+  /* AND THE SUNBIRD, in a second pass. Owner, live: "6 brings sunbird, has no sprite." She
      drew INSIDE the tile pass, at ground level, directly behind the 360x470 arum she perches on --
      hidden by the flower she came for. Now she is drawn AFTER every tile, perched on the bloom:
      base lifted above the arum's flower head, exactly where the mechanic says she sits. */
@@ -6711,16 +6662,16 @@ function drawTileProp(c, r) {
      row 0, the gate's "there is exactly one waterfall, and it stands on the water" check passed, and
      the picture showed a stream that stopped dead at the rim. A check on the predicate is not a
      check on the paint. So it is asked about first, alongside the toad. */
-  var isFalls = isWaterfall(c, r);
+
   /* THE MOUTH OF THE STREAM. Where the water leaves the map at the near rim — the other half of the
      owner's sentence, "into water running off edge of map". It is not a fall, it is a LIP, and like
      the toad and the waterfall it stands on a water tile with nothing on it, so it has to be asked
      about before the bail below throws its tile away. It is drawn in this pass rather than a second
      one because r = ROWS-1 is the last row, so nothing can paint over it. */
-  var isMouth = (r === ROWS - 1 && c === streamC(ROWS - 1));
+
   /* Most of a 40x40 map is bare grass with nothing standing on it. Bail before doing any geometry,
      or the cull above just moves the cost from the loop into the body. */
-  if (!isToad && !isSeep && !isFalls && !isMouth && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) &&
+  if (!isToad && !isSeep && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) &&
       t.ter !== 'forest') return;
   var p = project(c, r, groundZ(c, r));
   var cx = p[0], base = p[1] + TH * 0.46;
@@ -6863,7 +6814,6 @@ function drawTileProp(c, r) {
      brief's 560x300 it drew 77.7 world px wide against a channel 186 px wide, a pebble in a river.
      The cell change does the work on its own (H scales with the cell), and the draw scale is nudged
      so the lip spans the channel rather than most of it. */
-  if (isMouth) SPR.mouth(cx, base, TW * 1.30);
 
   if (isToad) drawToad(cx, base - TH * 0.06, TW * 0.78);
 
