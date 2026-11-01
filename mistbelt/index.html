@@ -1854,6 +1854,30 @@ function dayNoise(d) {
   var x = Math.sin(m * 127.1 + dd * 311.7) * 43758.5453;
   return x - Math.floor(x);
 }
+/* THE WET RATE OF A WHOLE YEAR, from this game's own season model (T4, the Tester's ruling).
+   The seep card's "about 12 days of weather" was TYPED -- and the gate check that guarded it read its
+   number out of the artifact it was guarding, so it could not fail (the Tester's addendum). Now it is
+   derived: walk the year day by day through fallbackFor() + classify() -- 372 calls, ONCE, cached --
+   and divide the hold by it. 2026 measured 147 wet of 365 = 40.3% -> 12.4 -> "about 12", so today's
+   card is unchanged; what changed is that the card cannot claim a number the model does not produce.
+   THE SEASON MATTERS: February says 7 days, September 17, July 155 -- and a June start collects no
+   wet days at all, which Level carries as the winter-start residual. */
+var _wetRateYear = null;
+function wetRateYear() {
+  if (_wetRateYear != null) return _wetRateYear;
+  var y = new Date().getFullYear();
+  var dm = [31, (y % 4 === 0 ? 29 : 28), 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  var wet = 0, total = 0, m, d;
+  for (m = 0; m < 12; m++) {
+    for (d = 1; d <= dm[m]; d++) {
+      total++;
+      if (classify(fallbackFor(m, new Date(y, m, d))).wet) wet++;
+    }
+  }
+  _wetRateYear = wet / total;
+  return _wetRateYear;
+}
+
 function fallbackFor(month, when) {
   var s = SEASON[month];
   var d = when || new Date();
@@ -7855,8 +7879,11 @@ function describeTile(c, r) {
       L.push('The nursery grower: "Plant beside the run, not on it. A tree on the run counts against ' +
              'you \u2014 but its shade reaches across. ' + SHADE_CLOSES_SEED + ' mature trees beside a ' +
              'run tile and the seed under it shuts for good, so you clear it once and it stays clear."');
+      /* T4: the number is DERIVED (see wetRateYear), and worded as an average -- a season rate read
+         from one day's sky would be the guessed-rain exploit in copy form. */
       L.push('The neighbour up the pass: "And the honest cost: ' + TOAD_HOLD_DAYS + ' wet days is about ' +
-             '12 days of weather. It is not a weekend\u2019s work."');
+             Math.round(TOAD_HOLD_DAYS / wetRateYear()) + ' days of weather in an average year. ' +
+             'It is not a weekend\u2019s work."');
       /* EVERY TILE COUNTS, AND THE CARD HAS TO SAY SO OR THE NUMBER ON IT IS A SURPRISE.
          Owner, 2026-10-11: *"toad is too easy."* The count now reads all nine -- this seep included,
          which can never be cleared or planted -- so 'X of 9' is the whole run and not a subset of it.
@@ -9267,7 +9294,7 @@ var API = {
   tickDay: tickDay, clearAt: clearAt, plantAt: plantAt, placeDecor: placeDecor, pickUpDecor: pickUpDecor,
   /* `digAt` is exported for the lever's own gate: the rule is that a SAPLING can be lifted and a
      TAKEN tree cannot, and a check cannot see that without calling the function that does it. */
-  digAt: digAt, PULL_COST: PULL_COST, TRADE_IN: TRADE_IN, BIN_RATE: BIN_RATE, BIN_MAX: BIN_MAX,
+  digAt: digAt, PULL_COST: PULL_COST, TRADE_IN: TRADE_IN, BIN_RATE: BIN_RATE, BIN_MAX: BIN_MAX, wetRateYear: wetRateYear,
   closedGround: closedGround, closedDen: function(){ return closedDen; }, renderHud: renderHud,
   /* `act` is the TAP — the one entry point a finger actually reaches. It is exported because the
      three actions above it are the *decision* and `act` is the *reply*: a gate that only calls
