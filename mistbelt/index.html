@@ -521,6 +521,13 @@
            CC BY 4.0 and the licence requires a link wherever the data is displayed. -->
       The Cape Parrot Project works on this forest, out of Hogsback since 2009. Weather data by
       <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a>.
+      <!-- P4 — THE ONE THING IN THIS GAME THAT IS SOMEBODY ELSE'S WORK. CC BY 4.0 obliges us to name
+           the recordist and the licence wherever the sound is heard, which is here and in the comment
+           beside the loader. Source and licence text: pack/cp_call.LICENSE.txt. Do not strip this
+           line while the recording ships; if the recording is ever pulled, this goes with it and the
+           synthesised call takes over with no credit owed. -->
+      <span class="dim">Cape parrot call recorded by Shaun Swanepoel at Amathole, Eastern Cape
+      (CC&nbsp;BY&nbsp;4.0), via iNaturalist.</span>
     </footer>
     <button class="guidebtn" id="btnGuide">Field guide &mdash; what to cut, what to plant</button>
     <button class="guidebtn" id="btnIntro">How this works &mdash; the points, the bin, the seed</button>
@@ -2951,7 +2958,9 @@ function parrotCheck() {
     state.parrots += 1;
     /* THE ARRIVAL IS HEARD. big: true on the first bird (the full call under the cinematic);
        the pitch climbs a little with every arrival after that; the twelfth gets the arpeggio. */
-    SFX(state.parrots >= PARROT_MAX ? 'win' : 'parrot', { n: state.parrots, big: !state.seen.parrot });
+    SFX(state.parrots >= PARROT_MAX ? 'win' : 'parrot',
+        { n: state.parrots, big: !state.seen.parrot,
+          c: idx % COLS, r: Math.floor(idx / COLS) });   /* the call comes from the tree it landed in */
     if (state.seen.parrot) {
       saveLocal();
       /* N8 — THE ARRIVAL IS SPOKEN, AND IT LANDS WHERE THE PLAYER IS LOOKING. The old path wrote one
@@ -7089,6 +7098,7 @@ var AUDIO = (function () {
       master.gain.value = 0.6;
       master.connect(ctx.destination);
       unlocked = true;
+      loadRec();   /* P4: the real call, lazily — failure is silent and falls back to the synth */
     } catch (eU) { ctx = null; unlocked = false; }
   }
 
@@ -7103,6 +7113,32 @@ var AUDIO = (function () {
      position. This is what makes the hillside a place: a cut three tiles left of the camera comes
      out of the left of the phone. Set in sfx(), cleared in its finally. */
   var bus = null;
+  /* THE REAL CALL (P4). One recording, 10.9 KB, CC BY — attribution and source in
+     pack/cp_call.LICENSE.txt and in the field-notes footer. Loaded lazily on the first gesture; if it
+     fails (offline, blocked, an old browser) the synthesised call plays instead, so an arrival is
+     never silent. That fallback is the point: the recording is a luxury, not a dependency. */
+  var recBuf = null, recState = 'idle';
+  function loadRec() {
+    if (recState !== 'idle' || !ctx || typeof fetch !== 'function') return;
+    recState = 'loading';
+    try {
+      fetch('pack/cp_call.mp3')
+        .then(function (r) { return r.ok ? r.arrayBuffer() : null; })
+        .then(function (ab) { if (!ab) throw new Error('no file'); return ctx.decodeAudioData(ab); })
+        .then(function (buf) { recBuf = buf; recState = 'ready'; })
+        .catch(function () { recState = 'failed'; });
+    } catch (eRec) { recState = 'failed'; }
+  }
+  function playRec(o) {
+    var s = ctx.createBufferSource(), g = ctx.createGain();
+    s.buffer = recBuf;
+    /* the same escalation as the synth: each arrival a little higher, the twelfth highest */
+    s.playbackRate.value = Math.max(0.9, Math.min(1.12, 1 + (((o && o.n) || 1) - 1) * 0.008));
+    g.gain.value = (o && o.big) ? 0.95 : 0.8;
+    s.connect(g); g.connect(bus || master);
+    s.start();
+  }
+
   function tone(f0, type, at, peak, dur, f1) {
     var o = ctx.createOscillator(), g = ctx.createGain(), t0 = ctx.currentTime + at;
     o.type = type;
@@ -7179,14 +7215,21 @@ var AUDIO = (function () {
       tone(300, 'sine', 0.01, 0.14, 0.2, 240);
       tone(1900, 'sine', 0.2, 0.045, 0.05);
     },
+    /* THE REAL CALL WHEN IT IS THERE, THE DESIGNED ONE WHEN IT IS NOT. Both are kept as named voices
+       so the sound sheet can A/B them on a phone — the only instrument that can settle which is
+       better, and the reason the recording is a swap rather than a replacement. */
     parrot: function (o) {
+      if (recBuf) { playRec(o); return; }
+      SFX_VOICES.parrotSynth(o);
+    },
+    parrotSynth: function (o) {
       var n = (o && o.n) || 1;
       var k = 1 + Math.min(n, 12) * 0.012;   /* the pitch climbs a little with every arrival */
       tone(1350 * k, 'sawtooth', 0, 0.16, 0.13, 850 * k);
       tone(1500 * k, 'sawtooth', 0.17, 0.14, 0.11, 950 * k);
       if (o && o.big) { tone(980 * k, 'sine', 0.34, 0.16, 0.22, 1240 * k); tone(1240 * k, 'sine', 0.58, 0.14, 0.26, 980 * k); }
     },
-    win: function () { SFX_VOICES.parrot({ n: 12, big: true }); },
+    win: function (o) { SFX_VOICES.parrot({ n: 12, big: true, c: o && o.c, r: o && o.r }); },
     leave: function () {
       tone(660, 'sine', 0, 0.16, 0.28, 495);
       tone(495, 'sine', 0.3, 0.14, 0.3, 392);
@@ -7224,7 +7267,8 @@ var AUDIO = (function () {
     { n: 'trade',  label: 'Trade',      note: 'three tokens for one' },
     { n: 'buy',    label: 'Buy',        note: 'a tree bought at the nursery' },
     { n: 'plant',  label: 'Plant',      note: 'a sapling goes in — soft earth' },
-    { n: 'parrot', label: 'Parrot',     note: 'a Cape parrot arrives' },
+    { n: 'parrot', label: 'Parrot',     note: 'a Cape parrot arrives (the real call)' },
+    { n: 'parrotSynth', label: 'Parrot (synth)', note: 'the designed fallback, for A/B' },
     { n: 'win',    label: 'Twelfth',    note: 'the last bird — the ceiling' },
     { n: 'leave',  label: 'Leaves',     note: 'the forest cannot hold one any more' },
     { n: 'toad',   label: 'Toad',       note: 'the Amathole toad reveals itself' },
@@ -7433,7 +7477,8 @@ var AUDIO = (function () {
   return { sfx: sfx, toggle: toggle, enabled: function () { return on; },
            list: function () { return SFX_LIST; }, unlock: unlock,
            tick: tick, ambience: ambience, preview: preview, bed: bedState,
-           lastSpatial: function () { return _lastSpatial; } };
+           lastSpatial: function () { return _lastSpatial; },
+           recording: function () { return { state: recState, loaded: !!recBuf }; } };
 })();
 
 /* THE ONLY DOOR IN. Event sites call SFX('name'); the wrapper owns every failure — headless
@@ -9974,6 +10019,7 @@ var API = {
   /* the bed, for the probe: read its mix, switch it, or force a weather for a few seconds */
   bedState: function () { return AUDIO.bed(); },
   lastSpatial: function () { return AUDIO.lastSpatial(); },
+  recording: function () { return AUDIO.recording(); },
   bedToggle: function () { return AUDIO.ambience(); },
   previewBed: function (k) { AUDIO.preview(k); },
 };

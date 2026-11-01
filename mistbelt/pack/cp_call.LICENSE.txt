@@ -1,0 +1,18 @@
+Cape parrot (Poicephalus robustus) call — cp_call.mp3
+
+Source:      iNaturalist observation 101247058
+             https://www.inaturalist.org/observations/101247058
+Recordist:   Shaun Swanepoel
+Place:       Amathole, Eastern Cape, South Africa
+Licence:     Creative Commons Attribution 4.0 International (CC BY 4.0)
+             https://creativecommons.org/licenses/by/4.0/
+Downloaded:  2026-11-01 from https://static.inaturalist.org/sounds/329910.mp3
+
+What was changed (CC BY permits it, and says to say so):
+  - excerpted 1.29 s of the recording (the cleanest call sequence),
+  - converted to mono 44.1 kHz, 64 kbps MP3,
+  - +12 dB gain and short fade in/out.
+
+Attribution in the game: the field-notes footer names the recordist, the place and the licence.
+The sound is used only as the Cape parrot's arrival call. If this file is removed, the game's
+synthesised call plays instead and this credit must be removed with the file.
