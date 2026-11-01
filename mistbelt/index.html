@@ -96,6 +96,9 @@
   .wxpill #wxText{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .tokens{left:12px;top:44px;display:flex;align-items:center;background:rgba(255,255,255,.95);
     border-radius:999px;padding:5px 6px;box-shadow:0 2px 6px var(--shadow);line-height:1}
+  /* SPEC §3 -- four icons that explain nothing, until the first purchase. One line, then gone. */
+  .tokencap{left:12px;top:128px;font-size:11px;font-weight:700;color:#33424b;
+    background:rgba(255,255,255,.88);border-radius:8px;padding:3px 9px;box-shadow:0 2px 6px var(--shadow)}
   .tk{display:flex;align-items:center;gap:3px;padding:0 6px;font-size:13px;font-weight:800;color:#33424b}
   /* THE DAY'S TOKEN IS THE ONE THAT PAYS TODAY, and it is marked in the pill that is about tokens. */
   .tk[data-today]{background:rgba(90,168,90,.22);border-radius:5px}
@@ -197,6 +200,13 @@
 
   .modal{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
     padding:16px;background:rgba(12,20,16,.62);line-height:1.45}
+  /* THE INTRO IS A CARD, NOT A CURTAIN. It is capped at 45% of the viewport so the hillside stays
+     visible behind it, and its backdrop is lighter than every other modal's: the picture is the game,
+     and the first screen was hiding it behind the text explaining it. Owner, 2026-11-02, on the
+     start: "does it make sense?" — a three-line card over a visible hillside does; a manual over a
+     black rectangle does not. */
+  #mIntro{background:rgba(12,20,16,.34)}
+  #mIntro .sheet{max-height:45vh;overflow:auto}
   .modal[hidden]{display:none}
   .sheet{width:100%;max-width:378px;max-height:88vh;overflow:auto;border-radius:22px;padding:16px;
     box-shadow:0 16px 44px rgba(0,0,0,.45)}
@@ -394,6 +404,7 @@
       <span class="apnum"><b id="apNow">48</b><span class="aplab aphas" id="apHas">left</span><span class="aplab apdone" id="apDone">+1 in 30 min</span></span>
     </button>
     <div class="ov tokens" id="tokenBar"></div>
+    <div class="ov tokencap" id="tokenCap" hidden>Tokens buy trees. The bin pays them.</div>
     <!-- THE SCORE, AND IT WAS NOT ON SCREEN AT ALL.
          Owner, 2026-10-03: "need a parrot counter if thats the goal of the game to see how many
          parrots you can attract to your map".
@@ -548,41 +559,17 @@
   <div class="sheet dark">
     <h2 style="color:#dbe8de">Mistbelt</h2>
     <p class="sub" style="color:#7d9686">a Hogsback hillside</p>
-    <!-- THREE LINES, NOT A WALL. This was five sections of explainer with a wall of text about the
-         weather, the bin, the nursery and the weeds. A player dismisses that in two seconds and then
-         plays the wrong way, which for this game means sweeping the hillside — the one opening the
-         bin and the seed bank both punish. The three rules go here; everything else is taught by
-         the day-1 beats, at the moment each one becomes true. See DESIGN-BRIEF-DAY-ONE-2026-09-29.md -->
+    <!-- THREE LINES, NOT A WALL. Owner, 2026-11-02: *"does the start make sense?"* — it half did:
+         194 words, five paragraphs, one button, and the modal covering the one thing worth looking at.
+         These are the three facts a player cannot learn by tapping: the goal, the budget, and the rule
+         the whole game turns on. Everything else already has its own card at the moment it becomes
+         true — the bin and the baboon on the first bin tap, the shade on the first cut, the save code
+         in Field notes. See SPEC-FIRST-TWO-MINUTES-2026-11-02.md §1. -->
     <div class="notes">
-      <p><b>Clear the alien trees off the hillside and plant the indigenous forest back.</b> You get
-      <b id="introAp">48</b> action points a day and have <b id="introLeft">48</b> left today. One
-      comes back every hour. Cutting spends them; planting is free.</p>
-      <p><b>Cutting one leaves its seed in the ground</b>, so it comes back. That is why a cleared
-      patch does not stay cleared.</p>
-      <!-- IT PROMISED A MECHANISM THE GAME DOES NOT HAVE.
-           This read: *"the shade shuts the seed bank, and cutting the shade opens it again."*
-           **There is no way to cut a planted tree.** The cut tool is weed-only by design (see
-           pickSprite: "A WEED ONLY, AND ONLY WITH THE CUT TOOL"), and no fell/remove action exists
-           anywhere in the file. Shade comes from `ter === 'forest'` and from planted trees at
-           stage 3 — which are the nursery's indigenous species — and none of them can be taken out.
-           The owner, 2026-10-11: *"yet we dont have a mechanism to cut the shade? only indigenous
-           give shade and we cant cut indigenous?"* Exactly right. The sentence was written to
-           reassure a player that planting is not a trap, and it did that by promising a lever that
-           is not there. The reassurance is still true without it: the seed is not destroyed, only
-           shut, and it stays shut while the trees stand. -->
-      <p><b>Three mature trees around a patch and the seed under it stops coming up.</b> The shade
-      shuts the seed bank — it does not destroy the seed, and it holds for as long as the trees stand.
-      That is how the hillside comes back: a patch at a time, and the dead trees you leave standing are
-      what the birds nest in.</p>
-      <p class="dim">The bin holds <b id="introBinCap">12</b> cuttings, and the baboon trades the
-      bin’s cuttings for the day’s token, one for every two, and needs at least <b id="introBin">3</b> to
-      start; the nursery is where you spend it. <b>Hold a tile</b> to ask what it is.</p>
-      <!-- THE ONE THING A PLAYER MUST KNOW BEFORE THEY INVEST A WEEK IN IT. Owner, 2026-09-30:
-           "i dont think people want to lose their progress and im not sure its obvious how to keep
-           it." A line here rather than only in the field notes, because the notes are somewhere you
-           go looking for something and this is something you need without knowing to look. -->
-      <p class="dim"><b>Your game saves itself on this device.</b> Field notes &rarr; <b>Save code</b>
-      carries it to another device, or keeps a copy in case this one is lost.</p>
+      <p><b>Clear the alien trees. Plant the forest back.</b></p>
+      <p><b id="introAp">48</b> action points a day, and one comes back every
+      <span id="introRegen">30 minutes</span>. Cutting spends them; planting is free.</p>
+      <p><b>Three mature trees close a patch</b>, and its seed stops coming up.</p>
     </div>
     <button class="close" id="introClose">Right</button>
   </div>
@@ -596,9 +583,9 @@
       <div id="guideWeeds"></div>
       <h3 style="margin-top:12px">The eight trees &mdash; what to plant</h3>
       <div class="shoprow" id="guideTrees"></div>
-      <p class="dim" style="margin-top:10px">Cutting a weed costs action points, and one point
-      comes back every hour up to 24. Planting is free. A cut weed leaves its seed in the soil, so it
-      can come up again.</p>
+      <p class="dim" style="margin-top:10px">Cutting a weed costs action points.
+      <span id="guideRegen">One comes back every 30 minutes, up to 48.</span> Planting is free. A cut
+      weed leaves its seed in the soil, so it can come up again.</p>
     </div>
     <button class="close sticky" id="guideClose">Close</button>
   </div>
@@ -1768,7 +1755,7 @@ function newState() {
     seen: { seedbank: false, baboon: false, parrot: false, shade: false,
             toad: false, binbaboon: false, needshade: false, parrotwait: false, intro: false,
             binwaste: false, shadeclosed: false, planted1: false, lever: false,
-            rolled1: false },
+            rolled1: false, firstcut: false, tokens: false },
     log: [], cleared: 0, planted: 0, bought: 0, recycled: 0,
     /* Parrots resident in the forest. A count, not a flag — see parrotCapacity(). */
     parrots: 0,
@@ -3392,6 +3379,7 @@ function matureNear(c, r, rad) {
      needs no announcement (the toad's arrival-line ruling: receipts under a creature are
      bookkeeping). */
 var SUNBIRD_RUN = 6;    /* Level's dial: arrival at six, of a 4-10 range */
+var firstcutAt = 0;     /* SPEC §2: when the first-tap ring appeared -- 20 s and it dismisses itself */
 var sunbird = null;     /* { c, r } -- the tile she is perched on, while a qualifying run holds */
 function sunbirdRun() {
   var best = 0, side, r, cur;
@@ -4095,7 +4083,7 @@ function recycle() {
       'A chacma baboon has worked out that this bin gets emptied, so it waits here instead of ' +
       'going through the village. It is a resident, not one of the troop that passes along the ' +
       'hillside. Bring it three lots of cuttings and it will trade them in for tokens in whatever ' +
-      'the weather is doing today.', null);
+      'the weather is doing today. It pays one token for every ' + BIN_RATE + ' cuttings.', null);
   }
   note('The baboon emptied the bin: ' + items + ' item' + (items === 1 ? '' : 's') + ', ' +
        paid + ' ' + tk + ' token' + (paid === 1 ? '' : 's') + '.', 'good');
@@ -4111,6 +4099,7 @@ function buy(key, qty) {
   if (state.tokens[def.token] < cost) return false;
   state.tokens[def.token] -= cost;
   state.bought += qty;
+  state.seen.tokens = true;   /* SPEC §3: the caption's whole job is done at the first buy */
   boardProgress('buys', qty);
   if (SPECIES[key]) state.bag[key] = (state.bag[key] || 0) + qty;
   else state.decor[key] = (state.decor[key] || 0) + qty;
@@ -4341,7 +4330,8 @@ function encodeSave(s) {
              /* bit 512: has the player been shown where the seep is (L5a). Same reason as bit 256 —
                 decodeSave rebuilds `seen` from this mask, so a flag outside it dies every load and
                 the reveal re-pans for ever. */
-             (s.seen.seepReveal ? 512 : 0) | (s.seen.sunbird ? 1024 : 0);
+             (s.seen.seepReveal ? 512 : 0) | (s.seen.sunbird ? 1024 : 0) |
+             (s.seen.firstcut ? 2048 : 0) | (s.seen.tokens ? 4096 : 0);
   var bag = '', dec = '', i;
   for (i = 0; i < SP_KEYS.length; i++) bag += clamp(s.bag[SP_KEYS[i]] || 0, 0, 9);
   for (i = 0; i < DECOR_KEYS.length; i++) dec += clamp(s.decor[DECOR_KEYS[i]] || 0, 0, 9);
@@ -4404,7 +4394,7 @@ function decodeSave(code) {
   s.lastTickAt = p.z || (s.lastDayKey === dayKey(new Date()) ? Date.now() : Date.now() - 86400000);
   s.seen = { seedbank: !!(p.s & 1), baboon: !!(p.s & 2), parrot: !!(p.s & 4), shade: !!(p.s & 8),
              toad: !!(p.s & 16), binbaboon: !!(p.s & 32), needshade: !!(p.s & 64),
-             parrotwait: !!(p.s & 128), intro: !!(p.s & 256), seepReveal: !!(p.s & 512) , sunbird: !!(p.s & 1024)};
+             parrotwait: !!(p.s & 128), intro: !!(p.s & 256), seepReveal: !!(p.s & 512), sunbird: !!(p.s & 1024), firstcut: !!(p.s & 2048), tokens: !!(p.s & 4096)};
   var tk = String(p.tk || '0.0.0.0').split('.');
   s.tokens = { sun: +tk[0] || 0, mist: +tk[1] || 0, rain: +tk[2] || 0, snow: +tk[3] || 0 };
   var g = String(p.g || '0000'), d = String(p.c || '00000'), i;
@@ -6612,6 +6602,44 @@ function drawWorld() {
     var sp = project(sunbird.c, sunbird.r, groundZ(sunbird.c, sunbird.r));
     drawSunbird(sp[0], sp[1] - TH * 1.05, TW * 0.55);
   }
+  /* SPEC §2 -- THE FIRST-TAP RING. The game never says "tap that": every instruction is prose. One
+     pulsing ring on the nearest cuttable weed that is on the glass, one line above it, gone on the
+     first successful cut or after 20 s, never again on that save. A ring, not a gate -- no modal, no
+     input blocked. The nearest is measured from the viewport centre in world px, and the on-glass
+     test is the same projection the draw uses, so the ring can never point at a tile that is not on
+     the screen. */
+  if (!state.seen.firstcut && state.seen.intro) {
+    var bestI = -1, bestD = 1e18, bcx = 0, bcy = 0, i2;
+    for (i2 = 0; i2 < NTILES; i2++) {
+      var tt = state.tiles[i2];
+      if (!tt.alien || tt.ter !== 'grass') continue;
+      var tc = i2 % COLS, tr = Math.floor(i2 / COLS);
+      var tp = project(tc, tr, groundZ(tc, tr));
+      var sx = tp[0] * zoom, sy = tp[1] * zoom;
+      if (sx < -TW || sx > W + TW || sy < -TH || sy > H + TH) continue;
+      var d = Math.abs(sx - W / 2) + Math.abs(sy - H / 2);
+      if (d < bestD) { bestD = d; bestI = i2; bcx = tp[0]; bcy = tp[1] + TH / 2; }
+    }
+    if (bestI >= 0) {
+      if (!firstcutAt) firstcutAt = now();
+      var pulse = 0.5 + 0.5 * Math.sin(now() / 300);
+      var hw = TW * 0.60, hh = TH * 0.60;
+      ctx.strokeStyle = 'rgba(255,238,150,' + (0.55 + 0.4 * pulse).toFixed(3) + ')';
+      ctx.lineWidth = 2.5 + pulse * 1.5;
+      ctx.beginPath();
+      ctx.moveTo(bcx, bcy - hh); ctx.lineTo(bcx + hw, bcy);
+      ctx.lineTo(bcx, bcy + hh); ctx.lineTo(bcx - hw, bcy);
+      ctx.closePath(); ctx.stroke();
+      ctx.fillStyle = 'rgba(24,34,28,0.85)';
+      ctx.fillRect(bcx - TW * 0.9, bcy - hh - TH * 0.62, TW * 1.8, TH * 0.5);
+      ctx.fillStyle = '#f0e2a8';
+      ctx.font = '700 ' + Math.max(11, Math.round(TH * 0.34)) + 'px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Tap a weed to cut it', bcx, bcy - hh - TH * 0.27);
+      ctx.textAlign = 'left';
+      if (now() - firstcutAt > 20000) { state.seen.firstcut = true; firstcutAt = 0; }
+    }
+  }
 }
 
 function drawTileProp(c, r) {
@@ -7737,6 +7765,11 @@ function apSay() {
    planting and, before this sheet, were never shown anywhere in the UI at all. */
 function renderIntro() {
   if (els.introAp) els.introAp.textContent = String(AP_MAX);
+  /* BUG-015 — THE RATE IS READ FROM AP_MS, NEVER TYPED. The first screen said "one an hour" while the
+     HUD counted down 30 minutes; five strings carried the old rate, and the gate could not see any of
+     them. Math.round(AP_MS / 60000) is the same arithmetic the pill uses, so the sheet and the clock
+     cannot disagree — and if the rate ever changes again, the words move with it for free. */
+  if (els.introRegen) els.introRegen.textContent = Math.round(AP_MS / 60000) + ' minutes';
   /* introBinCap is the bin CAPACITY (BIN_MAX, the number the badge shows as "/12"); introBin stays the
      baboon's trade BATCH (BIN_LOAD). Both are read from the constants, never typed, so the copy says
      the bin holds BIN_MAX while a trade goes in BIN_LOAD, instead of one "3" trying to mean both. */
@@ -7794,6 +7827,8 @@ function renderTokens() {
      close it, read the pill, and re-open. The SAME bar renders inside the sheet now, and renderShop
      refreshes it on every purchase, so affordability is visible where the decision is made. */
   if (els.shopTokens) els.shopTokens.innerHTML = html;
+  /* SPEC §3 -- the caption shows until the first purchase, then never again */
+  if (els.tokenCap) els.tokenCap.hidden = !!state.seen.tokens;
 }
 
 function renderGoal() {
@@ -7919,7 +7954,8 @@ function renderHud() {
     if (els.apDone) els.apDone.textContent = wait || 'full';
     els.apPill.title = state.ap >= AP_MAX
       ? AP_MAX + ' of ' + AP_MAX + ' action points \u2014 full'
-      : (state.ap + ' of ' + AP_MAX + ' action points, one back every hour' +
+      : (state.ap + ' of ' + AP_MAX + ' action points, one back every ' +
+         Math.round(AP_MS / 60000) + ' min' +
          (wait ? ' \u2014 ' + wait.toLowerCase() : ''));
   }
   /* THE DAY PILL — AND WHAT IT IS FOR, WHICH THE OWNER SETTLED IN TWO PASSES.
@@ -8324,6 +8360,12 @@ function openSoundTest() { renderSoundTest(); renderBedControls(); showModal(els
 
 function renderGuide() {
   var i, k, d;
+  /* BUG-015 — same constant as the intro and the pill. The guide was the worst of the five: it said
+     "one an hour" AND "up to 24" against an AP_MAX of 48, so it was wrong twice in one sentence. */
+  if (els.guideRegen) {
+    els.guideRegen.textContent = 'One comes back every ' + Math.round(AP_MS / 60000) +
+      ' minutes, up to ' + AP_MAX + '.';
+  }
   if (els.guideWeeds) {
     els.guideWeeds.textContent = '';
     for (i = 0; i < ALIEN_KEYS.length; i++) {
@@ -8819,7 +8861,7 @@ function act(c, r) {
       } else {
         /* the only other reason digAt() refuses is the action points */
         note('That needs ' + PULL_COST + ' action points and you have ' + state.ap +
-             '. One comes back every hour.', 'warn');
+             '. One comes back every ' + Math.round(AP_MS / 60000) + ' minutes.', 'warn');
       }
       return;
     }
@@ -8845,6 +8887,8 @@ function act(c, r) {
     if (clearAt(c, r, tool === 'pull')) {
       boardProgress('cuts', 1);
       spawnCritter(c, r);
+      /* SPEC §2: the first successful cut is the whole tutorial -- the ring has done its job */
+      state.seen.firstcut = true; firstcutAt = 0;
       /* Check straight away, not just on the day roll: the toad is the reward for opening the
          grass up, and it should land on the tap that did it. */
       toadCheck();
@@ -8907,7 +8951,7 @@ function act(c, r) {
       if (bd && state.ap < bd.ap) {
         toast(bd.name + ' needs ' + bd.ap + ' action point' + (bd.ap === 1 ? '' : 's') +
               ' and you have ' + state.ap +
-              '. One comes back every hour.', 'warn');
+              '. One comes back every ' + Math.round(AP_MS / 60000) + ' minutes.', 'warn');
       } else {
         toast('That one will not come out.', 'warn');
       }
@@ -9067,8 +9111,8 @@ function boot() {
                 page check caught it only because it compared the words and the words were wrong;
                 the gate now asserts every els.* name is bound (see BOUND_IDS). */
              'apPill', 'apNow', 'apHas', 'apDone', 'goalChip', 'parrotPill', 'parrotNow', 'parrotCap',
-             'dayPill', 'hillSays', 'hillText',
-             'parrotOf', 'parrotLab', 'closedNow', 'shopTokens', 'closedOf', 'closedDen', 'closedLab',
+             'dayPill', 'hillSays', 'hillText', 'introRegen', 'guideRegen',
+             'parrotOf', 'parrotLab', 'closedNow', 'shopTokens', 'tokenCap', 'closedOf', 'closedDen', 'closedLab',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
              'mIntro', 'btnIntro', 'introClose', 'introAp', 'introLeft', 'introBin', 'introBinCap',
              'codeIn', 'btnSave', 'btnLoad', 'btnLink', 'btnFile', 'btnNew', 'mBoard', 'boardDate', 'boardList', 'boardClaim',
