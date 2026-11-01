@@ -647,6 +647,7 @@
 <div class="modal" id="mShop" hidden>
   <div class="sheet blue">
     <h2 id="shopDate" style="font-size:15px;margin-bottom:10px"></h2>
+    <div class="tokens" id="shopTokens" style="position:static;margin:0 0 10px;display:inline-flex"></div>
     <div class="shoprow" id="shopSeeds"></div>
     <div class="shoprow" id="shopDecor"></div>
     <div class="card-in">
@@ -7558,8 +7559,29 @@ function toast(text, cls) {
   }
 }
 
-function showModal(el) { if (el) el.hidden = false; }
-function hideModal(el) { if (el) el.hidden = true; }
+/* BUG-016 (owner, mobile): the phone's back button LEFT THE GAME instead of closing the nursery --
+   "im so used to pushing back to close but it load previous webpage and take you out game". Every
+   modal now pushes a history entry when it opens, so back closes the topmost sheet; closing by
+   button consumes that entry, so the next back still leaves the page as the player expects. */
+var _modalStack = [];
+function showModal(el) {
+  if (!el || !el.hidden) return;
+  el.hidden = false;
+  try { history.pushState({ mbModal: true }, '', location.href); _modalStack.push(el); } catch (eH) { _modalStack.length = 0; }
+}
+function hideModal(el) {
+  var wasOpen = el && !el.hidden;
+  if (el) el.hidden = true;
+  var i = _modalStack.indexOf(el);
+  if (i >= 0) {
+    _modalStack.splice(i, 1);
+    if (wasOpen) { try { if (history.state && history.state.mbModal) history.back(); } catch (eH) {} }
+  }
+}
+if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('popstate', function () {
+  var top = _modalStack.pop();
+  if (top) top.hidden = true;
+});
 
 /* WHAT THE DAY'S BUDGET IS, AND WHAT HAPPENS WHEN IT RUNS OUT.
    Owner, 2026-09-22: "how do i continue to play once i use up action points in 2 minutes?" The
@@ -7677,6 +7699,10 @@ function renderTokens() {
             '<span>' + state.tokens[TOKENS[i]] + '</span></div>';
   }
   bar.innerHTML = html;
+  /* BUG-015 (owner, mobile): opening the nursery told you nothing about your balance -- you had to
+     close it, read the pill, and re-open. The SAME bar renders inside the sheet now, and renderShop
+     refreshes it on every purchase, so affordability is visible where the decision is made. */
+  if (els.shopTokens) els.shopTokens.innerHTML = html;
 }
 
 function renderGoal() {
@@ -8026,6 +8052,7 @@ function renderBoard() {
 }
 
 function renderShop() {
+  renderTokens();   /* BUG-015: the sheet's own balance must move with every purchase */
   var w = state.weather || fallbackFor(new Date().getMonth());
   if (els.shopDate) {
     els.shopDate.textContent = weatherWord(w) + ' at the nursery \u00b7 ' +
@@ -8950,7 +8977,7 @@ function boot() {
                 the gate now asserts every els.* name is bound (see BOUND_IDS). */
              'apPill', 'apNow', 'apHas', 'apDone', 'goalChip', 'parrotPill', 'parrotNow', 'parrotCap',
              'dayPill', 'hillSays', 'hillText',
-             'parrotOf', 'parrotLab', 'closedNow', 'closedOf', 'closedDen', 'closedLab',
+             'parrotOf', 'parrotLab', 'closedNow', 'shopTokens', 'closedOf', 'closedDen', 'closedLab',
              'mGuide', 'btnGuide', 'guideClose', 'guideWeeds', 'guideTrees',
              'mIntro', 'btnIntro', 'introClose', 'introAp', 'introLeft', 'introBin', 'introBinCap',
              'codeIn', 'btnSave', 'btnLoad', 'btnLink', 'btnFile', 'btnNew', 'mBoard', 'boardDate', 'boardList', 'boardClaim',
