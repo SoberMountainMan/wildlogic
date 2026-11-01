@@ -407,7 +407,8 @@
            the bird from the side: a gold-brown head with the grey hooked beak up on the right, the
            green body below it, and the long tail running down to the lower left, which is the shape
            that says "parrot" rather than "small green bird". -->
-      <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><path d="M9.1 13.2 5.2 19.2l3.5-.5 2.3-4.7Z" fill="#2e6238"/><ellipse cx="10.6" cy="10.9" rx="4.1" ry="5.1" fill="#3f7a4a"/><circle cx="12.7" cy="5.4" r="3.1" fill="#c9a34c"/><path d="M15.3 4.6c1.5.3 2.2 1.2 1.8 2.5-.3 1.1-1.2 1.8-2.4 1.9Z" fill="#514a3c"/><circle cx="13.9" cy="4.7" r=".8" fill="#221e18"/></svg>
+      <!-- THE OUTER BIRD IS GONE: it duplicated row one's own parrot (owner, live: "parrot pill
+           still has 2 parrot icons"). Each row now owns its glyph. -->
       <span class="pillrows"><!-- TWO TIDY ROWS, on purpose. The divider version wrapped wherever
              the width ran out and read as an accident (owner, live: "parrot pill is two lines"). One
              row per counter, each nowrap, the canopy on its own row: the pill is thin, the right
@@ -11100,7 +11101,10 @@ var SPR = (function () {
          caches the 18.9 MB art pack cache-first, so the second "Painting the forest" takes seconds
          instead of a minute of revalidation round-trips, and the game boots offline. */
       if (typeof navigator !== 'undefined' && navigator.serviceWorker && location.protocol === 'https:') {
-        try { navigator.serviceWorker.register(ROOT + 'sw.js').catch(function () {}); } catch (eSW) {}
+        try { navigator.serviceWorker.register('sw.js').catch(function () {}); } catch (eSW) {}
+        /* ROOT is the PACK root -- the first build registered pack/sw.js, a 404, and the worker
+           silently never installed (owner: "cache doesnt seem to stop the painting"). The worker
+           lives beside index.html, so the path is page-relative. */
       }
       sc.onload = function () {
         if (typeof window !== 'undefined' && window.__MB_MANIFEST) {
