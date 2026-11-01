@@ -147,7 +147,7 @@
      full strength. Now it dims to a whisper after 18 s -- still readable if you look, still tappable,
      and the day roll restarts the clock. The lines carry their own speaker ("The nursery grower:"),
      so the static "The hill says" label on top of that was saying who was talking TWICE. */
-  @keyframes hillsaydim{0%,45%{opacity:.94}100%{opacity:.32}}
+  @keyframes hillsaydim{0%,50%{opacity:.94}100%{opacity:0;visibility:hidden}}
   .hillsays{animation:hillsaydim 18s ease-in forwards}
   .appill .apnum{display:flex;flex-direction:column;gap:1px}
   .appill b{font-size:13px;font-weight:800;line-height:1.1}
@@ -286,6 +286,14 @@
   .sfxbtn b{display:block;font-size:13px;font-weight:700;color:#dbe8de}
   .sfxbtn span{display:block;font-size:10px;color:#8fae97;margin-top:2px}
   .sfxbtn:active{background:#2f4a3a}
+  /* P3 — the bed: one switch and eight weather chips, so every mix can be heard without waiting
+     for the weather. Chips force a mix for eight seconds; they never touch game state. */
+  .bedrow{margin-top:14px;padding-top:12px;border-top:1px solid #2c4436}
+  .bedhead{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:#8fae97;margin-bottom:8px}
+  .bedchips{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+  .bedchip{border:none;border-radius:10px;padding:8px 4px;background:#1b2b22;color:#bcd0c3;
+    font:inherit;font-size:11px;cursor:pointer}
+  .bedchip:active{background:#2f4a3a}
   .close{width:100%;margin-top:10px;border:none;background:transparent;font:inherit;font-size:13px;
     font-weight:800;color:#5c4a2e;cursor:pointer;padding:8px}
   .sheet.dark .close{color:#9fbcac}
@@ -599,6 +607,11 @@
       <h2 style="color:#dbe8de">Sound test</h2>
       <p class="sub" style="color:#7d9686">Every voice, one tap each &mdash; no progress needed</p>
       <div class="sfxgrid" id="sfxGrid"></div>
+      <div class="bedrow">
+        <div class="bedhead">The bed &mdash; weather, wind and water</div>
+        <button class="sfxbtn" id="bedToggle"></button>
+        <div class="bedchips" id="bedChips"></div>
+      </div>
       <button class="close" id="soundClose">Close</button>
     </div>
   </div>
@@ -3572,7 +3585,7 @@ function clearAt(c, r, pull) {
      never will** -- which is the real thing, and the reason the lever exists. */
   if (!pull) t.seeds += def.bank;
   state.cleared++;
-  SFX(pull ? 'pull' : 'cut');
+  SFX(pull ? 'pull' : 'cut', { c: c, r: r });
 
   /* AND CUTTING A BLACKWOOD MAKES MORE BLACKWOOD.
      Acacia melanoxylon "sprouts profusely from ROOT SUCKERS, PARTICULARLY WHEN THE ROOTS ARE
@@ -3675,7 +3688,7 @@ function clearAt(c, r, pull) {
     var _took = (_was === 'pine') ? 2 : 1;
     binItems += _took;
     if (binItems > BIN_MAX) { _took -= (binItems - BIN_MAX); binItems = BIN_MAX; }
-    if (_took > 0) { _cutMsg.unshift('+' + _took + ' cutting' + (_took === 1 ? '' : 's')); SFX('bin'); }
+    if (_took > 0) { _cutMsg.unshift('+' + _took + ' cutting' + (_took === 1 ? '' : 's')); SFX('bin', { c: c, r: r }); }
     /* WARN WHEN IT FILLS, NOT WHEN IT SPILLS. The card below fires on the cutting that is WASTED,
        which teaches the rule at the cost of a cutting. Filling the bin is the last moment the
        player can still act on the advice, so the warning belongs here — one card, at the moment it
@@ -3691,7 +3704,7 @@ function clearAt(c, r, pull) {
   } else {
     binWasted += 1;
     addFloat(c, r, 'bin full — lost', FLOAT_C.lose);
-    SFX('binfull');
+    SFX('binfull', { c: c, r: r });
     if (state.seen.binwaste) {
       note('The bin is full — that cutting is wasted. Empty it and the next one counts.', 'warn');
     } else {
@@ -3821,7 +3834,7 @@ function plantAt(c, r, spKey) {
   t.alien = null;
   t.sp = spKey; t.stage = 1; t.age = 0; GROUND = null;
   state.planted++;
-  SFX('plant');
+  SFX('plant', { c: c, r: r });
 
   /* BEAT 5 — THE FIRST PLANTING, AND THE PROMISE. A sapling is the most disappointing object in the
      game and the most important, because it is the only thing that leads to shade. Say what it will
@@ -6956,6 +6969,8 @@ function frame(ts) {
   if (!ctx) return;
   ICON_H = 0;
   var w = state.weather || fallbackFor(new Date().getMonth());
+  /* P3 — the bed follows the weather and the camera. Throttled inside; cheap to call per frame. */
+  try { AUDIO.tick(t); } catch (eBedTick) {}
 
   /* Everything above the world — sky, weather, the bin flash — is drawn in viewport CSS pixels with
      the device scale applied and nothing else, so the sky fills the screen however the camera is
@@ -7084,6 +7099,10 @@ var AUDIO = (function () {
     for (i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     return noiseBuf;
   }
+  /* EVERY VOICE PLAYS THROUGH `bus` — a per-call gain+pan stage, or master when a sound has no
+     position. This is what makes the hillside a place: a cut three tiles left of the camera comes
+     out of the left of the phone. Set in sfx(), cleared in its finally. */
+  var bus = null;
   function tone(f0, type, at, peak, dur, f1) {
     var o = ctx.createOscillator(), g = ctx.createGain(), t0 = ctx.currentTime + at;
     o.type = type;
@@ -7092,7 +7111,7 @@ var AUDIO = (function () {
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.linearRampToValueAtTime(peak, t0 + Math.min(0.02, dur * 0.2));
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g); g.connect(master);
+    o.connect(g); g.connect(bus || master);
     o.start(t0); o.stop(t0 + dur + 0.05);
   }
   function hiss(at, peak, dur, freq, q, type) {
@@ -7103,7 +7122,7 @@ var AUDIO = (function () {
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.linearRampToValueAtTime(peak, t0 + 0.004);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    s.connect(f); f.connect(g); g.connect(master);
+    s.connect(f); f.connect(g); g.connect(bus || master);
     s.start(t0); s.stop(t0 + dur + 0.05);
   }
   function clink(at, f, peak) {
@@ -7184,7 +7203,7 @@ var AUDIO = (function () {
       g.gain.linearRampToValueAtTime(0.3, t0 + 0.03);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.3);
       lfo.connect(lg); lg.connect(g.gain);
-      o.connect(f); f.connect(g); g.connect(master);
+      o.connect(f); f.connect(g); g.connect(bus || master);
       o.start(t0); o.stop(t0 + 0.35); lfo.start(t0); lfo.stop(t0 + 0.35);
       hiss(0.02, 0.16, 0.12, 620, 1.6);
     },
@@ -7212,10 +7231,192 @@ var AUDIO = (function () {
     { n: 'day',    label: 'New day',    note: 'the day rolls — two quiet notes' }
   ];
 
+  /* WHERE THE SOUND IS, IN THE PHONE'S TWO SPEAKERS. A tile's screen position decides pan and a
+     little level, so the far edge of the hill is quieter than the tile under the thumb. UI sounds
+     (pay, trade, buy, parrot, toad, day) carry no tile and stay centred — a shop click has no place
+     on the map, and pretending it does is worse than silence. */
+  function spatial(opts) {
+    var pan = 0, lvl = 1;
+    if (opts && typeof opts.c === 'number' && typeof opts.r === 'number') {
+      try {
+        var p = project(opts.c, opts.r, groundZ(opts.c, opts.r));
+        var nx = (p[0] - W / 2) / (W / 2);
+        var ny = (p[1] - H / 2) / (H / 2);
+        pan = Math.max(-1, Math.min(1, nx)) * 0.8;
+        var d = Math.min(1, Math.sqrt(nx * nx + ny * ny));
+        lvl = 1 - d * 0.3;
+      } catch (eSp) { pan = 0; lvl = 1; }
+    }
+    return { pan: pan, lvl: lvl };
+  }
+
+  var _lastSpatial = { pan: 0, lvl: 1, placed: false };
   function sfx(name, opts) {
     if (!on || !unlocked || !ctx || !SFX_VOICES[name]) return;
-    try { SFX_VOICES[name](opts || {}); } catch (eS) {}
+    var sp = spatial(opts);
+    _lastSpatial = { pan: +sp.pan.toFixed(3), lvl: +sp.lvl.toFixed(3), placed: !!(opts && typeof opts.c === 'number') };
+    try {
+      var g = ctx.createGain();
+      g.gain.value = sp.lvl;
+      if (ctx.createStereoPanner) {
+        var pn = ctx.createStereoPanner();
+        pn.pan.value = sp.pan;
+        g.connect(pn); pn.connect(master);
+      } else {
+        g.connect(master);   /* Safari before 14.1: centred, never broken */
+      }
+      bus = g;
+      SFX_VOICES[name](opts || {});
+    } catch (eS) {
+    } finally {
+      bus = null;   /* the nodes are connected; bus is only read at connect time */
+    }
   }
+  /* ============================================================ P3 — THE BED
+     Events make a game; a bed makes a place. Between cuts this hillside was silent, and a player who
+     takes ~38 cuts a day was hearing clicks in a vacuum. This is one bed, weather-crossfaded,
+     synthesised like everything else here: no files, no licence, nothing to download.
+
+     DESIGN CONSTRAINTS, all deliberate:
+     - IT IS QUIET. The bed sits at roughly a fifth of the stingers. It should be noticed only when
+       it stops.
+     - THE WEATHER PICKS THE MIX, because weather is the game's economy — it decides which token the
+       bin pays. Rain you can hear is information, not decoration.
+     - WATER IS LOCAL. The stream layer rises as the camera comes near the water, so the river is a
+       place on the map rather than a global hiss.
+     - NO PARROT CALLS. The call belongs to an arrival; used as wallpaper it would spend the payoff.
+     - IT DUCKS TO SILENCE WHEN THE TAB IS HIDDEN, and respects the same mute as the SFX.          */
+  var BED_MIX = {
+    clear:  { wind: 0.05, rain: 0.00, water: 0.06, birds: 1 },
+    cloudy: { wind: 0.07, rain: 0.00, water: 0.06, birds: 1 },
+    rain:   { wind: 0.06, rain: 0.10, water: 0.07, birds: 0 },
+    heavy:  { wind: 0.08, rain: 0.17, water: 0.08, birds: 0 },
+    mist:   { wind: 0.03, rain: 0.02, water: 0.07, birds: 0 },
+    berg:   { wind: 0.13, rain: 0.00, water: 0.04, birds: 0 },
+    frost:  { wind: 0.03, rain: 0.00, water: 0.05, birds: 0 },
+    snow:   { wind: 0.02, rain: 0.00, water: 0.04, birds: 0 }
+  };
+  var BED_KEYS = ['wind', 'rain', 'water'];
+  var bed = null, bedKind = '', bedOn = true, bedHidden = false,
+      _bedAt = 0, _birdAt = 0, _previewKind = '', _previewUntil = 0;
+  try { bedOn = (typeof localStorage !== 'undefined') && localStorage.getItem('mistbelt.ambience') !== '0'; } catch (eBed) {}
+
+  function bedLayer(freq, q, type) {
+    var s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    s.buffer = noise(); s.loop = true;
+    f.type = type; f.frequency.value = freq; f.Q.value = q;
+    g.gain.value = 0;
+    s.connect(f); f.connect(g); g.connect(master);
+    s.start();
+    return { s: s, f: f, g: g };
+  }
+  function bedStart() {
+    if (bed || !ctx) return;
+    bed = { wind: bedLayer(420, 0.6, 'lowpass'), rain: bedLayer(2600, 0.5, 'bandpass'),
+            water: bedLayer(900, 1.1, 'bandpass') };
+    /* A gust is a slow movement of the filter, not a louder hiss: 0.06 Hz into the cutoff. */
+    var lfo = ctx.createOscillator(), lg = ctx.createGain();
+    lfo.frequency.value = 0.06; lg.gain.value = 150;
+    lfo.connect(lg); lg.connect(bed.wind.f.frequency); lfo.start();
+    bed.lfo = lfo;
+  }
+  function kindOf(w) {
+    var k = classify(w || (state && state.weather) || null, true);
+    if (!k) return 'clear';
+    if (k.snow) return 'snow';
+    if (k.wet) return k.heavy ? 'heavy' : 'rain';
+    if (k.mist) return 'mist';
+    if (k.frost) return 'frost';
+    if (k.berg) return 'berg';
+    return (w && w.cloud >= 60) ? 'cloudy' : 'clear';
+  }
+  /* The camera's centre tile, from the inverse of project() at z = 0. Ambience does not need the
+     exact ground height — a tile of error in the water mix is inaudible. */
+  function camTile() {
+    var a = (W / 2 - gx + camX) / (TW / 2);   /* c - r */
+    var b = (H / 2 - gy + camY) / (TH / 2);   /* c + r */
+    return { c: Math.round((a + b) / 2), r: Math.round((b - a) / 2) };
+  }
+  /* Weather changes fade over 1.6 s so a sky turning does not click; a mute fades in a third of a
+     second, because a player who tapped silence wants silence now, not a slow goodbye. */
+  function bedRamp(mix, dur) {
+    if (!bed) return;
+    var t0 = ctx.currentTime, i, k, d = dur || 1.6;
+    for (i = 0; i < 3; i++) {
+      k = BED_KEYS[i];
+      bed[k].g.gain.cancelScheduledValues(t0);
+      bed[k].g.gain.setValueAtTime(bed[k].g.gain.value, t0);
+      bed[k].g.gain.linearRampToValueAtTime(mix[k], t0 + d);
+    }
+  }
+  function chirp() {
+    var n = 2 + Math.floor(Math.random() * 2), i, at = 0,
+        base = 2100 + Math.random() * 900;
+    var g = ctx.createGain(); g.gain.value = 0.55;
+    if (ctx.createStereoPanner) {
+      var pn = ctx.createStereoPanner(); pn.pan.value = (Math.random() * 2 - 1) * 0.7;
+      g.connect(pn); pn.connect(master);
+    } else { g.connect(master); }
+    var prev = bus; bus = g;
+    for (i = 0; i < n; i++) {
+      tone(base * (0.9 + Math.random() * 0.3), 'sine', at, 0.05, 0.09, base * (1.2 + Math.random() * 0.4));
+      at += 0.12 + Math.random() * 0.1;
+    }
+    bus = prev;
+  }
+  /* Called from the frame loop; throttled to 400 ms, which is far faster than a weather change. */
+  function tick(ts) {
+    if (!unlocked || !ctx) return;
+    var t = (typeof ts === 'number') ? ts : (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (t - _bedAt < 400) return;
+    _bedAt = t;
+    if (!on || !bedOn || bedHidden) {
+      if (bed) { bedRamp({ wind: 0, rain: 0, water: 0 }, 0.35); bedKind = ''; }
+      return;
+    }
+    bedStart();
+    if (!bed) return;
+    var kind = (_previewUntil > t) ? _previewKind : kindOf(state && state.weather);
+    var m = BED_MIX[kind] || BED_MIX.clear;
+    /* WATER IS LOCAL: within ten tiles of the stream the river is present, then it fades out. */
+    var water = m.water;
+    try {
+      var ct = camTile();
+      water += Math.max(0, 1 - streamDist(ct.c, ct.r) / 10) * 0.05;
+    } catch (eW) {}
+    if (kind !== bedKind) { bedKind = kind; bedRamp({ wind: m.wind, rain: m.rain, water: water }); }
+    else {
+      /* the water level follows the camera without re-ramping the whole bed */
+      bed.water.g.gain.setTargetAtTime(water, ctx.currentTime, 0.8);
+    }
+    if (m.birds && t > _birdAt) { _birdAt = t + 5000 + Math.random() * 8000; chirp(); }
+  }
+  function ambience(on2) {
+    bedOn = (typeof on2 === 'boolean') ? on2 : !bedOn;
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem('mistbelt.ambience', bedOn ? '1' : '0'); } catch (eA) {}
+    return bedOn;
+  }
+  /* The sound-test sheet uses this: force a weather mix for a few seconds so every state can be
+     heard without waiting for the weather. It never touches game state. */
+  function preview(kind) {
+    _previewKind = BED_MIX[kind] ? kind : 'clear';
+    _previewUntil = (typeof performance !== 'undefined' ? performance.now() : Date.now()) + 8000;
+    bedKind = '';   /* force a re-ramp on the next tick */
+  }
+  function bedState() {
+    return {
+      on: bedOn, hidden: bedHidden, kind: bedKind,
+      wind: bed ? +bed.wind.g.gain.value.toFixed(3) : 0,
+      rain: bed ? +bed.rain.g.gain.value.toFixed(3) : 0,
+      water: bed ? +bed.water.g.gain.value.toFixed(3) : 0
+    };
+  }
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('visibilitychange', function () {
+      bedHidden = (typeof document.hidden === 'boolean') ? document.hidden : false;
+    }, false);
+  }
+
   function toggle() {
     on = !on;
     try { if (typeof localStorage !== 'undefined') localStorage.setItem('mistbelt.audio', on ? '1' : '0'); } catch (eT) {}
@@ -7230,7 +7431,9 @@ var AUDIO = (function () {
   }
 
   return { sfx: sfx, toggle: toggle, enabled: function () { return on; },
-           list: function () { return SFX_LIST; }, unlock: unlock };
+           list: function () { return SFX_LIST; }, unlock: unlock,
+           tick: tick, ambience: ambience, preview: preview, bed: bedState,
+           lastSpatial: function () { return _lastSpatial; } };
 })();
 
 /* THE ONLY DOOR IN. Event sites call SFX('name'); the wrapper owns every failure — headless
@@ -7902,7 +8105,29 @@ function renderSoundTest() {
     els.sfxGrid.appendChild(b);
   }
 }
-function openSoundTest() { renderSoundTest(); showModal(els.mSound); }
+/* THE BED CONTROLS. Eight mixes, so the owner can hear every weather without waiting for the
+   weather — which is the whole point of a test sheet. A chip forces its mix for eight seconds and
+   never touches game state; the bed returns to the real sky on the next tick. */
+var BED_KINDS = [['clear', 'Clear'], ['cloudy', 'Cloudy'], ['rain', 'Rain'], ['heavy', 'Heavy'],
+                 ['mist', 'Mist'], ['berg', 'Berg'], ['frost', 'Frost'], ['snow', 'Snow']];
+function renderBedControls() {
+  var on = AUDIO.bed().on;
+  if (els.bedToggle) {
+    els.bedToggle.innerHTML = '<b>The bed is ' + (on ? 'ON' : 'OFF') + '</b><span>tap to ' +
+      (on ? 'silence it' : 'bring it back') + '</span>';
+  }
+  if (!els.bedChips) return;
+  els.bedChips.innerHTML = '';
+  BED_KINDS.forEach(function (kv) {
+    var b = document.createElement('button');
+    b.className = 'bedchip';
+    b.setAttribute('data-weather', kv[0]);
+    b.textContent = kv[1];
+    b.addEventListener('click', function () { AUDIO.preview(this.getAttribute('data-weather')); });
+    els.bedChips.appendChild(b);
+  });
+}
+function openSoundTest() { renderSoundTest(); renderBedControls(); showModal(els.mSound); }
 
 function renderGuide() {
   var i, k, d;
@@ -8641,7 +8866,7 @@ function resize() {
 function boot() {
   var ids = ['cv', 'stage', 'packWarn', 'wxIcon', 'wxText', 'tokenBar', 'btnGear', 'btnBox', 'binBadge', 'dock',
              'notes', 'btnHome', 'btnNotes', 'btnSound', 'mNotes', 'notesClose',
-             'mSound', 'sfxGrid', 'soundClose', 'btnSoundTest',
+             'mSound', 'sfxGrid', 'soundClose', 'btnSoundTest', 'bedToggle', 'bedChips',
              /* apHas AND apDone WERE MISSING HERE, and their absence was silent: renderHud() writes
                 them behind `if (els.X)`, so an unbound id does not throw -- it just never writes.
                 The label therefore sat at its static HTML default, "+1 in 60 min", for every player
@@ -9275,6 +9500,12 @@ function boot() {
     var s = decodeSave(els.codeIn ? els.codeIn.value : '');
     if (!s) { note('That code did not read. Check for a missing character.', 'warn'); return; }
     state = s;
+    /* T6 -- A SAVE CODE MUST NOT MOVE THE SKY. The save carries the weather snapshot it was saved
+       with, and until the hour rolled the game treated that older sample as current -- the Tester
+       measured a live device going 12.30 rain -> 2.56 sun on a paste. The session holds a REAL fetch
+       for the same village and the same day; re-read it now, and the saved snapshot is replaced the
+       moment it lands. Offline it falls back to the season guess, as always. */
+    try { fetchForecast(new Date().getMonth()); } catch (eSky) {}
     if (els.notes) els.notes.textContent = '';
     note('Save code loaded. Day ' + state.day + '.', 'good');
     saveLocal(); renderHud(); renderBoard(); renderShop();
@@ -9569,6 +9800,7 @@ function boot() {
     hideModal(els.mNotes); openSoundTest();
   });
   if (els.soundClose) els.soundClose.addEventListener('click', function () { hideModal(els.mSound); });
+  if (els.bedToggle) els.bedToggle.addEventListener('click', function () { AUDIO.ambience(); renderBedControls(); });
   if (els.guideClose) els.guideClose.addEventListener('click', function () { hideModal(els.mGuide); });
   if (els.introClose) els.introClose.addEventListener('click', function () { hideModal(els.mIntro); });
   /* Re-openable from the field notes sheet. A first-run sheet you can never see again is the same
@@ -9739,6 +9971,11 @@ var API = {
   renderShop: renderShop, renderBoard: renderBoard,
   /* the sound test, for the probe and for any future act that needs to audition a voice */
   openSoundTest: openSoundTest, sfxList: function () { return AUDIO.list(); },
+  /* the bed, for the probe: read its mix, switch it, or force a weather for a few seconds */
+  bedState: function () { return AUDIO.bed(); },
+  lastSpatial: function () { return AUDIO.lastSpatial(); },
+  bedToggle: function () { return AUDIO.ambience(); },
+  previewBed: function (k) { AUDIO.preview(k); },
 };
 
 if (typeof globalThis !== 'undefined') globalThis.__MB = API;
@@ -10784,6 +11021,12 @@ var SPR = (function () {
          hold the 404, and then the script never loads and the loader falls back to XHR — which is
          the thing that cannot work on file://. One local file, 75 KB, so it is always re-read. */
       sc.src = ROOT + 'PACK-MANIFEST.js?t=' + (new Date().getTime());
+      /* T7 -- THE PACK SERVICE WORKER. Register once, on https (file:// skips silently). sw.js
+         caches the 18.9 MB art pack cache-first, so the second "Painting the forest" takes seconds
+         instead of a minute of revalidation round-trips, and the game boots offline. */
+      if (typeof navigator !== 'undefined' && navigator.serviceWorker && location.protocol === 'https:') {
+        try { navigator.serviceWorker.register(ROOT + 'sw.js').catch(function () {}); } catch (eSW) {}
+      }
       sc.onload = function () {
         if (typeof window !== 'undefined' && window.__MB_MANIFEST) {
           try { adopt(window.__MB_MANIFEST); }
