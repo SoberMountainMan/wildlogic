@@ -797,46 +797,6 @@ var DEM_Z = [[32,33,33,32,32,33,32,33,33,33,34,36,36,36,38,40,40,42,44,47,49,51,
 [5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,8,18,19,18,18,18,18,19,21,22,25,31],
 [3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,9,18,18,19,18,18,18,19,20,22,25,32]];
 var DEM_ZMAX_BH = 8;   /* the highest ground, in height steps: 1 + 56/9 ~= 7.2, rounded up */
-var DEM_TIER = [[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,5,5,5,3,3,3,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,5,5,3,5,3,3,3,3,3,3,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5,5,5,5,5,5,5],
-[3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5,5,5,5,5,5],
-[5,5,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5,5,5,5,5],
-[3,3,3,3,3,3,3,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5],
-[3,3,3,3,3,3,1,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5,5],
-[3,3,3,3,1,3,1,1,3,3,3,3,3,3,1,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5,5,5],
-[1,1,1,1,1,1,1,1,3,3,3,3,3,3,1,1,1,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5,5,5,5,5,5,5],
-[1,1,1,1,1,1,1,1,3,3,3,3,3,3,1,1,1,1,3,3,3,3,3,3,3,3,3,1,1,1,1,1,3,3,5,5,5,5,5,5],
-[1,1,1,1,1,1,1,1,3,1,1,1,1,1,1,1,1,1,3,3,3,3,3,3,3,3,1,1,1,1,1,3,3,3,3,5,3,5,5,5],
-[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,3,1,1,1,1,1,1,3,3,3,3,3,3,3,5,5,5],
-[3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,1,1,1,1,1,3,3,1,3,3,3,3,3,3,3,5,5],
-[3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,1,1,1,1,1,3,3,3,3,3,3,3,3,3,5,5,5],
-[3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,1,1,1,1,1,3,3,3,3,3,3,3,3,3,3,5,5],
-[3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,3,3,3,3,3,5,5],
-[3,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,3,3,3,3,5,5],
-[3,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,3,3,3,3,3,5],
-[3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,3,3,3,3,3,5],
-[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,3,3,3,3,3,5],
-[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,3,3,3,3,3,5],
-[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,3,3,3,3,3,5]];   /* T9: the BANDED ground -- three tiers from the DEM, Level's design */
 var WORLD_H = (COLS + ROWS - 2) * (TH / 2) + TH + (-CLIFF) * BH + 8 + WORLD_OVERHANG_N +
   (DEM_ZMAX_BH - 1) * BH;                       /* the raised far rim lives in the old crown overhang; this is its floor */
 
@@ -4693,11 +4653,8 @@ function setZoom(z, ax, ay) {
 }
 
 function centreOn(c, r) {
-  /* T9: centre on the tile's DRAWN position -- the ground height is part of where it is, and on
-     banded ground a tile two steps up would otherwise sit 18 px above the middle of the screen. */
-  var z = groundZ(c, r);
   camX = (c - r) * (TW / 2) - W / (2 * zoom);
-  camY = (c + r) * (TH / 2) - z * BH - H / (2 * zoom);
+  camY = (c + r) * (TH / 2) - H / (2 * zoom);
   clampCam();
 }
 
@@ -4733,35 +4690,20 @@ function panTo(c, r) {
    cache all ask it a question, and a raised clearing or a sunken pond is the obvious next thing
    anybody would want to add here. */
 function groundZ(c, r) {
-  /* T9 BANDING, Level's design built (DESIGN-T9-BANDING-2026-11-02.md + _probe_dem_bands.js):
-     THREE tiers from the real DEM -- basin (< 14 m) at z 1, shelf (14-30 m) at z 3, mountain
-     (>= 30 m) at z 5 -- with the designed exceptions applied in Level's order:
-       - the VILLAGE block (c 18-28, r 21-32) levels to the SHELF, not its modal tier: the modal
-         levelling put a 4-step / 36 px cliff on its uphill side, which own-the-mountain's renderer
-         guarantee (no adjacent pair over one level; Mistbelt's step bound: two) caught;
-       - the remnant levels to its own tier -- it lands on the MOUNTAIN top, which is the truthful
-         read (old growth survives the ground nobody could carve);
-       - the plantation is already one tier;
-       - the CHANNEL runs one way: the five water-and-bank tiles of each row take one tier, and it
-         may never rise as r increases -- the stream cascades downhill through all three tiers.
-     The channel cuts THROUGH the village pad at a lower tier -- that is a stream bed below its
-     banks, and the pad's DRY ground is still one tier (the gate measures the dry tiles).
-     NOTHING GAMEPLAY CHANGES: trees grow on every tier, plantable() is untouched, the toad and
-     parrot and garden behave exactly as now. The height is scenery. The step walls render through
-     the existing extrude path, which fires on a lower neighbour. */
-  if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return 1;   /* off the map: the basin level */
-  return DEM_TIER[r][c];
+  /* T9 DATA IS IN, THE RENDER IS PARKED. The DEM table above is real Hogsback ground, gated and
+     locked. Raising the ground with it exposed two things the gates caught the same hour: the
+     village plateau is DESIGNED flat (terracing through it turned the field into a staircase), and
+     adjacent tiles at different heights need step walls, or the bake shows sky through the seams.
+     Both are Level's banding call (T9 on the board), after which this function returns the DEM
+     height for the raised bands and 1 on every flat one. Until then: flat, exactly as shipped. */
+  return 1;
 }
 
 /* `x`/`y` are viewport CSS pixels. Undo the zoom, undo the pan, then solve the diamond. */
 function hitTest(x, y) {
-  /* Two passes to GUESS, then TERRACED TRUTH to decide (T9). On banded ground a tap near a terrace
-     wall lands inside TWO drawn diamonds -- the raised tile behind and the lower tile in front,
-     whose diamond the wall pushes up under it. The plane solve cannot split that; the draw order
-     can: the FRONTMOST tile whose drawn diamond contains the point is what the player sees, so it
-     is what the tap picks. Candidates are the solved tile and its eight neighbours, tested back to
-     front in (c + r). A tap 30% off a centre still picks its own tile everywhere except inside a
-     front diamond's shadow -- which is the tile that is actually on the glass there. */
+  /* Two passes. The first guesses the tile as if the ground were flat, the second re-solves with
+     that tile's real height — otherwise a tap on the raised part of a rim tile picks the neighbour
+     behind it, which is a maddening bug to find from a screenshot. */
   var wx = camX + x / zoom, wy = camY + y / zoom;
   var c = 0, r = 0, i, a, b;
   for (i = 0; i < 2; i++) {
@@ -4770,15 +4712,8 @@ function hitTest(x, y) {
     c = Math.round((a + b) / 2);
     r = Math.round((b - a) / 2);
   }
-  var best = null, bestD = -1;
-  for (var di = -1; di <= 1; di++) for (var dj = -1; dj <= 1; dj++) {
-    var cc = c + di, rr = r + dj;
-    if (cc < 0 || cc >= COLS || rr < 0 || rr >= ROWS) continue;
-    var px = (cc - rr) * (TW / 2), py = (cc + rr) * (TH / 2) - groundZ(cc, rr) * BH;   /* world px -- wx/wy already carry the camera */
-    var dx = Math.abs(wx - px) / (TW / 2), dy = Math.abs(wy - py) / (TH / 2);
-    if (dx + dy <= 1 && cc + rr >= bestD) { bestD = cc + rr; best = { c: cc, r: rr }; }
-  }
-  return best;
+  if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return null;
+  return { c: c, r: r };
 }
 
 /* ============================================================ drawing */
@@ -10207,7 +10142,6 @@ var API = {
   loadLocal: loadLocal, loadFailNow: function () { return loadFail; }, wetRateYear: wetRateYear,
   SUNBIRD_RUN: SUNBIRD_RUN, sunbirdRun: sunbirdRun, sunbirdCheck: sunbirdCheck, streamC: streamC,
   groundZ: groundZ, DEM_Z: DEM_Z, hitTest: hitTest,
-  camXNow: function () { return camX; }, camYNow: function () { return camY; }, zoomNow: function () { return zoom; },
   SAVE_KEY: SAVE_KEY,
   /* `act` is the TAP — the one entry point a finger actually reaches. It is exported because the
      three actions above it are the *decision* and `act` is the *reply*: a gate that only calls
