@@ -202,6 +202,45 @@ export function waterOk(h) {
 
 /* ---------------- actions ---------------- */
 
+/** What stands on each tile the tank cannot go: buildings, trees, beds, hives, posts.
+ *  Shared by the auto-spiral and the player's site check, so the ghost and the verb read
+ *  the same ground. */
+function yardTaken(h) {
+  const p = h.plot;
+  const taken = new Map();
+  const mark = (x, y, what) => { if (!taken.has(x + ',' + y)) taken.set(x + ',' + y, what); };
+  for (const b of p.buildings || []) mark(b.x, b.y, 'a building');
+  for (const t of p.trees || []) mark(t.x, t.y, 'a tree');
+  for (const b of h.beds || []) mark(b.x, b.y, 'a planting bed');
+  for (const v of h.hives || []) mark(v.x, v.y, 'a hive');
+  for (const f of p.fence || []) mark(f.x, f.y, 'a fence post');
+  return taken;
+}
+
+/** The rule, as a function of the pre-built `taken` map: the spiral calls it thousands of
+ *  times per build, so the map is built ONCE by the caller, never inside the test. */
+function yardRefuseWith(h, taken, x, y) {
+  const p = h.plot;
+  if (!p || !p.ground) return 'this plot has no ground to build on';
+  if (!Number.isInteger(x) || !Number.isInteger(y)) return 'choose a tile for it first';
+  if (x < 1 || y < 1 || x >= p.w - 1 || y >= p.h - 1) return 'it needs ground inside the boundary, not on the edge';
+  const g = p.ground[y * p.w + x];
+  if (g === 'water') return 'water stands there — choose dry ground';
+  if (g === 'rock') return 'rock there — the stand needs soil';
+  const what = taken.get(x + ',' + y);
+  if (what) return `${what} stands there — clear it first`;
+  if (!tileFlat(p, x, y)) return 'too steep for the tank stand — flatten it first';
+  return '';
+}
+
+/** Why THIS tile cannot hold the tank stand ('' when it can). The same legality
+ *  `freeYardTile` applies, in words - owner ruling 11-02: "people should always place
+ *  things, thats the building sim", and his 10-28 complaint "cant see water tank or how to
+ *  place it" is only half answered by standing one up somewhere on its own. */
+export function yardSiteRefuse(h, x, y) {
+  return yardRefuseWith(h, yardTaken(h), x, y);
+}
+
 /** First free, dry, flat, clear 1x1 tile for a yard building (the tank), spiralling out
  *  from the plot's middle. Deterministic; null when no such tile exists. The same shape
  *  as tourism's freeFacilityTile, local because homestead cannot import tourism (the
@@ -210,15 +249,8 @@ function freeYardTile(h) {
   const p = h.plot;
   if (!p || !p.ground) return null;
   const ax = Math.floor(p.w / 2), ay = Math.floor(p.h / 2);
-  const taken = new Set();
-  for (const b of p.buildings || []) taken.add(b.x + ',' + b.y);
-  for (const t of p.trees || []) taken.add(t.x + ',' + t.y);
-  for (const b of h.beds || []) taken.add(b.x + ',' + b.y);
-  for (const v of h.hives || []) taken.add(v.x + ',' + v.y);
-  for (const f of p.fence || []) taken.add(f.x + ',' + f.y);
-  const free = (x, y) => x >= 1 && y >= 1 && x < p.w - 1 && y < p.h - 1
-    && p.ground[y * p.w + x] !== 'water' && p.ground[y * p.w + x] !== 'rock'
-    && !taken.has(x + ',' + y) && tileFlat(p, x, y);
+  const taken = yardTaken(h);
+  const free = (x, y) => yardRefuseWith(h, taken, x, y) === '';
   const R = Math.max(p.w, p.h);
   for (let r = 0; r <= R; r++) {
     for (let dx = -r; dx <= r; dx++) {
@@ -231,13 +263,24 @@ function freeYardTile(h) {
   return null;
 }
 
-export function buildTank(h) {
+export function buildTank(h, x = null, y = null) {
   if (h.water.tank) return err('you already have a tank');
   const base = TANK.cost + TANK.delivery;
   // LD-11 (owner GO 2026-10-22): flat H$ a unit, never a percentage — see firewood.js.
   const lumber = lumberOff(base, TANK.lumber, h.lumber || 0);
   const cost = Math.round(lumber.cost);
   if (h.cash < cost) return err(`the tank costs ${money(cost)} — you have ${money(Math.round(h.cash))}`);
+  // The tile is settled BEFORE the money moves, like the beds and the facilities: a
+  // chosen site either takes the stand or explains itself, and a refusal costs nothing
+  // (owner ruling 11-02: "people should always place things, thats the building sim").
+  let site;
+  if (x != null && y != null) {
+    const why = yardSiteRefuse(h, x, y);
+    if (why) return err(why);
+    site = { x, y };
+  } else {
+    site = freeYardTile(h);
+  }
   if (lumber.used) h.lumber -= lumber.used;
   h.cash -= cost;
   h.water.tank = true;
@@ -246,15 +289,15 @@ export function buildTank(h) {
   // Owner live play 10-28: "cant see water tank or how to place it". The tank was a
   // boolean — the painted sprite and the renderer's tank5000 path have existed since
   // T15, but the sim never stood one up, so H$5,400 bought nothing the eye could find.
-  // The delivery now stands the tank in the yard: first free, dry, flat, clear tile
-  // from the plot's middle. plot.buildings is outside snap()'s whitelist, so no golden
-  // moves (the scripts buy the tank; only the ground record changes).
-  const site = freeYardTile(h);
+  // The delivery stands a tank on the ground: the tile the player chose, or (no choice
+  // passed) the first free, dry, flat, clear tile from the plot's middle. plot.buildings
+  // is outside snap()'s whitelist, so no golden moves either way.
   if (site) h.plot.buildings.push({ kind: 'tank5000', x: site.x, y: site.y });
   note(h, (lumber.used
     ? `Bought a 5 000 L tank — your own pine lumber took ${money(lumber.off)} off the cash. −${money(cost)}`
     : `Bought a 5 000 L tank and paid the delivery. −${money(cost)}`)
-    + (site ? ' It stands in the yard.' : ' The yard has no clear flat tile, so it works from behind the scenes.'));
+    + (site ? (x != null ? ' It stands where you put it.' : ' It stands in the yard.')
+      : ' The yard has no clear flat tile, so it works from behind the scenes.'));
   // BUG-007 (playtest 10-26): the WHAT NOW card only refreshed on End Day, so buying the
   // tank cleared the alarm but left "Get water onto the plot" unchecked until the player
   // spent a day they did not have to spend. tickGoals is idempotent (skips done, no RNG) and

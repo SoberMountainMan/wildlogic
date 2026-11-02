@@ -19,7 +19,7 @@
 // (trees, beds, hives, buildings, fences, badges) anchors at its tile's raised base.
 
 import { project, unproject, depthKey, fitCamera, TW, TH, gridBounds } from './iso-math.js';
-import { drawSprite, SPRITES, PALETTE, seasonTint, accomSprite } from './sprites.js';
+import { drawSprite, SPRITES, PALETTE, seasonTint, accomSprite, accomSiteSprite } from './sprites.js';
 import { GROUND_TEX } from './ground-images.js';
 
 // Colours come from the art seat's one table (TEAM-BOARD Request, technical-artist):
@@ -213,13 +213,16 @@ const UI = {
   selRed: { stroke: 'rgba(232,116,88,.75)', fill: 'rgba(232,116,88,.07)' },
 };
 /* Hogsback behind the plot: cold blue-grey ridges, a mist band between them and a sky
-   that only exists at the very top. Scenery — no sim meaning, drawn once per resize. */
+   that only exists at the very top. Scenery — no sim meaning, drawn once per resize.
+   Each range is a MASS, not a flat band: `top` is the light the crest catches, `base` is
+   what it settles to low down where the next range overlaps it, `haze` is the mist that
+   sits on the crest line. */
 const ART = {
   sky: ['#152630', '#2c4550', '#57707a'],
-  far: 'rgba(146,170,183,0.62)',
-  mid: 'rgba(78,102,112,0.90)',
-  near: 'rgba(36,54,58,1)',
-  mist: 'rgba(228,238,241,0.16)',
+  far: { top: 'rgba(170,192,203,0.72)', base: 'rgba(120,148,164,0.50)', haze: 'rgba(206,222,229,0.30)' },
+  mid: { top: 'rgba(98,124,135,0.92)', base: 'rgba(58,80,90,0.96)', haze: 'rgba(178,203,212,0.22)' },
+  near: { top: 'rgba(50,72,76,1)', base: 'rgba(26,42,46,1)', haze: 'rgba(126,156,164,0.16)' },
+  mist: [228, 238, 241],   // rgb — the alpha is the band's own falloff, not a constant
   fade: ['rgba(24,38,30,0.0)', 'rgba(18,29,22,0.92)'],
 };
 
@@ -1108,6 +1111,12 @@ export class IsoPlotRenderer {
       // whether a fence may legally start on a tile (siteworks connectivity). Absent
       // → the popup shows the rule as a hint instead of a verdict.
       fenceOk: typeof s.fenceOk === 'function' ? s.fenceOk : null,
+      // The sim's own sentence for why a post cannot stand here ('' when it can). Fences
+      // go where the player puts them (owner ruling 11-02), so the only refusals left are
+      // water, the gate, and ground already holding a post - and the row has to say WHICH.
+      // Copied explicitly for the same reason as `plantSay`: a field the page hands over
+      // and this object does not copy is a row that quietly lies (tests/47).
+      fenceSay: typeof s.fenceSay === 'function' ? s.fenceSay : null,
       // ACCOM footprints, kind → [w, h] (owner verdict 5). Absent → DEFAULT_FPS.
       footprints: s.footprints || null,
       // U8: ACCOM's rung NAMES, kind → label. BUILD_ITEMS below hand-types a label only as a
@@ -1390,6 +1399,16 @@ export class IsoPlotRenderer {
         return x >= a.x && x < a.x + af[0] && y >= a.y && y < a.y + af[1];
       });
       if (acc) return { type: 'accom', acc };
+      /* A FACILITY UNDER CONSTRUCTION STANDS ON GROUND. `buildFacility` reserves its tiles the
+         day the money moves (tourism.js: the record carries x, y, fw, fh and
+         `facilitySiteRefuse` blocks a second claim on them), but until it completes nothing is
+         pushed into p.buildings - so the popup walked past the site, found bare ground, and
+         offered to plant a bed on ground the player had just bought (owner 11-02: "click braai
+         or generator etc and i says going up but where?"). The tiles were never invisible on
+         the map for long; they were invisible to the click. */
+      const fb = (h.facilityBuilds || []).find((b) => !b.built && b.x != null && b.y != null
+        && x >= b.x && x < b.x + (b.fw || 1) && y >= b.y && y < b.y + (b.fh || 1));
+      if (fb) return { type: 'facilityBuild', fb };
     }
     const bld = (p.buildings || []).find((b) => b.x === x && b.y === y);
     if (bld) return { type: 'building', bld };
@@ -1478,9 +1497,22 @@ export class IsoPlotRenderer {
         for (const [kind, def] of Object.entries(st.facilityDefs || {})) {
           const target = `[data-act="facility"][data-kind="${kind}"]`;
           const owned = st.facilities && st.facilities[kind];
-          act('guide-facility-' + kind, `${owned ? 'Inspect' : 'Find'} ${def.label}`,
-            owned ? 'built' : `${money(def.cost)} / ${def.buildDays}d`,
-            { kind: 'guide', target });
+          /* Where is it? Only say a tile when the SIM has one to give (owner 11-02, via the
+             lead: an unsited kind "must say what it IS rather than pretending to point at a
+             tile"). A built sited facility is a row in p.buildings; an unbuilt one is a
+             facilityBuild with x,y once the site is reserved. Wifi has neither - it is a line
+             rental and its `where` sentence below is the honest answer. */
+          const bld = owned ? (p.buildings || []).find((q) => q.kind === kind) : null;
+          const going = !owned && (h.facilityBuilds || []).find((q) => q.kind === kind && !q.built);
+          let right;
+          if (bld) right = `built · tile ${bld.x},${bld.y}`;
+          else if (owned) right = 'built';
+          else if (going && going.x != null) {
+            right = `going up · tile ${going.x},${going.y} · ready day ${going.doneDay}`;
+          } else if (going) right = `going up · ready day ${going.doneDay}`;
+          else right = `${money(def.cost)} / ${def.buildDays}d`;
+          act('guide-facility-' + kind, `${owned ? 'Inspect' : going ? 'Watch' : 'Find'} ${def.label}`,
+            right, { kind: 'guide', target });
           if (def.where) note('where-' + kind, def.where);
           if (kind === 'ablution' && !owned && a.kind === 'camp') {
             note('camp-bathroom', 'Camp needs a completed ablution block before it can let.');
@@ -1490,27 +1522,49 @@ export class IsoPlotRenderer {
     demoRows();
       return out;
     }
+    if (occ && occ.type === 'facilityBuild') {
+      const b = occ.fb;
+      const def = (st.facilityDefs || {})[b.kind] || {};
+      const nm = String(def.label || b.kind).toLowerCase();
+      const left = Math.max(0, (b.doneDay || 0) - st.day);
+      /* The site is NAMED, not gestured at. The record carries the tile the sim reserved, so
+         this says it, plus the footprint and the ready day - the three things "going up" left
+         out. A click on either tile of a 2x1 block answers from the same line, and answers
+         with the anchor it was placed from. */
+      note('facility-build', `Going up - the ${nm}`,
+        `tile ${b.x},${b.y} · ${(b.fw || 1)}x${(b.fh || 1)} · ready day ${b.doneDay || '?'} · `
+        + `${left} day${left === 1 ? '' : 's'} left`);
+      if (def.where) note('facility-where-' + b.kind, def.where);
+      /* The ground is taken: say so rather than offering a verb the sim will refuse. */
+      note('facility-reserved', 'You cannot plant or build on it while it is going up.');
+    demoRows();
+      return out;
+    }
     if (occ && occ.type === 'building') {
-      note('bld', occ.bld.kind === 'tank5000' ? 'The water tank' : 'A building', '');
+      const q = occ.bld;
+      const fdef = (st.facilityDefs || {})[q.kind];
+      // named by the sim's own label, and located: "A building" with no tile was the same
+      // question the owner asked about the going-up line
+      note('bld', q.kind === 'tank5000' ? 'The water tank' : fdef ? `The ${fdef.label}` : 'A building',
+        `tile ${q.x},${q.y}${((q.fw || 1) > 1 || (q.fh || 1) > 1) ? ` · ${q.fw || 1}x${q.fh || 1}` : ''}`);
     demoRows();
       return out;
     }
     if (occ && occ.type === 'gate') {
       const road = h && h.road ? `${Math.round(h.road.condition)}%` : '';
       note('gate', 'The gate', road ? `road ${road}` : '');
-      /* siteworks connectivity (fenceConnects/trackConnects) begins a line ON the gate
-         tile — no other tile may start one. Owner verdict 3 ("place fence doesn't
-         work") was exactly that: the only legal first tile offered no verbs, so every
-         fence click elsewhere died as "touches neither". The gate's own popup now
-         carries the two line-starters; from here on, adjacency does the rest. */
+      /* The gate is the road in: track and mud may run through it, a fence may not stand
+         across it (owner live play 10-28 — the sim refuses, `fenceRefuse` says why). So
+         this popup offers the two line-starters that WORK here and no fence row at all:
+         a row whose only talent is refusing is the dead click this branch was written to
+         kill. Owner ruling 11-02 ("fence shouldnt need to start at gate") removed the
+         start-at-the-gate requirement, so a fence line begins wherever the player puts
+         its first post - which is any other tile. */
       if (p.ground[y * p.w + x] !== 'water') {
         act('track', 'Start the track here', money(c.track), { kind: 'track', x, y },
           st.ended || st.cash < c.track);
         act('mud', 'Start the mud track here', money(c.mud), { kind: 'mud', x, y },
           st.ended || st.cash < c.mud);
-        act('fence', 'Start the fence here', money(c.fence), { kind: 'fence', x, y },
-          st.ended || st.cash < c.fence);
-        note('fence-rule', 'then tile by tile, touching what is down');
       }
     demoRows();
       return out;
@@ -1552,10 +1606,14 @@ export class IsoPlotRenderer {
     // footprint, picked there and placed with a ghost preview on the map
     act('buildmenu', 'Build…', 'choose what', { kind: 'buildmenu', x, y }, st.ended);
     // the site works (siteworks, 2026-10-21): tiles that connect, TT-style.
-    // The fence's connectivity rule is stated NEXT TO the verb (owner verdict 3:
-    // "place fence doesn't work" was the refusal happening silently — the sim's
-    // message only reached the sidebar log, so the click read as dead).
-    const fenceLegal = st.fenceOk ? !!st.fenceOk(x, y) : null;
+    // The fence's rule is stated NEXT TO the verb (owner verdict 3: "place fence doesn't
+    // work" was the refusal happening silently — the sim's message only reached the
+    // sidebar log, so the click read as dead). OWNER RULING 11-02 removed the
+    // start-at-the-gate requirement, so the only refusals left are physical: water, the
+    // gate tile, ground already fenced. The sentence is the SIM's (`fenceSay`), not a
+    // copy kept here, and when nothing blocks the tile there is nothing to say.
+    const fenceSay = st.fenceSay ? String(st.fenceSay(x, y) || '') : '';
+    const fenceLegal = st.fenceOk ? !!st.fenceOk(x, y) : !fenceSay;
     act('track', 'Lay dirt track', money(c.track), { kind: 'track', x, y },
       st.ended || st.cash < c.track);
     act('gravel', 'Lay gravel road', money(c.gravel), { kind: 'gravel', x, y },
@@ -1563,10 +1621,8 @@ export class IsoPlotRenderer {
     act('mud', 'Mud track', money(c.mud), { kind: 'mud', x, y },
       st.ended || st.cash < c.mud);
     act('fence', 'Fence this tile', money(c.fence), { kind: 'fence', x, y },
-      st.ended || st.cash < c.fence || fenceLegal === false);
-    note('fence-rule', fenceLegal === false
-      ? 'fences start on the gate tile — then touch fence or track'
-      : 'fences start on the gate tile, then tile by tile');
+      st.ended || st.cash < c.fence || fenceLegal === false || !!fenceSay);
+    if (fenceSay) note('fence-rule', fenceSay);
     // B2 · the bulldozer's day (COST.bulldozer) is charged ONCE, by whichever verb moves
     // earth first — the sim's own rule is `h.bulldozerDay !== h.day`. A per-tile price
     // that hides that fee is a lie the player only discovers on the click, so every
@@ -2005,9 +2061,15 @@ export class IsoPlotRenderer {
       return v / norm;
     };
 
-    /** One range: a peak line from the base down, filled, with a lighter top edge —
-        the edge is what makes a painted ridge read at this size. */
-    const ridge = (baseY, amp, colour, seed, freq, edge) => {
+    /** One range: a peak line from the base down, filled as a MASS.
+        Banding fix (owner: "backdrop banding"): each range used to be one flat fill
+        with a 1 px lighter stroke on its crest, so three ranges read as three stacked
+        bands of flat colour with hard edges. A painted range is lit along its crest and
+        loses that light toward its base — haze collects low, where the next range
+        overlaps it. So: a vertical gradient anchored at the crest (top colour at the
+        peak, base colour just below the valleys), and the crest line drawn as a soft
+        two-pass haze instead of a hard stroke. */
+    const ridge = (baseY, amp, top, base, seed, freq, haze) => {
       const pts = [];
       const steps = 140;
       for (let i = 0; i <= steps; i++) {
@@ -2019,34 +2081,59 @@ export class IsoPlotRenderer {
       for (const [x, y] of pts) g.lineTo(x, y);
       g.lineTo(W, H);
       g.closePath();
-      g.fillStyle = colour;
+      // the crest varies from baseY-amp (peak) to baseY (valley); anchor the ramp there
+      // and let everything below the valley clamp to the base colour, so the sliver that
+      // is actually visible carries the whole transition
+      const grd = g.createLinearGradient(0, baseY - amp, 0, baseY + amp * 0.55);
+      grd.addColorStop(0, top);
+      grd.addColorStop(1, base);
+      g.fillStyle = grd;
       g.fill();
-      if (edge) {
+
+      if (haze) {
         g.beginPath();
         pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
-        g.strokeStyle = edge;
-        g.lineWidth = Math.max(1, this.dpr * 0.8);
+        g.lineJoin = 'round';
+        g.lineCap = 'round';
+        // wide and faint first: that is the mist sitting ON the ridge, not a drawn line
+        g.strokeStyle = haze;
+        g.globalAlpha = 0.5;
+        g.lineWidth = Math.max(3, this.dpr * 6);
+        g.stroke();
+        g.globalAlpha = 1;
+        g.lineWidth = Math.max(1.5, this.dpr * 1.6);
         g.stroke();
       }
     };
 
     // three ranges, the far one palest — haze is the whole depth cue
-    ridge(H * 0.120, H * 0.078, ART.far, 1.3, 2.6, 'rgba(206,222,229,0.34)');
-    ridge(H * 0.152, H * 0.068, ART.mid, 4.7, 3.4, 'rgba(178,203,212,0.24)');
-    ridge(H * 0.192, H * 0.056, ART.near, 8.1, 4.6, 'rgba(126,156,164,0.18)');
+    ridge(H * 0.120, H * 0.078, ART.far.top, ART.far.base, 1.3, 2.6, ART.far.haze);
+    ridge(H * 0.152, H * 0.068, ART.mid.top, ART.mid.base, 4.7, 3.4, ART.mid.haze);
+    ridge(H * 0.192, H * 0.056, ART.near.top, ART.near.base, 8.1, 4.6, ART.near.haze);
 
-    // mist band: it OVERLAPS the base of the nearest range, which is what separates the
-    // ranges from each other and from the plot
-    for (let i = 0; i < 10; i++) {
-      const y = H * (0.158 + i * 0.0072);
-      const w = W * (0.55 + jitter(i, 7, 301) * 0.7);
+    /* Mist: it OVERLAPS the base of the nearest range, which is what separates the
+       ranges from each other and from the plot. It used to be ten 4 px strips with hard
+       top and bottom edges — that is the horizontal banding the owner can see, because
+       ten evenly spaced hard-edged bars is a ladder, not weather. Now four bands, each
+       built from a stack of sub-strips whose alpha follows a half-sine across the band's
+       height, so the edges dissolve and only the middle reads. */
+    for (let i = 0; i < 4; i++) {
+      const h = H * (0.016 + jitter(i, 5, 303) * 0.014);
+      const y0 = H * (0.150 + i * 0.014);
+      const w = W * (0.62 + jitter(i, 7, 301) * 0.55);
       const x = (W - w) * jitter(i, 3, 302);
-      const m = g.createLinearGradient(x, y, x + w, y);
-      m.addColorStop(0, 'rgba(228,238,241,0)');
-      m.addColorStop(0.5, ART.mist);
-      m.addColorStop(1, 'rgba(228,238,241,0)');
-      g.fillStyle = m;
-      g.fillRect(x, y, w, Math.max(1.5, H * 0.0055));
+      const sub = 12;
+      const [mr, mg, mb] = ART.mist;
+      for (let k = 0; k < sub; k++) {
+        const t = (k + 0.5) / sub;
+        const a = Math.sin(Math.PI * t);
+        const m = g.createLinearGradient(x, 0, x + w, 0);
+        m.addColorStop(0, `rgba(${mr},${mg},${mb},0)`);
+        m.addColorStop(0.5, `rgba(${mr},${mg},${mb},${(0.16 * a).toFixed(3)})`);
+        m.addColorStop(1, `rgba(${mr},${mg},${mb},0)`);
+        g.fillStyle = m;
+        g.fillRect(x, y0 + h * (k / sub), w, h / sub + 0.6);
+      }
     }
 
     // fade to the page backdrop so the plot sits on land, not on a horizon line
@@ -2194,11 +2281,37 @@ export class IsoPlotRenderer {
     for (const k of kinds) T[k] = (tint && tint[k]) || GROUND[k];
 
     const rgb = (c, k) => `rgb(${clamp(Math.round(c[0] * k), 0, 255)},${clamp(Math.round(c[1] * k), 0, 255)},${clamp(Math.round(c[2] * k), 0, 255)})`;
+    const rgba = (c, k, a) => `rgba(${clamp(Math.round(c[0] * k), 0, 255)},${clamp(Math.round(c[1] * k), 0, 255)},${clamp(Math.round(c[2] * k), 0, 255)},${a})`;
     const quad = (a, q1, q2, q3) => {
       g.beginPath();
       g.moveTo(a[0], a[1]); g.lineTo(q1[0], q1[1]); g.lineTo(q2[0], q2[1]); g.lineTo(q3[0], q3[1]);
       g.closePath();
       g.fill();
+    };
+
+    /* WHAT A BANK TILE STANDS IN (owner 11-02: "the brown border around the stream doesnt
+       make sense"). `bank` is a GROUND RULE - one tile either side of the burn where nothing
+       may be built or planted - and the bake was PAINTING it as a material: a flat tan
+       diamond, one tile wide, running the length of the water. On the incomer's plot that is
+       112 tan tiles against 56 water tiles, so the feature read as a dirt road with a blue
+       stripe down it (the lead's evidence, _shots/stream-parallel-bank.png; measured at zoom
+       2.8 in _shots/stream-bank-before-desk-near.png). A real stream bank on the mountain is
+       damp soil and shingle for a few centimetres and then veld, so the tile takes the tone
+       of the ground AROUND it and the damp is painted in as a band. The rule itself is
+       untouched: this is paint, and `bank` still refuses a bed and a building. */
+    const bankBase = (ax, ay) => {
+      const acc = [0, 0, 0];
+      let n = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+        const nx = ax + dx, ny = ay + dy;
+        if (nx < 0 || ny < 0 || nx >= p.w || ny >= p.h) continue;
+        const gk = p.ground[ny * p.w + nx];
+        if (gk === 'bank' || gk === 'water') continue;
+        const c = T[gk];
+        if (!c) continue;
+        acc[0] += c[0]; acc[1] += c[1]; acc[2] += c[2]; n++;
+      }
+      return n ? [Math.round(acc[0] / n), Math.round(acc[1] / n), Math.round(acc[2] / n)] : T.grass;
     };
 
     /* ---- ONE rut routine for every made surface ---------------------------------
@@ -2446,26 +2559,95 @@ export class IsoPlotRenderer {
             const nbL = lvlAt(ax, ay);
             if (nbL >= Math.max(t1, t2)) return;   // the ramp already meets it
             const zb = this._zL(nbL);
-            g.fillStyle = rgb(T.mud, k * (0.90 + jitter(x, y, 160) * 0.20));
-            quad(
-              project(ax, ay, this._zL(t1), bake),
-              project(bx, by, this._zL(t2), bake),
-              project(bx, by, zb, bake),
-              project(ax, ay, zb, bake),
-            );
+            const A = project(ax, ay, this._zL(t1), bake);
+            const B = project(bx, by, this._zL(t2), bake);
+            const C = project(bx, by, zb, bake);
+            const D = project(ax, ay, zb, bake);
+
+            /* VIS-08: this was ONE flat mud fill per tile, so the island's cut edge
+               read as untextured card — a solid colour with a hard top line. A cut
+               earth face has three things a flat fill cannot show: the turf rim
+               catching light at the very top, the face deepening into its own shadow
+               toward the base, and horizontal strata. All three are cheap here because
+               this is the ground bake, drawn once.
+               The base is BANK, not MUD: the first cut kept mud at k 0.44 and the shadow
+               ramp bottomed at (26,20,14), so the slab came out a black void — worse than
+               the flat card it replaced. A cut face is exposed subsoil, so it takes the
+               warmer earth and a shallower ramp. */
+            /* No per-tile tone jitter at all. Measured on two cuts: ±6% drew vertical
+               stripes one tile wide, and ±1.5% still showed as faint vertical edges.
+               A cut bank is one material, so the tone is the same everywhere. */
+            const kk = k;
+            /* The gradient has to run PERPENDICULAR TO THE RIM, not straight down.
+               Straight down restarts at every tile: the rim's top edge slopes 16 px per
+               tile, so tile 2 began its ramp where tile 1 was already a quarter of the
+               way down and the face came out as vertical panels. Iso-lines parallel to
+               the rim edge are continuous across a tile seam by construction — the two
+               tiles share the rim line, so they share the iso-line. */
+            const ex = B[0] - A[0], ey = B[1] - A[1];
+            const elen = Math.hypot(ex, ey) || 1;
+            let nx = -ey / elen, ny = ex / elen;
+            if ((D[0] - A[0]) * nx + (D[1] - A[1]) * ny < 0) { nx = -nx; ny = -ny; }
+            const depth = Math.abs((D[0] - A[0]) * nx + (D[1] - A[1]) * ny) || 1;
+            const grd = g.createLinearGradient(A[0], A[1], A[0] + nx * depth, A[1] + ny * depth);
+            grd.addColorStop(0, rgb(T.bank, kk * 1.18));
+            grd.addColorStop(0.22, rgb(T.bank, kk * 1.00));
+            grd.addColorStop(1, rgb(T.bank, kk * 0.60));
+            g.fillStyle = grd;
+            quad(A, B, C, D);
+
+            // everything below is clipped to the face so strata and grain never spill
+            g.save();
+            g.beginPath();
+            g.moveTo(A[0], A[1]); g.lineTo(B[0], B[1]);
+            g.lineTo(C[0], C[1]); g.lineTo(D[0], D[1]);
+            g.closePath();
+            g.clip();
+
+            // strata: three beds at CONSTANT fractions of the face, so two tiles at one
+            // level draw one continuous band. Jittering these per tile was the first
+            // attempt and it stepped the line 4 px at every tile edge — a dashed band.
+            for (const [f, a, w] of [[0.24, 0.20, 1.6], [0.50, 0.24, 2.2], [0.74, 0.16, 1.4]]) {
+              const yA = A[1] + (D[1] - A[1]) * f;
+              const yB = B[1] + (C[1] - B[1]) * f;
+              g.beginPath();
+              g.moveTo(A[0], yA); g.lineTo(B[0], yB);
+              g.strokeStyle = rgb(T.bank, kk * 0.64);
+              g.globalAlpha = a;
+              g.lineWidth = Math.max(1, this.dpr * w);
+              g.stroke();
+            }
+            // vertical grain: two short dark strokes, the roots and stones the cut went
+            // through. Drawn only in the lower half so the rim stays clean.
+            for (let s = 0; s < 2; s++) {
+              const fx = 0.18 + jitter(x, y, 162 + s) * 0.64;
+              const fy = 0.42 + jitter(x, y, 164 + s) * 0.30;
+              const x0 = A[0] + (B[0] - A[0]) * fx;
+              const y0 = A[1] + (B[1] - A[1]) * fx;
+              g.beginPath();
+              g.moveTo(x0, y0 + (D[1] - A[1]) * fy);
+              g.lineTo(x0, y0 + (D[1] - A[1]) * Math.min(0.98, fy + 0.26));
+              g.strokeStyle = rgb(T.bank, kk * 0.58);
+              g.globalAlpha = 0.09;
+              g.lineWidth = Math.max(1, this.dpr * 1.0);
+              g.stroke();
+            }
+            g.globalAlpha = 1;
+            g.restore();
+
             // the fall-rim: this wall's top edge is the edge of the world at that
             // level — stroke it dark so the drop reads from across the map
             g.beginPath();
-            g.moveTo(project(ax, ay, this._zL(t1), bake)[0], project(ax, ay, this._zL(t1), bake)[1]);
-            g.lineTo(project(bx, by, this._zL(t2), bake)[0], project(bx, by, this._zL(t2), bake)[1]);
+            g.moveTo(A[0], A[1]);
+            g.lineTo(B[0], B[1]);
             g.strokeStyle = rgb(T.mud, 0.75);
             g.lineWidth = 1;
             g.stroke();
             skirts++;
             rimLines++;
           };
-          wall(x + 1, y, x + 1, y + 1, cL[1], cL[2], 0.44);
-          wall(x, y + 1, x + 1, y + 1, cL[3], cL[2], 0.32);
+          wall(x + 1, y, x + 1, y + 1, cL[1], cL[2], 0.72);
+          wall(x, y + 1, x + 1, y + 1, cL[3], cL[2], 0.56);
         }
 
         /* ---- the tile itself: one quad through its four surface corners ---- */
@@ -2522,7 +2704,10 @@ export class IsoPlotRenderer {
           // per-tile jitter. Ground breathes; gravel does not.
           if (surf) shade = 0.96 + jitter(x, y, 152) * 0.07;
         }
-        g.fillStyle = rgb(T[col] || T.grass, shade);
+        // a bank tile is NOT painted bank: it takes the ground it stands in and the damp
+        // goes on top of that, tight against the water (see bankBase above)
+        const baseTone = kind === 'bank' ? bankBase(x, y) : (T[col] || T.grass);
+        g.fillStyle = rgb(baseTone, shade);
         quad(
           project(x, y, zc[0], bake),
           project(x + 1, y, zc[1], bake),
@@ -2572,7 +2757,22 @@ export class IsoPlotRenderer {
            the public road, not the player's drive.) ---- */
         if (surf) {
           const zMid = (zc[0] + zc[1] + zc[2] + zc[3]) / 4;
-          const links = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dy]) => surfOf(x + dx, y + dy));
+          /* A made surface joins a neighbour that is ALSO made - and the GATE.
+             `surfOf` reads p.track / p.gravel / p.mud, and the gate is none of those: it is
+             p.gate, a fence with an opening the public road runs through. So the one tile of
+             the run that touches the road had NO link, drew no bed and no wheel lines, and
+             stood as a lone flat diamond with its gate-facing edge cut dead straight
+             (owner 11-02: "fist mud track tile still has weird art" - reproduced with one mud
+             tile laid from the gate on seed 20261102, _shots/mud-first-alone.png; the same
+             dead end shows on the first GRAVEL tile, _shots/track-first-alone.png, so it is
+             the seam, not the mud). The sim already counts the gate as a connection
+             (siteworks.trackConnects: isGate || gateShoulder || track || mud); the bake now
+             agrees with it, and the drive runs out to the road instead of stopping short.
+             The stroke ends at the shared edge, so nothing is painted ON the gate tile -
+             the road there belongs to the public-road pass above. */
+          const atGate = (ax, ay) => !!p.gate && p.gate.x === ax && p.gate.y === ay;
+          const links = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+            .filter(([dx, dy]) => surfOf(x + dx, y + dy) || atGate(x + dx, y + dy));
           const depth = rutDepth(surf);
           const tone = surf === 'gravel' ? '52,48,42' : surf === 'mud' ? '44,32,18' : '74,55,32';
           g.lineCap = 'butt';
@@ -2604,15 +2804,25 @@ export class IsoPlotRenderer {
            other half nearest water also be water"). A bank tile that touches the
            stream paints its water-facing half as water, so the damp strip is half the
            tile wide instead of a full tan diamond that read as a dirt road along the
-           stream (playtest 10-25 crop). ---- */
+           stream (playtest 10-25 crop).
+
+           OWNER 11-02 finished the thought: "the brown border around the stream doesnt
+           make sense". Making the water half wet left the OTHER half a flat tan band one
+           tile wide on both sides, which is what a dirt road is. So the ground half now
+           takes the tone of the veld it stands in (bankBase, above) and carries a DAMP
+           BAND: wet soil and shingle tight against the water line, gone by the far edge.
+           `bank` is still a ground rule - nothing is built or planted on it - only the
+           paint moved. */
         if (kind === 'bank') {
           const sides2 = [
-            [1, 0, [[0.5, 0], [1, 0], [1, 1], [0.5, 1]]],
-            [-1, 0, [[0, 0], [0.5, 0], [0.5, 1], [0, 1]]],
-            [0, 1, [[0, 0.5], [1, 0.5], [1, 1], [0, 1]]],
-            [0, -1, [[0, 0], [1, 0], [1, 0.5], [0, 0.5]]],
+            [1, 0, [[0.5, 0], [1, 0], [1, 1], [0.5, 1]], [[0, 0], [0.5, 0], [0.5, 1], [0, 1]]],
+            [-1, 0, [[0, 0], [0.5, 0], [0.5, 1], [0, 1]], [[0.5, 0], [1, 0], [1, 1], [0.5, 1]]],
+            [0, 1, [[0, 0.5], [1, 0.5], [1, 1], [0, 1]], [[0, 0], [1, 0], [1, 0.5], [0, 0.5]]],
+            [0, -1, [[0, 0], [1, 0], [1, 0.5], [0, 0.5]], [[0, 0.5], [1, 0.5], [1, 1], [0, 1]]],
           ];
-          for (const [dx, dy, hq] of sides2) {
+          const zMid = (zc[0] + zc[1] + zc[2] + zc[3]) / 4;
+          const stone = T.rock || [150, 148, 140];
+          for (const [dx, dy, hq, dry] of sides2) {
             const nx = x + dx, ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= p.w || ny >= p.h) continue;
             if (p.ground[ny * p.w + nx] !== 'water') continue;
@@ -2626,6 +2836,53 @@ export class IsoPlotRenderer {
               project(x + hq[3][0], y + hq[3][1], zc[3], bake),
             );
             g.restore();
+
+            /* the damp: a gradient along the axis from the water line (the tile's centre
+               line) to the far edge, so the wettest soil is where the water is and the
+               veld closes over it. Ends at zero alpha, so the tile's own base tone - the
+               ground around it - is what the far half is made of. */
+            const wet = project(x + 0.5, y + 0.5, zMid, bake);
+            const far = project(x + 0.5 - dx * 0.5, y + 0.5 - dy * 0.5, zMid, bake);
+            const grd = g.createLinearGradient(wet[0], wet[1], far[0], far[1]);
+            /* The stops are tight on purpose. The first cut ran the tint to the far edge
+               (0.18 alpha at 62% across) and the bank tile still showed as a band with a
+               straight line down it - the same complaint one shade lighter. Damp is where
+               the water is: soaked at the line, gone by the middle of the ground half. */
+            grd.addColorStop(0, rgba(T.bank, 0.66, 0.92));    // soaked, dark, at the water
+            grd.addColorStop(0.20, rgba(T.bank, 0.78, 0.58));
+            grd.addColorStop(0.42, rgba(T.bank, 0.90, 0.16));
+            grd.addColorStop(0.66, rgba(T.bank, 1, 0));       // gone: veld from here
+            g.fillStyle = grd;
+            quad(
+              project(x + dry[0][0], y + dry[0][1], zc[0], bake),
+              project(x + dry[1][0], y + dry[1][1], zc[1], bake),
+              project(x + dry[2][0], y + dry[2][1], zc[2], bake),
+              project(x + dry[3][0], y + dry[3][1], zc[3], bake),
+            );
+
+            /* shingle: the burn drops its stones where the water slows, so the pebbles
+               are a band against the water line, not a scatter over the tile. Six per
+               side from the cell's own jitter, so a re-bake puts them back in the same
+               place and the bank does not boil between zooms. */
+            for (let s = 0; s < 6; s++) {
+              const inIn = 0.05 + jitter(x, y, 180 + s) * 0.30;
+              const along = (jitter(x, y, 186 + s) - 0.5) * 0.62;
+              const [pxp, pyp] = project(x + 0.5 - dx * inIn + dy * along,
+                y + 0.5 - dy * inIn + dx * along, zMid, bake);
+              const rr = Math.max(0.9, bz * (0.8 + jitter(x, y, 192 + s) * 1.5));
+              g.beginPath();
+              g.ellipse(pxp, pyp + rr * 0.40, rr * 1.12, rr * 0.56, 0, 0, Math.PI * 2);
+              g.fillStyle = 'rgba(18,16,12,0.26)';
+              g.fill();
+              g.beginPath();
+              g.ellipse(pxp, pyp, rr, rr * 0.70, 0, 0, Math.PI * 2);
+              g.fillStyle = rgb(stone, 0.78 + jitter(x, y, 198 + s) * 0.20);
+              g.fill();
+              g.beginPath();
+              g.ellipse(pxp - rr * 0.20, pyp - rr * 0.22, rr * 0.52, rr * 0.34, 0, 0, Math.PI * 2);
+              g.fillStyle = rgb(stone, 1.18);
+              g.fill();
+            }
           }
         }
 
@@ -2781,7 +3038,12 @@ export class IsoPlotRenderer {
          across (the perpendicular distance between two adjacent grid lines), so the
          body is 0.46 and the muddy shoulder 0.62 — the stream now occupies exactly
          its own tile, and the bank sits inside the neighbour's edge. */
-      strokePath(rgb(T.bank, 0.92), TW * bz * 0.62);         // muddy shoulder
+      /* The shoulder is a CONTACT line, not the bank: it is 0.08 tile widths of stroke
+         either side of the water body, and the damp itself is painted on the bank tiles
+         now (see the half-bank block). At the old k 0.92 it was the brightest tan on the
+         map and it drew over that damp work, so the band the owner objected to partly
+         came from here too. Wet soil, not dry sand. */
+      strokePath(rgb(T.bank, 0.74), TW * bz * 0.62);         // muddy shoulder
       strokePath(rgb(T.water, 0.97), TW * bz * 0.46);        // the water body
       if (groundTexState === 'ready' && groundTex.water) {
         const wpat = this._groundPattern(g, 'water', bz);
@@ -3074,32 +3336,71 @@ export class IsoPlotRenderer {
         const conn = connections(f.x, f.y);
         ctx.save();
         ctx.lineCap = 'round';
+        /* The fence's MATERIAL, taken off the gate itself rather than invented: gate.png
+           is grey-weathered timber, dominant body (112,112,96), lit (150,150,132), shadow
+           (72,72,58). The fence was warm tan #7a5c32 on #5d4a2e posts — a different
+           material standing in the same line as the gate, which is what "fence style
+           should match the gate" means when you look at the two together.
+           HEIGHT IS NOT TOUCHED. FENCE_PX is a measured decision, not a guess: 12.8 px
+           per metre puts the 23 px post at 1.80 m, the shortest height whose three lines
+           still land 2.4 device px apart at fit zoom (1.5 m measured as a 1.8 px smudge),
+           and the gate's 16.4 px of ink clears the 16 px top rail. See frame 15 of
+           tools/asset-review.html for the study. Only the shading is new. */
+        const FT = { body: '#70705f', lit: '#8d8b78', dark: '#4a493a', wire: 'rgba(198,194,176,0.55)' };
         for (const e of this._fenceEdge(f.x, f.y, conn)) {
           const [A, B] = edgeVerts(f.x, f.y, e);
           const a = vert(A[0], A[1]), b = vert(B[0], B[1]);
-          ctx.strokeStyle = '#7a5c32';
-          ctx.lineWidth = Math.max(1, 2.2 * s);
+          // a rail is a rounded timber, so it gets three passes: the shadow under it, the
+          // body, and the lit arris along the top. One flat stroke was the whole complaint.
+          const band = (lift, wpx, col) => {
+            ctx.strokeStyle = col;
+            ctx.lineWidth = Math.max(1, wpx * s);
+            ctx.beginPath();
+            ctx.moveTo(a[0], a[1] - lift * s);
+            ctx.lineTo(b[0], b[1] - lift * s);
+            ctx.stroke();
+          };
           for (const hh of FENCE_PX.rails) {
-            ctx.beginPath();
-            ctx.moveTo(a[0], a[1] - hh * s);
-            ctx.lineTo(b[0], b[1] - hh * s);
-            ctx.stroke();
+            band(hh + 0.7, 2.2, FT.dark);
+            band(hh, 2.4, FT.body);
+            band(hh - 0.7, 0.55, FT.lit);
           }
-          ctx.strokeStyle = 'rgba(205,196,175,0.6)';
-          ctx.lineWidth = Math.max(0.6, 0.8 * s);
-          ctx.beginPath();
-          ctx.moveTo(a[0], a[1] - FENCE_PX.wire * s);
-          ctx.lineTo(b[0], b[1] - FENCE_PX.wire * s);
-          ctx.stroke();
-          // posts cap the rails at both vertices; a shared vertex is drawn twice, which
-          // is invisible and cheaper than a de-dupe pass
-          ctx.strokeStyle = '#5d4a2e';
-          ctx.lineWidth = Math.max(2, 3 * s);
+          band(FENCE_PX.wire, 0.8, FT.wire);
+          /* posts cap the rails at both vertices; a shared vertex is drawn twice, which
+             is invisible because the two passes are identical and coincident. Tapered,
+             lit on the north-west face, shadowed on the south-east, with a lit top cap —
+             the same three-tone split the painted buildings use. */
           for (const v of [a, b]) {
+            const H = FENCE_PX.post * s;
+            const wb = 3.2 * s, wt = 2.4 * s;
             ctx.beginPath();
-            ctx.moveTo(v[0], v[1]);
-            ctx.lineTo(v[0], v[1] - FENCE_PX.post * s);
-            ctx.stroke();
+            ctx.moveTo(v[0] - wb / 2, v[1]);
+            ctx.lineTo(v[0] + wb / 2, v[1]);
+            ctx.lineTo(v[0] + wt / 2, v[1] - H);
+            ctx.lineTo(v[0] - wt / 2, v[1] - H);
+            ctx.closePath();
+            ctx.fillStyle = FT.body;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(v[0] - wb / 2, v[1]);
+            ctx.lineTo(v[0] - wb / 2 + wb * 0.40, v[1]);
+            ctx.lineTo(v[0] - wt / 2 + wt * 0.40, v[1] - H);
+            ctx.lineTo(v[0] - wt / 2, v[1] - H);
+            ctx.closePath();
+            ctx.fillStyle = FT.lit;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(v[0] + wb * 0.30, v[1]);
+            ctx.lineTo(v[0] + wb / 2, v[1]);
+            ctx.lineTo(v[0] + wt / 2, v[1] - H);
+            ctx.lineTo(v[0] + wt * 0.30, v[1] - H);
+            ctx.closePath();
+            ctx.fillStyle = FT.dark;
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(v[0], v[1] - H, wt * 0.52, Math.max(0.6, wt * 0.26), 0, 0, Math.PI * 2);
+            ctx.fillStyle = FT.lit;
+            ctx.fill();
           }
         }
         ctx.restore();
@@ -3287,15 +3588,26 @@ export class IsoPlotRenderer {
             const day = (this.h && this.h.day) || 1;
             const left = (a.doneDay || 0) - day;
             /* THE SITE COVERS THE GROUND IT RESERVES. `site_early`/`site_late` are fitted to a
-               2x2 footprint (128 px of ground), and this branch uses them for ANY unbuilt
+               2x2 footprint (128 px of ground), and this branch used them for ANY unbuilt
                accom - so a 4x3 camp reserved 224 px and painted 128 of them, leaving the front
                half of the survey bare while the player was paying for it (measured in
                tools/asset-review.html frame 20: 156 px painted into a 493 px reservation at
                zoom 2.2). Scaling by (fw+fph)/4 keeps the plate's proportions - it is the same
-               symmetric diamond, drawn larger - and leaves every 2x2 rung at exactly 1.0, so
-               house and cabin are untouched. A 4x3 gets 1.75. */
-            const siteSpan = (af[0] + af[1]) / 4;
-            drawSprite(ctx, left > 1 ? 'site_early' : 'site_late', this.cam.zoom * this.dpr * siteSpan);
+               symmetric diamond, drawn larger - and leaves every 2x2 rung at exactly 1.0.
+               A 4x3 got 1.75.
+
+               OWNER 11-02: "campsite construction graphic cant be a concrete foundation
+               graphic", and the scaled plate is exactly that. Drawing a house's footing ring
+               1.75 times larger does not make it a camp site, it makes it a bigger house
+               foundation - and on the camp's last day the rung became a timber-framed building
+               with a corrugated roof on a concrete slab (_shots/camp-site-before-early.png,
+               _shots/camp-site-before-late.png). So the sprite is now chosen by UNIT KIND
+               (sprites.js accomSiteSprite): the camp has its own cleared-ground stages painted
+               at its own [4,3] diamond, which need no scaling, and every other rung keeps the
+               house plate scaled by (fw+fph)/4 exactly as it does today. */
+            const site = accomSiteSprite(a.kind, left > 1);
+            const siteSpan = site.own ? 1 : (af[0] + af[1]) / 4;
+            drawSprite(ctx, site.key, this.cam.zoom * this.dpr * siteSpan);
           }
           ctx.restore();
         });

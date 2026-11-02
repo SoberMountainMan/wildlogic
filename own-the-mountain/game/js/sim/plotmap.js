@@ -426,6 +426,9 @@ function gateOnEdge(p, side) {
     const x = horizontal ? i : fixed, y = horizontal ? fixed : i;
     if (p.ground[idx(p, x, y)] === 'water') continue;      // a gate in the stream is no gate
     let score = 0;
+    // The pick is left exactly as it was: relocating a gate that already stands on flat
+    // ground would move the player's start for no reason. The slope case is handled after
+    // the pick, by `gradeGateSite`, which only ever touches a gate that is not flat.
     for (let d = -2; d <= 2; d++) {
       const nx = horizontal ? i + d : x, ny = horizontal ? y : i + d;
       if (!inBounds(p, nx, ny)) continue;
@@ -443,6 +446,56 @@ function gateOnEdge(p, side) {
   }
   const i = best ? best.i : Math.floor(len / 2);
   return horizontal ? { x: i, y: fixed, side } : { x: fixed, y: i, side };
+}
+
+/**
+ * The gate must stand on ground a vehicle can stop on (owner ruling 11-02: "roads should
+ * not be allowed to run sideways on slopes. therefore gate cannot be on a slope"). Edge
+ * selection prefers a flat tile, but an edge that offers none used to hand back a slope
+ * anyway. Grade it here exactly the way the player's bulldozer grades ground - the modal
+ * level of the tiles around it, or a fill to the highest ground ringing it - and only
+ * commit a level that actually leaves the gate tile flat. The trial runs on a copy,
+ * because `flowLevels` clamps neighbours too: a failed attempt must not leave its
+ * footprints behind. A plot with no usable gate is unplayable, so when neither level
+ * delivers, the gate stays where it is and the sweep test counts that case rather than
+ * pretending it cannot happen.
+ */
+function gradeGateSite(p) {
+  const g = p.gate;
+  if (!g || !Array.isArray(p.level) || tileFlat(p, g.x, g.y)) return false;
+  const gi = idx(p, g.x, g.y);
+  const nb = [];
+  const ring = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = g.x + dx, ny = g.y + dy;
+      if (!inBounds(p, nx, ny)) continue;
+      const lv = p.level[ny * p.w + nx];
+      ring.push(lv);
+      if (dx && dy) continue;
+      nb.push(lv);
+    }
+  }
+  const tally = new Map();
+  for (const lv of nb) tally.set(lv, (tally.get(lv) || 0) + 1);
+  let mode = null;
+  for (const [lv, n] of tally) {
+    if (mode === null || n > tally.get(mode) || (n === tally.get(mode) && lv < mode)) mode = lv;
+  }
+  const candidates = [mode, ring.length ? Math.max(...ring) : null];
+  for (const lv of candidates) {
+    if (lv == null) continue;
+    const trial = p.level.slice();
+    trial[gi] = lv;
+    const sim = { w: p.w, h: p.h, level: trial };
+    flowLevels(sim);
+    if (!tileFlat(sim, g.x, g.y)) continue;
+    p.level = sim.level;
+    for (let i = 0; i < p.level.length; i++) p.height[i] = p.level[i] * LEVEL_M;
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -560,11 +613,22 @@ export function makePlot(spec, gameSeed = null) {
 
   // --- water ---
   if (water === 'stream') {
-    const vertical = rng() > 0.5;
-    const at = Math.floor((vertical ? w : h) * (0.3 + rng() * 0.4));
-    p.stream = { vertical, at, width: 1 };
+    /* OWNER RULING 11-02: "the stream cant be perpendicular to main road, must run
+       parallel on map, so one has to move." The road lies along the edge the gate stands
+       on, so the stream shares that edge's axis: a gate on the W or E frontage means a
+       north-south road and a north-south stream; N or S means east-west. It used to be a
+       coin toss against the road, which is why plots showed up with the burn crossing the
+       drive at right angles.
+       The coin is still DRAWN - everything after it (every tree) rolls off this stream of
+       numbers, and skipping a draw would re-roll the forest for no reason - and it now
+       buys something real instead: the meander phase, so two plots no longer run the same
+       sine wave in lockstep. */
+    const phase = rng() * Math.PI * 2;
+    const vertical = gateSide === 'W' || gateSide === 'E';
+    const at = Math.floor((vertical ? h : w) * (0.3 + rng() * 0.4));
+    p.stream = { vertical, at, width: 1, phase };
     for (let i = 0; i < (vertical ? h : w); i++) {
-      const wobble = Math.round(Math.sin(i * 0.35) * 1.2);
+      const wobble = Math.round(Math.sin(i * 0.35 + phase) * 1.2);
       const c = at + wobble;
       for (let d = -1; d <= 1; d++) {
         const x = vertical ? c + d : i, y = vertical ? i : c + d;
@@ -799,6 +863,14 @@ export function makePlot(spec, gameSeed = null) {
     }
     p.buildings.push({ kind: 'house', x: cx, y: cy });
   }
+
+  // --- the gate must stand on flat ground (owner ruling 11-02). LAST, deliberately:
+  //     the clearing pass above already grades the yard, and on the canonical three the
+  //     gate ends up flat by that work alone - grading here would move plots that never
+  //     needed moving (measured: the sites hash moved when it ran early). What is left
+  //     for this pass is the rare edge where nothing flat exists at all: 8 of 200
+  //     generated sites. Runs before the water table so the table reads graded ground.
+  gradeGateSite(p);
 
   // --- the water table (TERRAIN-SPEC §7, owner 2026-10-21: "would dopping to a
   //     certain level later fill a dam, or must it be a stream already?" — no stream

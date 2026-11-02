@@ -13,7 +13,7 @@
 // The household argument is OPTIONAL and last. Without one the tile is still laid and the
 // cost is returned but not charged — that keeps the geometry testable on a bare plot.
 
-import { steep, flowLevels, waterTableOf, LEVEL_M } from './plotmap.js';
+import { steep, flowLevels, waterTableOf, tileFlat, LEVEL_M } from './plotmap.js';
 import { money } from './fmt.js';   // one money formatter for every log line (fmt.js)
 
 export const COST = {
@@ -89,8 +89,11 @@ export function trackConnects(p, x, y) {
   return ADJ.some(([dx, dy]) => trackAt(p, x + dx, y + dy) || mudAt(p, x + dx, y + dy));
 }
 
-/** A fence connects to the gate (or its shoulders), to fence beside it, or to track or
-    mud beside it. */
+/** A fence line reads as a run when each post touches fence, track or mud beside it, or
+    the gate's shoulders. This describes what a CONNECTED run looks like - it has not
+    gated placement since the owner's ruling of 11-02 ("fence shouldnt need to start at
+    gate"); `fenceRefuse` is the only permission rule. Kept because the boundary-ring
+    reading and the tests still ask what touches what. */
 export function fenceConnects(p, x, y) {
   if (!p.gate) return true;
   if (isGate(p, x, y) || gateShoulder(p, x, y)) return true;
@@ -104,6 +107,51 @@ export function fenceConnects(p, x, y) {
    More expensive per tile, but it is yours, it is visible, and a building beside it pays
    no surcharge at all (see buildAccom in tourism.js). */
 
+/** The fall THROUGH a tile on each axis, in levels: `x` is the difference between the
+    east and west neighbours, `y` between north and south. Edge tiles contribute their own
+    level, so a boundary never invents a slope. */
+export function fallAxes(p, x, y) {
+  const lv = (cx, cy) => (inBounds(p, cx, cy) ? p.level[cy * p.w + cx] : p.level[y * p.w + x]);
+  return { x: Math.abs(lv(x + 1, y) - lv(x - 1, y)), y: Math.abs(lv(x, y + 1) - lv(x, y - 1)) };
+}
+
+const SIDEWAYS = 'that runs sideways on the slope — a vehicle would roll over; come at the hill up or down it, or flatten a pad and cross that';
+const NO_TURN = 'a vehicle cannot turn on a slope — straighten the run, or turn it on flat ground';
+
+/** OWNER RULING 11-02, TT's own rule: "car can go up and down a slope but not sideways,
+ *  it would roll over." A tile may be laid ALONG an axis only when that axis falls at
+ *  least as much as the other one; ground with no fall at all steers anywhere, which is
+ *  what makes this a rollover ban and not a slope ban.
+ *  TT's SECOND road rule, taken now rather than reinvented later: a slope tile carries a
+ *  straight run only - a direction change belongs on flat ground. `turn` says the run is
+ *  changing axis AT this tile, which only the drag tool can know.
+ *  `axis` is the direction the RUN is travelling ('x' or 'y'). Pass null for a single
+ *  click with no run behind it: then the axis is whatever the tile is being joined to -
+ *  the gate, its shoulders, or track already down - and the click is legal when at least
+ *  one of those arrivals is legal, so a road can still be extended from either side but
+ *  cannot be walked sideways along the contour tile by tile.
+ *  The level seat measured this reading (`dominant`) on 150 plots including all three
+ *  canonical lives and all 30 catalog sites: every building pad that is reachable today
+ *  stays reachable. The stricter reading (refuse unless the cross-fall is exactly zero)
+ *  strands the Stayed plot's 117 pads outright and is NOT implemented. */
+export function sidewaysRefuse(p, x, y, axis = null, turn = false) {
+  const fall = fallAxes(p, x, y);
+  if (!fall.x && !fall.y) return '';                  // flat ground goes anywhere, and turns
+  const legal = (a) => fall[a] >= fall[a === 'x' ? 'y' : 'x'];
+  if (turn) return NO_TURN;                           // a slope takes a straight run, nothing else
+  if (axis === 'x' || axis === 'y') return legal(axis) ? '' : SIDEWAYS;
+  const arrivals = [];
+  for (const [dx, dy] of ADJ) {
+    const nx = x + dx, ny = y + dy;
+    if (!inBounds(p, nx, ny)) continue;
+    if (isGate(p, nx, ny) || gateShoulder(p, nx, ny) || trackAt(p, nx, ny) || mudAt(p, nx, ny)) {
+      arrivals.push(dx ? 'x' : 'y');
+    }
+  }
+  if (!arrivals.length) return '';                    // disconnected: trackConnects refuses, and says why
+  return arrivals.some(legal) ? '' : SIDEWAYS;
+}
+
 /**
  * Lay one track tile. Laying over an existing MUD tile converts it — the mud is not
  * credited (the owner prices earthworks, not good intentions): the full H$250 is paid
@@ -112,8 +160,10 @@ export function fenceConnects(p, x, y) {
  * @param {number} x
  * @param {number} y
  * @param {object} [h] household to bill (optional)
+ * @param {string} [kind] 'dirt' or 'gravel'
+ * @param {string|null} [axis] the direction the run is travelling, for the sideways rule
  */
-export function layTrack(p, x, y, h, kind = 'dirt') {
+export function layTrack(p, x, y, h, kind = 'dirt', axis = null, turn = false) {
   initWorks(p);
   const roadKind = kind === 'gravel' ? 'gravel' : 'dirt';
   if (!inBounds(p, x, y)) return err('off the plot');
@@ -127,6 +177,8 @@ export function layTrack(p, x, y, h, kind = 'dirt') {
   if (!trackConnects(p, x, y)) {
     return err('track has to start at the gate and run tile by tile — that tile does not touch the track');
   }
+  const sideways = sidewaysRefuse(p, x, y, axis, turn);
+  if (sideways) return err(sideways);
   const overMud = mudAt(p, x, y);
   const cost = COST.track;
   if (h && h.cash < cost) return err(`track costs ${money(cost)} a tile — you have ${money(Math.round(h.cash))}`);
@@ -155,7 +207,7 @@ export function layTrack(p, x, y, h, kind = 'dirt') {
  * listed and the surcharge is cancelled — and every rain day on it is a gamble.
  * Laying track over a mud tile converts it at full price (see layTrack).
  */
-export function layMud(p, x, y, h) {
+export function layMud(p, x, y, h, axis = null, turn = false) {
   initWorks(p);
   if (!inBounds(p, x, y)) return err('off the plot');
   if (groundAt(p, x, y) === 'water') return err('you cannot push mud through water — a culvert is not in the budget');
@@ -167,6 +219,10 @@ export function layMud(p, x, y, h) {
   if (!trackConnects(p, x, y)) {
     return err('the mud has to start at the gate and run tile by tile — that tile does not touch the track');
   }
+  // The same rollover rule as track (owner ruling 11-02): mud is the cheap surface, not
+  // a licence to run sideways along the contour.
+  const sideways = sidewaysRefuse(p, x, y, axis, turn);
+  if (sideways) return err(sideways);
   const cost = COST.mud;
   if (h && h.cash < cost) return err(`mud track costs ${money(cost)} a tile — you have ${money(Math.round(h.cash))}`);
   p.mud.push({ x, y });
@@ -208,18 +264,28 @@ export function removeTrack(p, x, y, h) {
   return ok('track removed', { x, y, tiles: p.track.length });
 }
 
+/** The one place the fence rule is written. '' means a post may stand here; anything
+    else is the sentence the verb will refuse with, so the popup row and `layFence` can
+    never disagree (the pattern `plantSay` set: a reason the page hands to the renderer
+    rather than a second copy of the rule).
+    OWNER RULING 11-02: "fence shouldnt need to start at gate." A post is bought per
+    tile, so it goes where the player puts it; what remains are the physical blocks -
+    water, the gate itself, and ground already holding a post. */
+export function fenceRefuse(p, x, y) {
+  initWorks(p);
+  if (!inBounds(p, x, y)) return 'off the plot';
+  if (groundAt(p, x, y) === 'water') return 'a fence in the stream is a fence the river takes';
+  // The gate tile is never a placeable one (owner live play 10-28: a fence could be laid
+  // across the only road in). It stays a legal ENDPOINT for a run - see fenceConnects.
+  if (isGate(p, x, y)) return 'that is the gate — a fence across it bars the only road in';
+  if (fenceAt(p, x, y)) return 'there is already a fence on that tile';
+  return '';
+}
+
 export function layFence(p, x, y, h) {
   initWorks(p);
-  if (!inBounds(p, x, y)) return err('off the plot');
-  if (groundAt(p, x, y) === 'water') return err('a fence in the stream is a fence the river takes');
-  // The gate tile is a CONNECT point, never a placeable one (owner live play 10-28: a
-  // fence could be laid over the gate). fenceConnects counts it so runs can begin here;
-  // the placement itself would bar the only road in.
-  if (isGate(p, x, y)) return err('that is the gate — a fence across it bars the only road in');
-  if (fenceAt(p, x, y)) return err('there is already a fence on that tile');
-  if (!fenceConnects(p, x, y)) {
-    return err('a fence has to run from the gate or from fence you have already set — that tile touches neither');
-  }
+  const why = fenceRefuse(p, x, y);
+  if (why) return err(why);
   const cost = COST.fence;
   if (h && h.cash < cost) return err(`fence costs ${money(cost)} a tile — you have ${money(Math.round(h.cash))}`);
   p.fence.push({ x, y });
@@ -314,7 +380,49 @@ export function flatten(p, x, y, w, hgt, h) {
   // building site across a step. A SINGLE tile grades to its neighbours' modal level
   // (§6): protrusions and potholes pull into the platform they lean on. A straight step
   // through a one-tile-wide cut cannot move — grade a block instead.
-  const target = tiles.length === 1 ? mode(tiles[0].x, tiles[0].y) : blockMode(tiles);
+  /* FLATTEN MUST DELIVER THE GROUND IT BILLS FOR (owner live play 11-01: the single-tile
+     row took H$1 300, logged "Flattened.", and left the tile reading "slope — takes
+     track, not buildings"). The old cut went to the MODAL neighbour level, and on the far
+     side of a step that level IS the tile's own level, so nothing moved and the player
+     paid for nothing. `tileFlat` is the rule every bed and building uses — no neighbour,
+     square or diagonal, may stand higher — so a level is now accepted only when every
+     tile in the request still passes it AFTER the flow pass. Two candidates are tried:
+     the cut (what a blade does) and a fill up to the highest ground ringing the request
+     (what "Raise the ground" does, and the only way to beat a step beside you). When
+     neither delivers flat ground the verb refuses with the reason and charges nothing.
+     The price still counts tiles not yet graded, exactly as the drag preview quotes. */
+  const wanted = new Set(tiles.map((t) => `${t.x},${t.y}`));
+  const ringMax = () => {
+    let m = -Infinity;
+    for (const t of tiles) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = t.x + dx, ny = t.y + dy;
+          if (!inBounds(p, nx, ny) || wanted.has(`${nx},${ny}`)) continue;
+          m = Math.max(m, p.level[ny * p.w + nx]);
+        }
+      }
+    }
+    return m;
+  };
+  /** Would grading every requested tile to `lv` actually leave flat, buildable ground? */
+  const delivers = (lv) => {
+    if (lv == null || !Number.isFinite(lv)) return false;
+    const scratch = { w: p.w, h: p.h, level: p.level.slice() };
+    for (const t of tiles) scratch.level[t.y * p.w + t.x] = lv;
+    flowLevels(scratch);
+    return tiles.every((t) => tileFlat(scratch, t.x, t.y));
+  };
+  const cut = tiles.length === 1 ? mode(tiles[0].x, tiles[0].y) : blockMode(tiles);
+  const fill = ringMax();
+  const target = delivers(cut) ? cut : delivers(fill) ? fill : null;
+  if (target === null) {
+    const top = Math.max(...tiles.map((t) => p.level[t.y * p.w + t.x]));
+    return err(fill > top + 1
+      ? 'the ground beside this stands more than a level higher — flatten a block that takes in the higher ground as well'
+      : 'nothing the blade can move here — this ground already sits at the level around it, and the slope is the tile above; flatten a block that takes in the higher ground');
+  }
   const targets = tiles.map((t) => {
     const cur = p.level[t.y * p.w + t.x];
     return { ...t, target, moved: target !== cur ? 1 : 0 };

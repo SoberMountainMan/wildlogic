@@ -533,8 +533,59 @@ export function initTourism(h) {
 
 /* ---- the ladder's own verbs ---- */
 
-/** Build a facility. Same rhythm as a unit: paid now, ready in buildDays. */
-export function buildFacility(h, kind) {
+/** Why THIS block of ground cannot take this facility. '' when it can.
+ *  One source for the ghost, the popup row and the verb - the `plantSay` pattern - so a
+ *  row can never promise ground the build will refuse. Owner ruling 11-02: "people should
+ *  always place things, thats the building sim", so the site is the player's choice and
+ *  the refusal has to be worth reading: it names the thing standing there.
+ *  The legality is the SAME set `freeFacilityTile` applies (dry, inside the boundary,
+ *  nothing standing on it, `steep` 0), so the auto-spiral and the player's ghost can
+ *  never disagree about a tile. */
+export function facilitySiteRefuse(h, kind, x, y) {
+  initTourism(h);
+  const p = h.plot;
+  if (!p || !p.ground) return 'this plot has no ground to build on';
+  const def = FACILITY[kind];
+  if (!def) return 'unknown facility';
+  const [fw, fh] = FACILITY_SITE[kind] || [1, 1];
+  if (!Number.isInteger(x) || !Number.isInteger(y)) return 'choose a tile for it first';
+  const taken = new Map();
+  const mark = (cx, cy, what) => { if (!taken.has(cx + ',' + cy)) taken.set(cx + ',' + cy, what); };
+  for (const b of p.buildings || []) {
+    for (let cx = b.x; cx < b.x + (b.fw || 1); cx++) for (let cy = b.y; cy < b.y + (b.fh || 1); cy++) mark(cx, cy, 'a building');
+  }
+  for (const t of p.trees || []) mark(t.x, t.y, 'a tree');
+  for (const b of h.beds || []) mark(b.x, b.y, 'a planting bed');
+  for (const v of h.hives || []) mark(v.x, v.y, 'a hive');
+  for (const a of h.accom || []) {
+    const [afw, afh] = accomFootprint(a.kind);
+    for (let cx = a.x; cx < a.x + Math.max(1, afw); cx++) {
+      for (let cy = a.y; cy < a.y + Math.max(1, afh); cy++) mark(cx, cy, ACCOM[a.kind].label.toLowerCase());
+    }
+  }
+  for (const b of h.facilityBuilds || []) {
+    if (b.x == null) continue;
+    for (let cx = b.x; cx < b.x + (b.fw || 1); cx++) {
+      for (let cy = b.y; cy < b.y + (b.fh || 1); cy++) mark(cx, cy, 'another facility site');
+    }
+  }
+  for (let cx = x; cx < x + fw; cx++) {
+    for (let cy = y; cy < y + fh; cy++) {
+      if (cx < 1 || cy < 1 || cx >= p.w - 1 || cy >= p.h - 1) return 'it needs ground inside the boundary, not on the edge';
+      if (p.ground[cy * p.w + cx] === 'water') return 'water stands there — choose dry ground';
+      const what = taken.get(cx + ',' + cy);
+      if (what) return `${what} stands there — clear it first`;
+      if (steep(p, cx, cy) !== 0) return 'too steep to build — flatten it first';
+    }
+  }
+  return '';
+}
+
+/** Build a facility. Same rhythm as a unit: paid now, ready in buildDays.
+ *  `x, y` are the player's chosen site (owner ruling 11-02: you site everything yourself).
+ *  Left out, the old spiral still places it - kept for saves and probes that predate the
+ *  ghost, not for the game's own buttons. */
+export function buildFacility(h, kind, x = null, y = null) {
   initTourism(h);
   const def = FACILITY[kind];
   if (!def) return err('unknown facility');
@@ -551,9 +602,16 @@ export function buildFacility(h, kind) {
   // invisible unplaced purchase and a block stranded across the mountain were both
   // measured defects (art probe 10-28); refusal with the reason is the third shape.
   const fp = FACILITY_SITE[kind] || null;
-  const site = fp ? freeFacilityTile(h, fp[0], fp[1]) : null;
-  if (fp && !site) {
-    return err(`no room beside your unit for the ${def.label.toLowerCase()} — clear the trees or flatten ground next to it first`);
+  let site = null;
+  if (x != null && y != null) {
+    const why = facilitySiteRefuse(h, kind, x, y);
+    if (why) return err(why);
+    site = { x, y };
+  } else if (fp) {
+    site = freeFacilityTile(h, fp[0], fp[1]);
+    if (!site) {
+      return err(`no room beside your unit for the ${def.label.toLowerCase()} — clear the trees or flatten ground next to it first`);
+    }
   }
   h.cash -= def.cost;
   h.facilityBuilds.push({

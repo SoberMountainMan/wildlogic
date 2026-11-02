@@ -479,14 +479,14 @@ import { SITE_BY_ID, lifeSpec } from './js/sim/sites.js';
 import {
   newHomestead, summary, endDay, plantBed, buyHive, harvest, sellAll, fell, buildTank, buyWater, hireCasual,
   waterOk, toJSON, fromJSON, BED, CROPS, DEFAULT_CROP, HIVE, TANK, WATER, FOOD, LABOUR, LIVING_PER_DAY, FUEL_PER_TRIP, bedSlots,
-  NATIVE_FINE,
+  NATIVE_FINE, yardSiteRefuse,
 } from './js/sim/homestead.js';
 import { sellFirewood, sellPoles, inFirewoodSeason, FIREWOOD, lumberOff } from './js/sim/firewood.js';
 import { ACCOM, buildAccom, patchRoad, patchCost, getCleaner, PATCH_COST, tourismSummary,
-  FACILITY, FACILITY_KINDS, buildFacility, setListed, setOpen,
+  FACILITY, FACILITY_KINDS, FACILITY_SITE, buildFacility, facilitySiteRefuse, setListed, setOpen,
   MARKET, rateFor, setRate, priceDemand, canPlaceAccom, accomFootprint, accomSurcharge, UNLISTED_ON_BUILD } from './js/sim/tourism.js';
 import { FAULTS, bookRepair } from './js/sim/handyman.js';
-import { COST, layTrack, layMud, layFence, removeFence, removeTrack, flatten, grade, dop, fenceConnects, FILL_PER_DAY,
+import { COST, layTrack, layMud, layFence, removeFence, removeTrack, flatten, grade, dop, fenceRefuse, FILL_PER_DAY,
   driveWithin, damEstimate, trackAt, mudAt, fenceAt } from './js/sim/siteworks.js';
 import { acceptOffer, refuseOffer, acceptContract, declineContract, oppose, stanceSummary } from './js/sim/company.js';
 import { companyVoiceSummary } from './js/sim/companyVoice.js';
@@ -615,6 +615,189 @@ function echoSimLog(fromLen) {
   return true;
 }
 
+/* PR-placement (owner ruling 11-02: "arming ghosts to place seems correct for all buildings
+   and placements... people should always place things, thats the building sim", and his live
+   play 10-28: "cant see water tank or how to place it. same with ablution block").
+   Which purchases the page ARMS A GHOST for instead of spending on the click: exactly the
+   kinds the SIM can put on a tile. The tank takes homestead.yardSiteRefuse; every key of
+   tourism.FACILITY_SITE is sited (ablution today, 2x1) and takes facilitySiteRefuse. A kind
+   with no footprint there is deliberately NOT in this table and keeps its old purchase path -
+   braai, fireplace, wifi, generator, solar and the driveway put nothing on the ground yet,
+   and a ghost over tiles that would then go empty is the same defect wearing a hat.
+   Labels, prices and day counts are read off the sim's own tables; nothing here types one. */
+const PLACEMENTS = {
+  tank: {
+    kind: 'tank',
+    // The one entry with no name in the sim (TANK carries cost/delivery/lumber only), so the
+    // words are the Farm row's own caption rather than a second source for a price or a day.
+    label: 'water tank',
+    fp: [1, 1],
+    cost: () => tankBill(),
+    days: 0,
+    exists: () => !!(h && h.water.tank),
+    say: (x, y) => yardSiteRefuse(h, x, y),
+    run: (x, y) => buildTank(h, x, y),
+  },
+  ...Object.fromEntries(Object.keys(FACILITY_SITE).map((k) => [k, {
+    kind: k,
+    label: FACILITY[k].label,
+    fp: FACILITY_SITE[k],
+    cost: () => FACILITY[k].cost,
+    days: FACILITY[k].buildDays,
+    exists: () => !!((h && h.facilities) || {})[k]
+      || ((h && h.facilityBuilds) || []).some((b) => b.kind === k && !b.built),
+    say: (x, y) => facilitySiteRefuse(h, k, x, y),
+    run: (x, y) => buildFacility(h, k, x, y),
+  }])),
+};
+
+/** Why the ghost will not sit on THIS tile, in words the player can act on.
+    The SIM's sentence leads (it owns the money and it names what stands there). Behind it the
+    page adds the two rules the ghost's own green/red verdict applies that the sim's yard and
+    facility checks leave out - the gate tile, a neighbouring building's whole footprint, a
+    standing unit, a reserved site, a fence post - so a red footprint is never silent.
+    Widening only ever ADDS a reason, and every reason it adds is a tile the map paints red
+    (so the click never reaches the verb) or a tile the verb itself refuses (so no money can
+    move). That is why the words can be this wide without ever contradicting the click. */
+function siteSay(P, x, y) {
+  const why = P.say(x, y);
+  if (why) return why;
+  const p = h && h.plot;
+  if (!p) return 'this plot has no ground to build on';
+  const covers = (ox, oy, w, ht) => x >= ox && x < ox + w && y >= oy && y < oy + ht;
+  const at = (o) => o.x === x && o.y === y;
+  if (p.gate && at(p.gate)) return 'that is the gate - keep the entrance clear';
+  for (const b of p.buildings || []) {
+    if (covers(b.x, b.y, b.fw || 1, b.fh || 1) && !at(b)) return 'a building stands there - clear it first';
+  }
+  for (const a of h.accom || []) {
+    const [w, ht] = accomFootprint(a.kind);
+    if (covers(a.x, a.y, Math.max(1, w), Math.max(1, ht))) {
+      return `${(ACCOM[a.kind] || {}).label ? ACCOM[a.kind].label.toLowerCase() : 'a unit'} stands there - clear it first`;
+    }
+  }
+  for (const b of (h.facilityBuilds || []).filter((q) => q.x != null)) {
+    if (covers(b.x, b.y, b.fw || 1, b.fh || 1)) return 'another reserved building site stands there';
+  }
+  if (fenceAt(p, x, y)) return 'a fence post stands there - pull it up first';
+  return '';
+}
+
+/** The tiles that would take this footprint, nearest the plot's middle first. The rule is the
+    sim's (`P.say`), the scan is the page's, and the tie breaks on scan order, so the same save
+    always arms on the same ground. */
+function legalSites(P, limit = 24) {
+  const p = h && h.plot;
+  if (!p || !p.ground) return [];
+  const cx = (p.w - 1) / 2, cy = (p.h - 1) / 2;
+  const sites = [];
+  for (let y = 0; y <= p.h - P.fp[1]; y++) {
+    for (let x = 0; x <= p.w - P.fp[0]; x++) {
+      if (P.say(x, y)) continue;
+      sites.push({ x, y, d: Math.abs(x + (P.fp[0] - 1) / 2 - cx) + Math.abs(y + (P.fp[1] - 1) / 2 - cy) });
+    }
+  }
+  sites.sort((a, b) => a.d - b.d || a.y - b.y || a.x - b.x);
+  return sites.slice(0, limit);
+}
+
+/** The ghost the verb last answered, so the tile it was standing on is not reported twice -
+    once by the verb and once by the canvas listener below. */
+let placementEcho = null;
+/** The last tile the canvas listener spoke about, so a pan that ends on a refused footprint
+    does not repeat a refusal the player has already been told. Reset with every new arm. */
+let reportedTile = null;
+
+/** Arm the placement for a tank or a sited facility: the same 1x1/2x1 footprint the house and
+    the cabins use, under the cursor, and NO money moves until a click lands on ground the sim
+    takes. Mirrors the house row (plot.html: `btn-house`), which armed a ghost for the roof for
+    the same reason: "buying" a building that then appears somewhere you never chose. */
+function armPlacement(kind) {
+  const P = PLACEMENTS[kind];
+  if (!P || !h) return;
+  // a second click on the row that is already armed stops it, like the drag tools and the
+  // crop rows do; the ghost itself also backs out on Escape and on right-click.
+  if (r.ghost && r.ghost.kind === kind) return disarmPlacement();
+  if (h.ended) return;
+  if (P.exists()) return log(`The ${P.label} is already on this plot - nothing was charged.`, 'bad');
+  const bill = P.cost();
+  if (h.cash < bill) {
+    return log(`A ${P.label} is ${money(bill)} and you have ${money(Math.round(h.cash))} - nothing was charged.`, 'bad');
+  }
+  if (typeof r._setGhost !== 'function') {
+    // ?view=top (the flat rollback renderer) never grew a ghost. Refuse the purchase instead
+    // of taking money for a building the player can neither see nor site.
+    return log('The flat map cannot show a placement - open the iso map to place it.', 'bad');
+  }
+  const sites = legalSites(P);
+  if (!sites.length) {
+    return log(`No ground inside your boundary will hold the ${P.label} yet - clear or flatten a site first.`
+      + ' Nothing was charged.', 'bad');
+  }
+  placementEcho = null;
+  reportedTile = null;
+  setMode('inspect');                     // a sidebar tool owns the click, and drops any other ghost
+  /* The ghost opens GREEN. The map's footprint test and the sim's site test are not the same
+     measurement - plotmap.tileFlat (which iso-render duplicates as _tileFlat) asks "is anything
+     higher next door", while tourism's facility rule asks steep() "is anything next door at all",
+     and the gate tile is the map's rule and not the sim's. So the page arms, reads the verdict
+     back through onGhost, and walks the next candidate until the two agree. Nothing is spent by
+     arming, so trying a tile costs the player nothing but a frame. */
+  for (const site of sites) {
+    r._setGhost(kind, site.x, site.y);
+    if (r.ghost && r.ghost.ok) break;
+  }
+  // none of them agreed: put it back on the nearest site the SIM accepted, where the hint can
+  // name what the map objects to, rather than parked on the last tile the loop tried.
+  if (r.ghost && !r.ghost.ok) r._setGhost(kind, sites[0].x, sites[0].y);
+  refresh();
+}
+
+/** Take a placement off the map. No sim call runs here, so no price, no lumber, no cash. */
+function disarmPlacement() {
+  if (r.ghost && typeof r._cancelGhost === 'function') r._cancelGhost();
+  placementEcho = null;
+  reportedTile = null;
+  refresh();
+}
+
+/** The click that lands on a ghost this page armed. Everything about the site and the money is
+    the SIM's decision, taken before it touches the purse (`buildTank` and `buildFacility` both
+    check the tile first, landed 11-02), so a refusal is a sentence and an unchanged bank. */
+function placeSite(P, x, y) {
+  placementEcho = { kind: P.kind, x, y };
+  const simFrom = h.log.length;
+  const res = P.run(x, y);
+  if (!res.ok) {
+    // The map said the footprint fits and the sim named a rule it does not carry (rock, a post,
+    // the boundary edge, a reserved site). Put the ghost back on the tile it was refused at, so
+    // the refusal sits on the map beside the hint line rather than only in the Log.
+    log(`${P.label} will not stand at ${x},${y} - ${res.msg} Nothing was charged.`, 'bad');
+    if (typeof r._setGhost === 'function') r._setGhost(P.kind, x, y);
+    refresh();
+    return;
+  }
+  sfx(VERB_SOUND.accom);   // a building going up: the same sound every other build verb has
+  echoSimLog(simFrom);     // the sim names the cost and the days; no page copy of it
+  save(); refresh();
+}
+
+/** The live caption for an armed tank/facility ghost. Reads as the owner asked for it: what is
+    happening, what it costs, when it is ready, and how to stop. */
+function placementHint(P, g) {
+  const why = siteSay(P, g.x, g.y);
+  const size = g.fp[0] * g.fp[1] > 1 ? ` - ${g.fp[0]}x${g.fp[1]} tiles` : '';
+  if (why || !g.ok) {
+    $('hint').textContent = `The ${P.label} will not stand at ${g.x},${g.y}: `
+      + (why || 'the map will not hold it there')
+      + ' - move it, or Esc to stop';
+    return;
+  }
+  const when = P.days > 0 ? `, ready in ${P.days} day${P.days === 1 ? '' : 's'} (day ${h.day + P.days})` : '';
+  $('hint').textContent = `Click a tile for the ${P.label} at ${g.x},${g.y}${size}`
+    + ` - ${money(P.cost())}${when}. Esc cancels.`;
+}
+
 // View selection: iso is the candidate default (ISO-PLAN.md), ?view=top rolls back to
 // the flat top-down renderer. Both implement the same public API.
 const useIso = params.get('view') !== 'top';
@@ -656,6 +839,11 @@ function tileAction(a) {
   } else if (a.kind === 'hive') {
     res = buyHive(h, a.x, a.y);
     line = 'Bought a hive.';
+  } else if (a.kind === 'accom' && PLACEMENTS[a.accom]) {
+    /* PR-placement: the renderer has one emit for a ghost click and it reports the rung's kind
+       under 'accom' (iso-render `_actAt`), so the page's tank/ablution ghost arrives here too.
+       Route it to the verb that owns the site - `buildAccom` has never heard of either. */
+    return placeSite(PLACEMENTS[a.accom], a.x, a.y);
   } else if (a.kind === 'accom') {
     simFrom = h.log.length;
     res = buildAccom(h, a.accom, a.x, a.y);
@@ -765,9 +953,19 @@ const r = new RClass($('map'), {
     unitKind: unitKind(),
     driveway: (x, y) => drivewaySurcharge(h.plot, x, y),
     // the fence's connectivity rule, so the tile menu can say WHY a post is refused
-    fenceOk: (x, y) => fenceConnects(h.plot, x, y),
-    // ACCOM footprints (verdict 5): the build menu and ghost read the sim's own table
-    footprints: Object.fromEntries(Object.keys(ACCOM).map((k) => [k, ACCOM[k].footprint])),
+    // Fences go where the player puts them (owner ruling 11-02: "fence shouldnt need to
+    // start at gate"). The row's legality AND its refusal sentence both come from the
+    // sim's single rule, so the popup can never promise what the verb will not do.
+    fenceOk: (x, y) => fenceRefuse(h.plot, x, y) === '',
+    fenceSay: (x, y) => fenceRefuse(h.plot, x, y),
+    // ACCOM footprints (verdict 5): the build menu and ghost read the sim's own table.
+    // PR-placement: the sited facilities join the same table, because the ablution block's 2x1
+    // is tourism.FACILITY_SITE's fact and not this page's to type - without it the renderer
+    // reads an unknown kind as 1x1 and draws half a block.
+    footprints: {
+      ...Object.fromEntries(Object.keys(ACCOM).map((k) => [k, ACCOM[k].footprint])),
+      ...FACILITY_SITE,
+    },
     // U8: the rung NAMES live in ACCOM as well. iso-render's BUILD_ITEMS used to hand-declare
     // them, and the caravan round just proved the cost — the sim said "stand" while the menu
     // still said "park". The literals stay as the standalone-probe fallback only.
@@ -821,6 +1019,34 @@ const r = new RClass($('map'), {
   // the ghost preview reports back so the hint line can coach the placement
   onGhost: ghostHint,
 });
+
+/* PR-placement - a click on a tile the map refuses never becomes a verb: iso-render's `_actAt`
+   moves the ghost instead of emitting, so the SIM is never asked and nothing would say why.
+   The owner's rule for a refusal is that it lands beside the action, in the notice tray - so the
+   page reports the sentence itself. This listener is registered after the renderer's own canvas
+   handlers (bound in its constructor at iso-render.js:335), which is what makes `r.ghost` the
+   POST-click verdict here. Touch prevents the compatibility click, so the tap path registers the
+   same check on touchend - and because a pan ends on touchend too, the tile is only ever
+   reported once: a gesture that left the ghost where it was says nothing new.
+   The echo is the other half of the dedupe: the verb already spoke for the tile it was placed
+   on (and re-armed it when the sim refused), so that tile is never reported twice. */
+function reportRefusedClick() {
+  const g = r.ghost;
+  const P = g && PLACEMENTS[g.kind];
+  if (!P) { reportedTile = null; return; }              // placed or disarmed: nothing to say
+  const key = `${g.kind},${g.x},${g.y}`;
+  const answered = !!placementEcho && placementEcho.kind === P.kind
+    && placementEcho.x === g.x && placementEcho.y === g.y;
+  placementEcho = null;
+  if (answered || reportedTile === key) { reportedTile = key; return; }
+  reportedTile = key;
+  const why = siteSay(P, g.x, g.y);
+  if (!why && g.ok) return;                             // the tile takes it: the click placed it
+  log(`${P.label} cannot stand at ${g.x},${g.y} - ${why || 'the map will not hold it there'}.`
+    + ' Move it, or press Esc to stop. Nothing was charged.', 'bad');
+}
+r.cv.addEventListener('click', reportRefusedClick);
+r.cv.addEventListener('touchend', reportRefusedClick);
 
 /** Rewrite a menu button's caption without touching its <small> price line. The rung names
     live in `tourism.ACCOM`, so no caption in this file is allowed to hand-type one. */
@@ -913,6 +1139,7 @@ function freeRoofSite() {
     been telling this seat about since the fence round. */
 function ghostHint(g) {
   if (!g) { $('hint').textContent = ''; return; }
+  if (PLACEMENTS[g.kind]) return placementHint(PLACEMENTS[g.kind], g);
   const d = ACCOM[g.kind];
   const label = d ? d.label : g.kind;
   const size = `${g.fp[0]}×${g.fp[1]}`;
@@ -977,6 +1204,13 @@ function load() {
 
 function setMode(m, kind) {
   mode = m;
+  /* A sidebar tool takes the click over, so a placement ghost has to come off FIRST: while the
+     renderer holds one, its footprint owns the hover highlight, the cursor and the click, and
+     the map would keep coaching a placement the player has already walked away from. The
+     renderer publishes `cancelPaint` but no cancel for the ghost, so this reaches the same
+     method the page already reaches to arm one (`_setGhost`); Escape and right-click in the
+     renderer land on the identical call. No sim call runs on this path - stopping is free. */
+  if (typeof r._cancelGhost === 'function' && r.ghost) r._cancelGhost();
   if (m === 'drag') {
     // the drag-build tool: the renderer owns the gesture, the sim owns every rule
     r.cancelPaint();
@@ -1010,10 +1244,27 @@ function setMode(m, kind) {
    One summary line, one sound, one save — not sixty log entries and sixty saves. */
 function layRun(path, kind) {
   let laid = 0, spent = 0, refused = 0, firstErr = '';
+  /* The sideways rule (owner ruling 11-02: "car can go up and down a slope but not
+     sideways") needs the direction the run is TRAVELLING, and a drag knows it: every
+     step leaves the tile before it. The first tile of a run has no step behind it, so it
+     passes null and the sim reads the axis off whatever the tile actually joins. A fence
+     takes no axis - posts are not vehicles. */
+  let prev = null;
+  let prevAxis = null;
   for (const [x, y] of path) {
+    let axis = null;
+    if (prev && kind !== 'fence') {
+      const dx = x !== prev[0], dy = y !== prev[1];
+      axis = dx && dy ? null : dx ? 'x' : dy ? 'y' : null;
+    }
+    // TT's second road rule, taken (owner ruling 11-02): a slope carries a straight run
+    // only, so the drag says when the run CHANGES axis and the sim refuses the corner.
+    const turn = !!axis && !!prevAxis && axis !== prevAxis;
     const res = kind === 'fence' ? layFence(h.plot, x, y, h)
-      : kind === 'mud' ? layMud(h.plot, x, y, h)
-        : layTrack(h.plot, x, y, h, kind === 'gravel' ? 'gravel' : 'dirt');
+      : kind === 'mud' ? layMud(h.plot, x, y, h, axis, turn)
+        : layTrack(h.plot, x, y, h, kind === 'gravel' ? 'gravel' : 'dirt', axis, turn);
+    prev = [x, y];
+    if (axis) prevAxis = axis;
     if (res && res.ok) { laid++; spent += res.cost || 0; }
     else { refused++; if (!firstErr) firstErr = (res && res.msg) || 'refused'; }
   }
@@ -1109,13 +1360,20 @@ function renderYard() {
     const d = FACILITY[k];
     const have = !!fac[k];
     const going = builds.find((b) => b.kind === k && !b.built);
+    /* PR-placement (owner live play 10-28: "click braai or generator etc and i says going up
+       but where?"): a kind with a footprint in the sim's FACILITY_SITE is a BUILDING the player
+       sites himself, so the row says the click arms a placement instead of spending, and the row
+       a ghost is standing on reads active the way the road and fence tools do. Kinds with no
+       footprint keep the purchase path and their `where` sentence. */
+    const sited = !!FACILITY_SITE[k];
     const sub = have ? 'built — no purchase needed' : going
       ? `going up · ready day ${going.doneDay} · ${Math.max(0, going.doneDay - h.day)}d left`
       : `${money(d.cost)} · ${d.buildDays}d · ready day ${h.day + d.buildDays}`
-        + (h.cash < d.cost ? ` · need ${money(d.cost - h.cash)} more` : '');
+        + (h.cash < d.cost ? ` · need ${money(d.cost - h.cash)} more` : '')
+        + (sited ? ` - click, then place it (${FACILITY_SITE[k][0]}x${FACILITY_SITE[k][1]} tiles)` : '');
     const running = `${d.monthly ? ' · ' + money(d.monthly) + '/mo' : ''}${d.fuelPerDay ? ' · fuel ' + money(d.fuelPerDay) + '/day' : ''}`;
     const location = d.where || (going && going.x != null ? `at tile ${going.x},${going.y}` : '');
-    html += `<button data-act="facility" data-kind="${k}" ${have || going || h.cash < d.cost || h.ended ? 'disabled' : ''}>${esc(d.label)} <small>${esc(sub + running)}${location ? '<br>' + esc(location) : ''}</small></button>`;
+    html += `<button data-act="facility" data-kind="${k}"${r.ghost && r.ghost.kind === k ? ' class="active"' : ''} ${have || going || h.cash < d.cost || h.ended ? 'disabled' : ''}>${esc(d.label)} <small>${esc(sub + running)}${location ? '<br>' + esc(location) : ''}</small></button>`;
   }
 
   // A home is not a rung. `ACCOM.house.capacity` is 0 and `MARKET.house` does not exist, so
@@ -1187,7 +1445,10 @@ function renderAttention() {
     const build = (h.facilityBuilds || []).find((b) => b.kind === 'ablution' && !b.built);
     html += `<p><b>No ablution block yet.</b> The camp takes no guests until it is built. `
       + (build ? `Already paid; ready day ${build.doneDay}. Wait for completion, then list the camp in Guests.`
-        : `Action needed: build the ${esc(FACILITY.ablution.label)} — ${money(FACILITY.ablution.cost)}, ${FACILITY.ablution.buildDays} days.`)
+        : `Action needed: build the ${esc(FACILITY.ablution.label)} — ${money(FACILITY.ablution.cost)}, ${FACILITY.ablution.buildDays} days. `
+          // PR-placement: the row arms a ghost now, so the advice names the second half of the
+          // click. The size is the sim's FACILITY_SITE, not a number typed here.
+          + `The row puts a ${FACILITY_SITE.ablution[0]}x${FACILITY_SITE.ablution[1]} ghost under the cursor - click the tiles it stands on.`)
       + '</p>' + guideButton('[data-act="facility"][data-kind="ablution"]', 'Windows → Guests → Bookings → Ablution block');
   }
   $('attention').hidden = !html;
@@ -1231,7 +1492,7 @@ function goalGuide(id, s) {
   switch (id) {
     case 'water': return {
       why: `Without water, the run ends after ${WATER.deathDays} dry days. A stream or tank completes this step.`,
-      how: 'Use Farm to build a filled tank; later buy deliveries when it runs low. Building chooses a yard tile automatically.',
+      how: `Use Farm - Build a water tank arms a ghost, and the stand goes where you click it.${h.water.tank ? '' : ' Nothing is spent until the tile accepts it.'} Later buy a delivery when it runs low.`,
       needs: `${water} Tank: ${money(TANK.cost)} + ${money(TANK.delivery)} delivery before any mill-lumber saving; today ${cash(tankBill())}.`,
       links: [[h.water.tank ? '#btn-water' : '#btn-tank', h.water.tank ? 'Farm → Buy water' : 'Farm → Build a water tank']],
     };
@@ -1635,6 +1896,9 @@ function refresh() {
   $('bedcount').textContent = `${s.beds} of ${s.slots} beds planted — past your own hands, hire a casual on a harvest day.`;
   $('lbl-hive').textContent = `${money(HIVE.cost)} · ${HIVE.honeyPerDay} kg/day in season`;
   $('lbl-tank').textContent = h.water.tank ? 'already have one' : `${money(tankBill())} delivered and filled, after any mill-lumber saving`
+    // PR-placement (owner 10-28: "cant see water tank or how to place it"): the row is a
+    // placement now, not a purchase, and the price line is where a player looks for the terms.
+    + ' - click, then place the stand on a tile'
     + (h.cash < tankBill() ? ` · need ${money(tankBill() - h.cash)} more` : '');
   $('lbl-water').textContent = h.water.stream ? 'the stream does the job'
     : !h.water.tank ? 'nowhere to store it yet'
@@ -1717,11 +1981,20 @@ function refresh() {
   $('endday').disabled = !!s.ended;
 
   for (const b of ['fell', 'hive']) $('btn-' + b).classList.toggle('active', mode === b);
+  /* PR-placement: a ghost the page armed is a tool the player is holding, so it gets the two
+     things every other held tool has - the row reads active, and the Stop control sits on the
+     hint bar beside the line that says what is armed. Both doors disarm WITHOUT a sim call.
+     The rung ghosts the renderer arms from inside its own build menu keep their old behaviour:
+     Escape and right-click still cancel them, this row only covers the page's two. */
+  const placement = r.ghost && PLACEMENTS[r.ghost.kind] ? PLACEMENTS[r.ghost.kind] : null;
+  $('btn-tank').classList.toggle('active', !!placement && placement.kind === 'tank');
+  // (the facility rows are rebuilt by renderYard below, so the armed one is marked there)
   for (const b of document.querySelectorAll('.dragtool')) {
     b.classList.toggle('active', mode === 'drag' && r.dragKind === b.dataset.drag);
   }
-  $('stop-tool').hidden = mode !== 'drag';
-  $('stop-tool').textContent = r.dragKind === 'flatten' ? 'Stop flatten tool' : 'Stop road/fence tool';
+  $('stop-tool').hidden = !(mode === 'drag' || placement);
+  $('stop-tool').textContent = placement ? `Stop placing the ${placement.label.toLowerCase()}`
+    : r.dragKind === 'flatten' ? 'Stop flatten tool' : 'Stop road/fence tool';
   $('plant-overlay-note').hidden = r.overlay !== 'plant';
   $('btn-suitable').setAttribute('aria-pressed', String(r.overlay === 'plant'));
   caption('btn-suitable', `${r.overlay === 'plant' ? 'Hide' : 'Show'} suitable ground`);
@@ -1814,12 +2087,12 @@ for (const key of Object.keys(CROPS)) {
   cropRows.push(b);
 }
 $('btn-hive').onclick = () => setMode('hive', 'hive');
-$('btn-tank').onclick = () => {
-  const res = buildTank(h);
-  if (!res.ok) return log(res.msg, 'bad');
-  log(`Tank built and filled. −${money(res.cost)}`);
-  save(); refresh();
-};
+/* PR-placement (owner ruling 11-02, and live play 10-28: "cant see water tank or how to place
+   it"). This row used to spend H$5,400 and stand the tank up wherever the sim's spiral found
+   room - a purchase the player could not see and could not place. It now arms the 1x1 ghost,
+   exactly like the roof row, and the money moves on the click that lands on ground the sim
+   takes. The farm card and the alarm route still stop here, so the row is the one door. */
+$('btn-tank').onclick = () => armPlacement('tank');
 $('btn-water').onclick = () => {
   const res = buyWater(h);
   if (!res.ok) return log(res.msg, 'bad');
@@ -1893,6 +2166,13 @@ $('yardcard').onclick = (e) => {
   const b = e.target.closest('button[data-act]');
   if (!b) return;
   const act = b.dataset.act;
+  /* PR-placement (owner ruling 11-02: "people should always place things, thats the building
+     sim", and live play 10-28: "cant see... ablution block"). A facility that has a footprint
+     in FACILITY_SITE is a BUILDING, so the row arms the ghost and the money waits for the
+     tile. Every other facility keeps the purchase path below - braai, fireplace, wifi,
+     generator, solar and the driveway have no footprint and no art to stand on a tile yet, and
+     arming a ghost for them would promise ground that stays empty. */
+  if (act === 'facility' && PLACEMENTS[b.dataset.kind]) return armPlacement(b.dataset.kind);
   const simFrom = h.log.length;
   let res;
   if (act === 'open') res = setOpen(h, !h.open);
@@ -2039,7 +2319,12 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('#menubar')) closeMenus();
 });
 
-/** Navigation only: never click a target, purchase, arm a tool or advance the clock. */
+/** Navigation only: never click a target, purchase, arm a tool or advance the clock.
+    PR-placement (owner ruling 11-02) makes this rule load-bearing rather than tidy: the tank and
+    ablution rows now ARM a ghost when the player presses them himself, so a WHAT NOW route that
+    "helpfully" clicked the row for him would drop a placement under his cursor that he did not
+    ask for - and the ui-probe measures cash and `water.tank` around an alarm-route click for
+    exactly that reason. Do not add a click here. */
 function revealControl(selector) {
   let target = null;
   try { if (typeof selector === 'string' && selector) target = document.querySelector(selector); } catch { /* invalid selector */ }
@@ -2504,6 +2789,7 @@ if (tileQ.length === 2 && tileQ.every(Number.isFinite) && r._openPopup) {
    pack is what caught it: a hook nobody looks at is a hook nobody tested.
      ?paint=track|gravel|mud|fence|flatten   holds a run (or a block) open, nothing charged
      ?arm=house|camp|caravan|room|cabin      arms that rung's ghost on ground that takes it
+     ?arm=tank|ablution[@x,y]                arms the page's placement (see the QA block below)
      ?menu=<name>                            opens one dropdown for the camera
    The run is chosen the way a player would meet it: out from the gate, along the longest
    line of dry, treeless ground, so the preview is green rather than a wall of refusals. */
@@ -2539,6 +2825,25 @@ const armQ = params.get('arm');
 if (armQ && ACCOM[armQ] && r && h && h.plot) {
   const [ax, ay] = armQ === 'house' ? freeRoofSite() : freeCell(armQ);
   r._setGhost(armQ, ax, ay);
+}
+/* PR-placement QA: the page's own placements arm through the row's own door (`armPlacement`, so
+   the cash and already-built guards and the active row are the real ones), and the @x,y form
+   walks the footprint to THAT tile and raises the report a click on it would raise - the same
+   `reportRefusedClick` the canvas listener calls, so a shot of a refusal is a shot of the real
+   surface and not a hand-written banner. The kinds come from PLACEMENTS, which is built from the
+   sim's FACILITY_SITE, so a third sited kind is photographable the day the sim grows one.
+   Nothing here spends: arming is the state under review. */
+{
+  const keys = Object.keys(PLACEMENTS).join('|');
+  const q = keys ? new RegExp(`^(${keys})(?:@(\\d+),(\\d+))?$`).exec(armQ || '') : null;
+  if (q && r && h && h.plot) {
+    armPlacement(q[1]);
+    if (q[2] !== undefined && r.ghost) {
+      r._setGhost(q[1], Number(q[2]), Number(q[3]));
+      reportRefusedClick();
+      refresh();
+    }
+  }
 }
 /* QA hook for the crop picker: arms the plant tool with THAT crop, the same way clicking the
    Farm row does, so a screenshot (and a probe) can show the mid-decision state — the hint, the

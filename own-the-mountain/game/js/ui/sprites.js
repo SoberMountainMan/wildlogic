@@ -2166,6 +2166,34 @@ export const SPRITES = {
     },
     bounds: [-68, 68, -129, 4],
   },
+  // THE CAMP'S OWN STAGES (owner 11-02: "campsite construction graphic cant be a concrete
+  // foundation graphic"). site_early / site_late are a HOUSE'S stages - a stone footing ring
+  // with a cement bag, then a timber-framed building on a concrete slab - and the renderer
+  // drew them for EVERY unbuilt accom, scaled to the footprint, so the camping site spent its
+  // three build days standing on a slab 1.75 times the size of the one its 2x2 neighbours
+  // use. A camp site is cleared trodden earth: pegs and string on the two pitches, a stack
+  // of poles, a canvas roll, the braai pit half-dug; then on the last day the pole frames up
+  // with canvas over one of them. Painted to the camp's own [4,3] diamond (224 design px),
+  // so the renderer draws them UNSCALED - see accomSiteSprite.
+  //
+  // The vector fallback is drawUnbuilt, which was always the honest picture of this stage:
+  // a dashed survey diamond with a peg at each corner.
+  site_camp_early: {
+    w: 224, h: 102,
+    draw: (c, s, o) => {
+      if (imageState.site_camp_early === 'ready') { drawImageSprite(c, 'site_camp_early', s, 0.5); return; }
+      drawUnbuilt(c, s * 4.2, o);
+    },
+    bounds: [-112, 112, -108, 6],
+  },
+  site_camp_late: {
+    w: 224, h: 102,
+    draw: (c, s, o) => {
+      if (imageState.site_camp_late === 'ready') { drawImageSprite(c, 'site_camp_late', s, 0.5); return; }
+      drawUnbuilt(c, s * 4.2, o);
+    },
+    bounds: [-112, 112, -108, 6],
+  },
   gate: {
     // v6 art (owner 10-25: the v5 cutout was diagonal — its ground contact sat at frame
     // x 0-16 against a bottom-centre anchor, so the gate landed half a tile off; and it
@@ -2214,8 +2242,38 @@ export const SPRITES = {
     },
     bounds: [-25, 25, -38, 5],
   },
-  rocks: { w: 34, h: 22, draw: drawRocks, bounds: [-19, 19, -23, 4] },
-  flowerPatch: { w: 28, h: 16, draw: drawFlowerPatch, bounds: [-16, 16, -17, 2] },
+  rocks: {
+    // painted 11-01 (owner's art-polish list: "rocks"), the last vector prop beside a
+    // painted neighbour. Fit by WIDTH to the 34 design px the vector claimed, so the
+    // sprinkler's 1-in-20 cell placement keeps the density it was tuned for; the cutout
+    // came out 34x22, the same box the vector occupied.
+    w: 34, h: 22,
+    draw: (c, s, o) => {
+      if (imageState.rocks === 'ready') {
+        const v = (o && o.seedX !== undefined) ? jitter(o.seedX | 0, o.seedY | 0, 45) : 0.5;
+        drawImageSprite(c, 'rocks', s, v);
+        return;
+      }
+      drawRocks(c, s, o);
+    },
+    bounds: [-19, 19, -23, 4],
+  },
+  flowerPatch: {
+    // painted 11-01 ("flowerPatch"). Fit by width to 28, but the painting is a taller
+    // plant than the vector clump was — 30 design px square against the vector's 28x16 —
+    // because a flower head on a stem is what makes it read as flowers at all. The
+    // sprinkler's own scale wobble (0.85-1.20) is what keeps them from looking stamped.
+    w: 28, h: 16,
+    draw: (c, s, o) => {
+      if (imageState.flowerPatch === 'ready') {
+        const v = (o && o.seedX !== undefined) ? jitter(o.seedX | 0, o.seedY | 0, 46) : 0.5;
+        drawImageSprite(c, 'flowerPatch', s, v);
+        return;
+      }
+      drawFlowerPatch(c, s, o);
+    },
+    bounds: [-16, 16, -17, 2],
+  },
   grassTuft: { w: 20, h: 14, draw: drawGrassTuft, bounds: [-12, 12, -15, 2] },
 };
 
@@ -2262,6 +2320,32 @@ for (const [name, spec] of Object.entries(SPRITE_IMAGE_SPECS)) {
 // is never placed, so it must NOT resolve to a sprite - the renderer skips it. */
 export function accomSprite(kind) {
   return SPRITES[kind] ? kind : 'house';
+}
+
+/**
+ * Which construction plate an unbuilt accom unit stands on, and whether the renderer has to
+ * resize it (owner 11-02, via the lead: "choose the sprite by unit kind, not one plate for
+ * all").
+ *
+ * `site_early` / `site_late` are a HOUSE'S stages painted to a 2x2 diamond, so a unit on a
+ * bigger hole gets the plate scaled by (fw+fph)/4 - that is what made the camp read as a
+ * concrete foundation 1.75 times the size of the cottage's. A kind listed here has its OWN
+ * art, painted at its own footprint, and `own: true` tells the renderer to stop scaling:
+ * the sprite already spans the tiles it reserves.
+ *
+ * Kinds not named here keep the 2x2 house plate scaled to cover them, exactly as before -
+ * the 2x2 rungs are the correct case for that art and the lead's brief said to leave it.
+ * The camp is the rung that lied, so the camp is the rung that got its own.
+ */
+export const ACCOM_SITE = {
+  camp: { early: 'site_camp_early', late: 'site_camp_late', own: true },
+};
+
+/** (key, own) for one kind at one stage: `early` = more than a day to go. */
+export function accomSiteSprite(kind, early) {
+  const s = ACCOM_SITE[kind];
+  if (s) return { key: early ? s.early : s.late, own: !!s.own };
+  return { key: early ? 'site_early' : 'site_late', own: false };
 }
 
 /* --------------------------------------------------- the atlas (blit cache) */
