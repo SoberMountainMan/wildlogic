@@ -10142,6 +10142,7 @@ var API = {
   loadLocal: loadLocal, loadFailNow: function () { return loadFail; }, wetRateYear: wetRateYear,
   SUNBIRD_RUN: SUNBIRD_RUN, sunbirdRun: sunbirdRun, sunbirdCheck: sunbirdCheck, streamC: streamC,
   groundZ: groundZ, DEM_Z: DEM_Z, hitTest: hitTest,
+  camXNow: function () { return camX; }, camYNow: function () { return camY; }, zoomNow: function () { return zoom; },
   SAVE_KEY: SAVE_KEY,
   /* `act` is the TAP — the one entry point a finger actually reaches. It is exported because the
      three actions above it are the *decision* and `act` is the *reply*: a gate that only calls
