@@ -11191,9 +11191,18 @@ var SPR = (function () {
     /* the grass sits DEEPER than OTM's field: our painted bushes and young trees are paler
        cutouts, and at OTM's value they sank into the field (owner: "hard to see bushes") */
     grass:      { tex: 'grass',  base: [78, 101, 70],  alpha: 0.5 },
+    /* DEAD ENTRIES: texGround keys off `t.ter`, and terrainAt() never returns shade1/shade2, so
+       these two can never be selected. The shade now comes from the wash below. Kept only so a
+       future reader can see the ramp the wash was calibrated against. */
     shade1:     { tex: 'grass',  base: [66, 87, 61],   alpha: 0.5 },
     shade2:     { tex: 'grass',  base: [56, 76, 54],   alpha: 0.5 },
-    forest:     { tex: 'grass',  base: [48, 67, 50],   alpha: 0.5 },
+    /* THE REMNANT IS THE SAME GRASS, NOT A SECOND MATERIAL. Owner, 2026-10-06: "remnant is not
+       right. they need to change to same grass as other tiles so shadows are then correct."
+       T9 re-broke that: this base was [48,67,50], 24 luma darker than grass, AND the new shade
+       wash adds 0.155 on top — a double darkening. Measured on the live build: remnant 83.8 vs
+       a three-neighbour shaded grass tile 97.9. "A shadow that changes the material is not a
+       shadow": the wash is the ONLY difference now, so both read as one ground. */
+    forest:     { tex: 'grass',  base: [78, 101, 70],  alpha: 0.5 },
     plantation: { tex: 'dirt_proc', base: [103, 82, 55], alpha: 0.7 },
     water:      { tex: 'water',     base: [58, 98, 106], alpha: 0.55 },
     /* THE BANK IS A RAMP, NOT A THIRD MATERIAL. It used to be a brown dirt texture under a dark
