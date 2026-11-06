@@ -12175,7 +12175,20 @@ var SPR = (function () {
       /* sw.js lives beside index.html, so the page-relative path gives scope /mistbelt/, which
          covers /mistbelt/pack/. The first build registered pack/sw.js, a 404 that silently never
          installed (owner: "cache doesnt seem to stop the painting"). */
-      navigator.serviceWorker.register('sw.js').catch(function () {});
+      var sw = navigator.serviceWorker;
+      sw.register('sw.js').catch(function () {});
+      /* A script fetch that fails at boot leaves the registration stuck in 'new / starting' with
+         NO active worker -- measured on the live origin: 60 s of installing=null, caches=[], then
+         one more register() installed it in under 5 s. On Hogsback's radio that is not an edge
+         case. One nudge, only when the worker has not even started installing. */
+      if (typeof setTimeout === 'function') setTimeout(function () {
+        try {
+          sw.getRegistration().then(function (reg) {
+            if (!reg || (!reg.active && !reg.installing && !reg.waiting))
+              sw.register('sw.js').catch(function () {});
+          }).catch(function () {});
+        } catch (eNudge) {}
+      }, 4000);
     } catch (eSW) {}
   }
 

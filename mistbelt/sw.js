@@ -10,7 +10,11 @@
    on two loads, while a manual register('sw.js') worked. Fixed in index.html; v2 is the first
    cache that ever actually activates, so no stale v1 art can be served to anyone. */
 var CACHE = 'mistbelt-pack-v2';
-var CORE = ['index.html'];
+/* INSTALL FETCHES NOTHING. addAll(['index.html']) used to pull a 899 KB page at the exact moment
+   adopt() fires 148 image requests over the same radio -- the install lost that race on a slow
+   connection. The network-first isIndex branch below caches the page on the first successful
+   navigation anyway, so offline boot is unchanged and the worker activates immediately. */
+var CORE = [];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(CORE); }).then(function () { return self.skipWaiting(); }));
