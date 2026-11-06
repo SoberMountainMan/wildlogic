@@ -11412,6 +11412,31 @@ var SPR = (function () {
     quad(); ctx.fill();
     ctx.strokeStyle = pat; ctx.lineWidth = 1.2; ctx.stroke();
     ctx.restore();
+    /* THE SHADE IS THE ONE THING THAT VARIES ON THIS CONTINUOUS GROUND.
+       Owner, 2026-11-06: "the visible shade you need to close a tile dosnt seem to be there when
+       planting indigenous next to each other". Measured on the live build: with three mature
+       neighbours groundTileId() correctly switched ter_grass_v2 -> ter_forest_v2, but the drawn
+       pixels were IDENTICAL (lum delta 0.0). Two reasons, both T9:
+         1. texGround() returns true for EVERY tile, so drawGroundTile never reaches tile() — the
+            painted ter_shade1/2/ter_forest sheet never reaches the glass (same bug as the
+            plantation floor and the seep).
+         2. USE_PAINTED_SHADE=true disables the wash in _tile(), the only other shade painter.
+       Fix: a plain translucent wash clipped to THIS tile's own true-corner quad. No new diamond,
+       no material change, no tile boundary — "a shadow that changes the material is not a shadow".
+       Alphas are the DELIVERED ramp, measured off the shipped PNGs (grass 75.3 -> shade1 70.0 ->
+       shade2 66.1 -> forest 63.6 luma): 7.0% / 12.2% / 15.5% darkening, matching art without
+       repainting it. groundKey() stays the single source of truth for the shade step. */
+    var shKey = groundKey(c, r);
+    var shadeAlpha = shKey === 'shade1' ? 0.070
+                   : shKey === 'shade2' ? 0.122
+                   : shKey === 'forest' ? 0.155 : 0;
+    if (shadeAlpha > 0) {
+      ctx.save();
+      quad(); ctx.clip();
+      ctx.fillStyle = 'rgba(0,0,0,' + shadeAlpha + ')';
+      quad(); ctx.fill();
+      ctx.restore();
+    }
     /* WATER AND BANK ART IS AN OVERLAY, NOT A REPLACEMENT TILE. The continuous textured quad
        is the ground; the pack's diamond painting is warped to the SAME four corners and blended
        over it, so the river keeps the grass's tile size, lighting and slope while the painted
