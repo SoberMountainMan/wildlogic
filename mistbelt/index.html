@@ -4646,6 +4646,44 @@ function vrotInv(vc, vr) {
   if (VIEW_ROT === 3) return [vr, N - 1 - vc];
   return [vc, vr];
 }
+/* MULTI-TILE BUILDINGS FOLLOW THEIR BLOCK, NOT THEIR ANCHOR, WHEN THE VIEW TURNS.
+   Owner, 2026-11-06: "house needs to be positioned better on 3x2 ... it currently covers 4x3".
+   A cottage is 3 wide x 2 deep in WORLD tiles (blockAt/BLOCK_W/BLOCK_D). At rot 0 its anchor is
+   the frontmost tile, so drawing the billboard in the anchor's pass is correct. Under a quarter
+   turn that 3x2 block becomes a 2x3 VIEW block and a DIFFERENT world tile is frontmost; the fixed
+   billboard then paints over 4-5 world tiles that blockAt() never reserved, and a tree legitimately
+   planted beside the house disappears behind it. Measured at rot 1/2/3: 4/5/4 drift tiles.
+   Fix: draw the building in the pass of the block's FRONTMOST VIEW tile. For a non-square block
+   mirror the art at 90/270 so the 3x2 painting covers the rotated 2x3 diamond; a 2x2 (nursery)
+   is square and needs no mirror. At 180 no mirror is needed either. Converting the six view cells
+   back through vrotInv gives exactly the six reserved world tiles at every turn -- gated. */
+var _blockFrontCache = { rot: -1, key: '', tile: null };
+function blockFrontWorld(ac, ar, w, d) {
+  var key = ac + ',' + ar + ',' + w + ',' + d;
+  if (_blockFrontCache.rot === VIEW_ROT && _blockFrontCache.key === key) return _blockFrontCache.tile;
+  var best = null, bd = -1, c, r, v, sum;
+  for (c = ac - w + 1; c <= ac; c++) for (r = ar - d + 1; r <= ar; r++) {
+    v = vrot(c, r); sum = v[0] + v[1];
+    if (sum > bd) { bd = sum; best = [c, r]; }
+  }
+  _blockFrontCache = { rot: VIEW_ROT, key: key, tile: best };
+  return best;
+}
+/* One lookup per frame: front world tile -> the building to paint there. */
+var _frontBuildings = {};
+function buildFrontBuildings() {
+  _frontBuildings = {};
+  if (typeof state === 'undefined' || !state || !state.tiles) return;
+  var i, t, c, r, w, d, f;
+  for (i = 0; i < state.tiles.length; i++) {
+    t = state.tiles[i];
+    if (!t || (t.obj !== 'house' && t.obj !== 'nursery')) continue;
+    c = i % COLS; r = Math.floor(i / COLS);
+    w = BLOCK_W[t.obj] || 1; d = BLOCK_D[t.obj] || 1;
+    f = blockFrontWorld(c, r, w, d);
+    if (f) _frontBuildings[f[0] + ',' + f[1]] = { obj: t.obj, w: w, d: d };
+  }
+}
 /* A VIEW-space projection with NO grid transform. The tile renderer calls project(), which
    rotates world -> view; the CLIFF is already built in view space (its outline is a rotation-
    invariant diamond), so calling project() on its corners would rotate them a second time. */
@@ -6918,6 +6956,7 @@ function eachVisible(fn) {
    stay in the file dormant. When T8's rotation returns, the oriented-props art brief can bring them
    back -- drawn for all four views this time. */
 function drawWorld() {
+  buildFrontBuildings();   /* multi-tile buildings are painted at their block's front VIEW tile */
   eachVisible(drawTileProp);
   /* AND THE SUNBIRD, in a second pass. Owner, live: "6 brings sunbird, has no sprite." She
      drew INSIDE the tile pass, at ground level, directly behind the 360x470 arum she perches on --
@@ -7024,7 +7063,10 @@ function drawTileProp(c, r) {
 
   /* Most of a 40x40 map is bare grass with nothing standing on it. Bail before doing any geometry,
      or the cull above just moves the cost from the loop into the body. */
-  if (!isToad && !isSeep && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) &&
+  /* A front VIEW tile may carry no state at all -- it is only where a building is PAINTED -- so it
+     must survive this bail or the cottage silently vanishes at rot 1/2/3 (caught by the preview). */
+  var _fb = _frontBuildings[c + ',' + r];
+  if (!isToad && !isSeep && !_fb && !t.alien && !t.sp && !t.obj && !(t.seeds > 0) &&
       t.ter !== 'forest') return;
   var p = project(c, r, groundZ(c, r));
   var cx = p[0], base = p[1] + TH * 0.46;
@@ -7128,9 +7170,27 @@ function drawTileProp(c, r) {
   /* The waterfall is NOT drawn here any more. It stands at r = 0 now, and this loop walks the map in
      order of c + r — so anything drawn on row 0 is painted over by every row behind it. It goes in
      drawStreamHead(), after the tile loop. `isFalls` still keeps this tile out of the early bail. */
-  if (t.obj === 'house') drawHouse(cx, base, TW * 1.90);
-  else if (t.obj === 'nursery') drawNursery(cx, base, TW * 1.06);
-  else if (t.obj === 'bin') drawBin(cx, base, TW * 0.98, binItems >= BIN_LOAD);
+  /* BUILDINGS ARE PAINTED AT THEIR BLOCK'S FRONT VIEW TILE, not at their world anchor. `_fb` is
+     set on whichever visible tile that is (it may be empty state). The anchor tile still carries
+     `t.obj` for the state rules but paints nothing itself. */
+  if (_fb) {
+    /* A non-square painting must be mirrored at 90/270 so its 3x2 diamond covers the rotated
+       2x3 block. Mirroring about cx keeps the base_point on the tile centre. The light direction
+       flips with the art -- accepted on the owner's GO after seeing the preview. */
+    var _mir = (_fb.w !== _fb.d) && (VIEW_ROT % 2) === 1;
+    if (_mir) { ctx.save(); ctx.translate(2 * cx, 0); ctx.scale(-1, 1); }
+    if (_fb.obj === 'house') {
+      /* HALF-TILE FIX. The manifest says base_point IS the front tile's CENTRE and sits 16.74
+         world px above the plinth's near corner. p[1]+TH*0.46 put the plinth 31.00 px below the
+         centre against the 3x2 front vertex's 15.50 -- exactly one half-tile too low, which is
+         why the cottage covered 4x3. Passing p[1] leaves 1.24 px (0.04 tile) of error. */
+      drawHouse(cx, base - TH * 0.46, TW * 1.90);
+    } else {
+      drawNursery(cx, base, TW * 1.06);
+    }
+    if (_mir) ctx.restore();
+  }
+  if (t.obj === 'bin') drawBin(cx, base, TW * 0.98, binItems >= BIN_LOAD);
   /* THE VILLAGE SIGN AND THE SHOP'S SIGN ARE NOT THE SAME SIGN.
      Owner, 2026-10-02: "is that sign gonna be the same one you can buy in the shop? i dont think it
      should be." He is right, and the code says so out loud -- OBJ_CODE has 'sign' at code 4, which
@@ -10486,6 +10546,7 @@ var API = {
   groundZ: groundZ, DEM_Z: DEM_Z, DEM_V: DEM_V, flatTile: flatTile, tileCornersZ: tileCornersZ, hitTest: hitTest,
   setRot: function (k) { VIEW_ROT = ((k % 4) + 4) % 4; return VIEW_ROT; },
   getRot: function () { return VIEW_ROT; }, vrot: vrot, vrotInv: vrotInv,
+  blockFrontWorld: blockFrontWorld, BLOCK_W: BLOCK_W, BLOCK_D: BLOCK_D,
   camXNow: function () { return camX; }, camYNow: function () { return camY; }, zoomNow: function () { return zoom; },
   SAVE_KEY: SAVE_KEY,
   /* `act` is the TAP — the one entry point a finger actually reaches. It is exported because the
