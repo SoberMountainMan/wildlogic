@@ -9,6 +9,9 @@
    start() never reaches when the inline manifest adopts. Live measurement: getRegistration() null
    on two loads, while a manual register('sw.js') worked. Fixed in index.html; v2 is the first
    cache that ever actually activates, so no stale v1 art can be served to anyone. */
+/* The page registers this worker during HEAD parse (see the head script in index.html), so the
+   148-image burst cannot starve the sw.js fetch. Measured on live: burst blocked = active in <3 s;
+   burst firing = registration stuck in 'new/starting' for 60 s. */
 var CACHE = 'mistbelt-pack-v2';
 /* INSTALL FETCHES NOTHING. addAll(['index.html']) used to pull a 899 KB page at the exact moment
    adopt() fires 148 image requests over the same radio -- the install lost that race on a slow
