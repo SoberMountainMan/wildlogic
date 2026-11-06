@@ -12117,25 +12117,72 @@ var SPR = (function () {
     var list = (man.assets || []).filter(function (e) { return !e.optional; });
     nWant = list.length;
     if (!nWant) { status = 'manifest held no shipping assets'; return; }
-    list.forEach(function (e) {
+    list.forEach(function (e, idx) {
       var r = rec[e.id] = { id: e.id, family: e.family, cell: e.cell_px, base: e.base_point,
                             file: e.file, img: null, waterish: null };
-      var im = new Image();
-      im.onload = function () {
-        r.img = im;
-        if (/^ter_water/.test(e.id)) r.waterish = isBlueDominant(im);
-        if (/^ter_/.test(e.id)) r.avg = avgColour(im);
-        noteFamily(e.id, im);
-        nGot++; if (nGot === nWant) finish();
-      };
-      im.onerror = function () { failed.push(e.id); nGot++; if (nGot === nWant) finish(); };
-      im.src = ROOT + e.file;
+      /* ONE RETRY, THEN GIVE UP. Measured on live headless runs: 39-48 of 148 images failed on a
+         flaky TLS/proxy burst, every exact manifest path returned HTTP 200 by direct curl, and all
+         36 retried in the SAME page session loaded fine. Before this, one transient error pushed
+         the id into failed[] forever and left r.img null, so has(id) was false and a third of the
+         painted art silently fell back to code art for the WHOLE session.
+         THREE RULES, all of them load-bearing:
+           1. nGot advances ONCE, on the final outcome only. Counting the retry as settled fires
+              finish() early and rebakes the ground before the art has arrived.
+           2. Exactly one second chance. A permanently missing file must still settle.
+           3. The retry uses a FRESH URL: neither a cached failed response nor the service worker's
+              ignoreSearch match may hand back the same broken fetch.
+         Retries are staggered by index so 148 of them cannot become a second burst on the proxy. */
+      var tries = 0, settled = false;
+      function attempt() {
+        var im = new Image();
+        im.onload = function () {
+          if (settled) return; settled = true;
+          r.img = im;
+          if (/^ter_water/.test(e.id)) r.waterish = isBlueDominant(im);
+          if (/^ter_/.test(e.id)) r.avg = avgColour(im);
+          noteFamily(e.id, im);
+          nGot++; if (nGot === nWant) finish();
+        };
+        im.onerror = function () {
+          if (settled) return;
+          if (tries++ < 1) {
+            var wait = 120 + (idx % 7) * 60;
+            if (typeof setTimeout === 'function') setTimeout(attempt, wait);
+            else attempt();
+            return;
+          }
+          settled = true;
+          failed.push(e.id); nGot++; if (nGot === nWant) finish();
+        };
+        im.src = ROOT + e.file + (tries ? '?retry=1' : '');
+      }
+      attempt();
     });
+  }
+
+  /* THE SERVICE WORKER MUST REGISTER ON THE PATH THAT ACTUALLY RUNS.
+     This used to live inside the <script src="PACK-MANIFEST.js"> fallback branch below, but start()
+     returns as soon as the INLINE manifest adopts -- which is every real load. Measured on the live
+     site across two consecutive loads: getRegistration() was null, no Cache Storage existed, while
+     a manual register('sw.js') succeeded with scope /mistbelt/ and created the cache. So the
+     cache-first worker was dead code: max-age=600 was the ONLY cache, and every warm load past ten
+     minutes revalidated 148 files and showed "Painting the forest" again.
+     Browsers do not expose navigator.serviceWorker on insecure origins, and 127.0.0.1 counts as a
+     secure context, so simply testing for it covers https + local dev and skips file:// silently. */
+  function registerPackWorker() {
+    try {
+      if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+      /* sw.js lives beside index.html, so the page-relative path gives scope /mistbelt/, which
+         covers /mistbelt/pack/. The first build registered pack/sw.js, a 404 that silently never
+         installed (owner: "cache doesnt seem to stop the painting"). */
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    } catch (eSW) {}
   }
 
   function start() {
     if (started) return;
     started = true;
+    registerPackWorker();
     if (typeof XMLHttpRequest === 'undefined' || typeof Image === 'undefined') {
       status = 'no XHR or Image here — code art stands';
       return;
@@ -12186,15 +12233,8 @@ var SPR = (function () {
          hold the 404, and then the script never loads and the loader falls back to XHR — which is
          the thing that cannot work on file://. One local file, 75 KB, so it is always re-read. */
       sc.src = ROOT + 'PACK-MANIFEST.js?t=' + (new Date().getTime());
-      /* T7 -- THE PACK SERVICE WORKER. Register once, on https (file:// skips silently). sw.js
-         caches the 18.9 MB art pack cache-first, so the second "Painting the forest" takes seconds
-         instead of a minute of revalidation round-trips, and the game boots offline. */
-      if (typeof navigator !== 'undefined' && navigator.serviceWorker && location.protocol === 'https:') {
-        try { navigator.serviceWorker.register('sw.js').catch(function () {}); } catch (eSW) {}
-        /* ROOT is the PACK root -- the first build registered pack/sw.js, a 404, and the worker
-           silently never installed (owner: "cache doesnt seem to stop the painting"). The worker
-           lives beside index.html, so the path is page-relative. */
-      }
+      /* The worker is registered at the TOP of start(), before the inline-manifest early return.
+         It used to be registered here, on a branch that no real load ever reaches. */
       sc.onload = function () {
         if (typeof window !== 'undefined' && window.__MB_MANIFEST) {
           try { adopt(window.__MB_MANIFEST); }

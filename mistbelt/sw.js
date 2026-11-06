@@ -3,8 +3,13 @@
    even though nothing re-downloaded). Cache-first for the art: the pack is 18.9 MB of PNGs that
    change rarely, so after the first visit the hill paints instantly and works OFFLINE -- which is
    not a luxury where Hogsback's connectivity is the constraint the whole project honours.
-   BUMP THE VERSION when the pack's art changes, or stale sprites are the bug you shipped. */
-var CACHE = 'mistbelt-pack-v1';
+   BUMP THE VERSION when the pack's art changes, or stale sprites are the bug you shipped.
+
+   2026-11-06: registration was DEAD CODE -- it sat in the PACK-MANIFEST.js fallback branch that
+   start() never reaches when the inline manifest adopts. Live measurement: getRegistration() null
+   on two loads, while a manual register('sw.js') worked. Fixed in index.html; v2 is the first
+   cache that ever actually activates, so no stale v1 art can be served to anyone. */
+var CACHE = 'mistbelt-pack-v2';
 var CORE = ['index.html'];
 
 self.addEventListener('install', function (e) {
@@ -37,12 +42,26 @@ self.addEventListener('fetch', function (e) {
   }
   if (isIndex) {
     /* THE GAME: network-first, cache as the fallback. Updates land on the next load; offline still
-       boots from the last good copy instead of the browser's error page. */
-    e.respondWith(
-      fetch(e.request).then(function (resp) {
-        if (resp && resp.ok) { var copy = resp.clone(); caches.open(CACHE).then(function (c) { c.put(e.request, copy); }); }
-        return resp;
-      }).catch(function () { return caches.match(e.request); })
-    );
+       boots from the last good copy instead of the browser's error page.
+       AND THIS IS THE ART VERSION SIGNAL. Cache-first /pack/ files never revalidate, so a PNG
+       re-encoded at the SAME url would be served stale for the life of the cache. The page itself
+       is already fetched on every load, so compare its ETag with the copy we cached last time: a
+       new deploy means a new ETag, which purges the art cache ONCE. No version bump to remember,
+       no extra request, and warm loads still cost zero pack bytes between deploys.
+       The old code called caches.open().then(put) without awaiting it inside respondWith -- a
+       detached promise a terminating worker can drop. It is now part of the response chain. */
+    var job = fetch(e.request).then(function (resp) {
+      if (!resp || !resp.ok) return resp;
+      var tag = resp.headers.get('etag') || resp.headers.get('last-modified') || '';
+      var copy = resp.clone();
+      return caches.match(e.request).then(function (old) {
+        var oldTag = old ? (old.headers.get('etag') || old.headers.get('last-modified') || '') : null;
+        if (old && tag && oldTag && oldTag !== tag) return caches.delete(CACHE);
+        return null;
+      }).then(function () {
+        return caches.open(CACHE).then(function (c) { return c.put(e.request, copy); });
+      }).then(function () { return resp; });
+    }).catch(function () { return caches.match(e.request); });
+    e.respondWith(job);
   }
 });
