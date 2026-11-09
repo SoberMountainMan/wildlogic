@@ -107,13 +107,16 @@ catch (eEarlySW) {}
   .tokens{left:12px;top:44px;display:flex;align-items:center;background:rgba(255,255,255,.95);
     border-radius:999px;padding:5px 6px;box-shadow:0 2px 6px var(--shadow);line-height:1}
   /* SPEC §3 -- four icons that explain nothing, until the first purchase. One line, then gone. */
-  .tokencap{left:12px;top:128px;font-size:11px;font-weight:700;color:#33424b;
+  /* A CAPTION NEEDS A LINE OF ITS OWN. `.ov` inherits line-height:1 from the HUD row, so seven
+     words in an 11px font were painted into a 6px box: a clipped sliver under the button row
+     (measured x12 y128 w209 h6). Give it a real line box and let it size itself. */
+  .tokencap{left:12px;top:136px;font-size:11px;font-weight:700;color:#33424b;line-height:1.35;
     background:rgba(255,255,255,.88);border-radius:8px;padding:3px 9px;box-shadow:0 2px 6px var(--shadow)}
   .tk{display:flex;align-items:center;gap:3px;padding:0 6px;font-size:13px;font-weight:800;color:#33424b}
   /* THE DAY'S TOKEN IS THE ONE THAT PAYS TODAY, and it is marked in the pill that is about tokens. */
   .tk[data-today]{background:rgba(90,168,90,.22);border-radius:5px}
   .tk svg{display:block}
-  .hudrow{left:12px;top:80px;display:flex;gap:6px;line-height:1}
+  .hudrow{left:12px;top:88px;display:flex;gap:6px;line-height:1}
   .hudrow button{width:44px;height:44px;border-radius:10px;border:none;cursor:pointer;
     background:rgba(255,255,255,.95);box-shadow:0 2px 6px var(--shadow);color:#2f4a58;
     font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
@@ -137,7 +140,13 @@ catch (eEarlySW) {}
      0" in bright colours is a nag rather than a goal. */
   .pillrows{display:flex;flex-direction:column;gap:2px;min-width:0}
   .pillrows .prow{display:flex;align-items:center;gap:4px;white-space:nowrap}
-  .parrotpill{right:12px;top:80px;display:flex;align-items:center;gap:6px;line-height:1.15;
+  /* UNDER THE AP PILL, NOT BEHIND THE BUTTONS. It used to sit at top:80 starting at x236, while
+     the five 44px buttons ran x12..256 y80..124 -- the sound button covered "Parrots" and "Weeds"
+     (measured: "s 0 / 12", "eds 452"). Move it UP to the free right-hand band y48..88 and shift the
+     button row 8px down to y88..132. Do NOT move anything into y208+: hillsays is clickable and a
+     first-tap ring at y230..312 would be swallowed by it (a cold save failed exactly that way).
+     All instruments now fit above the hill band, which stays at y158. */
+  .parrotpill{right:12px;top:48px;display:flex;align-items:center;gap:6px;line-height:1.15;
     background:rgba(255,255,255,.93);border-radius:14px;padding:5px 10px 5px 8px;
     box-shadow:0 2px 6px var(--shadow);color:#2f4a58;font-weight:600;font-size:13px;
     opacity:.62;transition:opacity .3s}
@@ -185,9 +194,13 @@ catch (eEarlySW) {}
   @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
   @media (prefers-reduced-motion: reduce){.boxbtn.ready{animation:none}}
 
+  /* SCROLL AFFORDANCE. 903px of tools in a 310px dock, and the scrollbar is deliberately hidden.
+     The fade existed but began at 82%, so "Chestnut" was simply cut mid-word with no hint that
+     there is more to the right. Start it earlier: the last tool visibly dissolves, which reads as
+     "scroll me" instead of "text is broken". No DOM change, no logic. */
   .dock{display:flex;gap:6px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;
-    -webkit-mask-image:linear-gradient(90deg,#000 82%,transparent 100%);
-    mask-image:linear-gradient(90deg,#000 82%,transparent 100%)}
+    -webkit-mask-image:linear-gradient(90deg,#000 72%,transparent 100%);
+    mask-image:linear-gradient(90deg,#000 72%,transparent 100%)}
   .dock::-webkit-scrollbar{display:none}
   .dock button{flex:0 0 auto;font:inherit;font-size:12.5px;font-weight:800;color:#e8f0e6;
     background:rgba(36,56,45,.94);border:1.5px solid #34503f;border-radius:13px;padding:7px 11px;cursor:pointer;
@@ -3411,6 +3424,10 @@ function matureNear(c, r, rad) {
      bookkeeping). */
 var SUNBIRD_RUN = 6;    /* Level's dial: arrival at six, of a 4-10 range */
 var firstcutAt = 0;     /* SPEC §2: when the first-tap ring appeared -- 20 s and it dismisses itself */
+/* THE DRAWN RING CENTRE, exposed for QA. The tap test must press exactly the point the player
+   sees, not a point a probe recomputes with its own idea of the selection rule -- a probe that
+   guessed the old front vertex reported 0/5 cuts even after the renderer was fixed. */
+var firstRingAt = null;
 var sunbird = null;     /* { c, r } -- the tile she is perched on, while a qualifying run holds */
 function sunbirdRun() {
   var best = 0, side, r, cur;
@@ -6982,7 +6999,9 @@ function drawWorld() {
      input blocked. The nearest is measured from the viewport centre in world px, and the on-glass
      test is the same projection the draw uses, so the ring can never point at a tile that is not on
      the screen. */
+  if (state.seen.firstcut || !state.seen.intro) firstRingAt = null;
   if (!state.seen.firstcut && state.seen.intro) {
+    firstRingAt = null;   /* clear every frame, so QA never taps a stale ring */
     var bestI = -1, bestD = 1e18, bcx = 0, bcy = 0, i2;
     for (i2 = 0; i2 < NTILES; i2++) {
       var tt = state.tiles[i2];
@@ -6991,10 +7010,31 @@ function drawWorld() {
       var tp = project(tc, tr, groundZ(tc, tr));
       var sx = tp[0] * zoom, sy = tp[1] * zoom;
       if (sx < -TW || sx > W + TW || sy < -TH || sy > H + TH) continue;
+      /* THE RING MUST POINT AT A TILE THE TAP WILL RESOLVE TO. It used to be drawn at the front
+         vertex, tp[1] + TH/2. That point belongs to the FRONT diamond, so hitTest() returned the
+         front neighbour (measured: ring tile 20,22 -> tap picked 21,23) and pickSprite() only
+         walks downward, so the weed behind was never recovered. Five cold saves gave 0/5 cuts:
+         "nothing" when the front tile was bare, the day's board when it was a building.
+         The tile centre is the point hitTest() and lift() agree on. Keep `* zoom`: frame() draws
+         under setTransform(dpr*zoom), so project() is pre-zoom and multiplying is the correct
+         world -> CSS-px conversion for the on-glass test, NOT a double application.
+         blockAt/canAct are cheap guards against reserved or uncuttable tiles; they were never
+         the cause (both passed on all five ring tiles). */
+      if (blockAt(tc, tr) || !canAct(tc, tr, 'cut')) continue;
       var d = Math.abs(sx - W / 2) + Math.abs(sy - H / 2);
-      if (d < bestD) { bestD = d; bestI = i2; bcx = tp[0]; bcy = tp[1] + TH / 2; }
+      if (d >= bestD) continue;
+      /* GEOMETRY ALONE IS NOT ENOUGH ON TERRACED GROUND. A tile centre can sit inside the FRONT
+         diamond drawn over it, and hitTest() deliberately picks that frontmost tile. One cold save
+         in five still did nothing after the centre fix. Validate the point through the SAME
+         hitTest() the tap uses. Only candidates that would become the new nearest are checked, so
+         this is a handful of solves per frame, not one per tile. sx/sy are already CSS px, exactly
+         the units hitTest() expects. */
+      var hit = hitTest(sx, sy);
+      if (!hit || hit.c !== tc || hit.r !== tr) continue;
+      bestD = d; bestI = i2; bcx = tp[0]; bcy = tp[1];
     }
     if (bestI >= 0) {
+      firstRingAt = [bcx, bcy, bestI % COLS, Math.floor(bestI / COLS)];
       if (!firstcutAt) firstcutAt = now();
       var pulse = 0.5 + 0.5 * Math.sin(now() / 300);
       var hw = TW * 0.60, hh = TH * 0.60;
@@ -10564,6 +10604,8 @@ var API = {
      clearAt() can prove the weed was not cut, but not that the player was left in silence. Owner,
      2026-09-21: "sometimes they dont remove." */
   act: act,
+  /* WHERE THE FIRST-TAP RING IS ACTUALLY DRAWN, so a QA tap can press the pixel the player sees. */
+  ringTarget: function () { return firstRingAt; },
   buy: buy, trade: trade, recycle: recycle,
   getBin: function () { return binItems; }, setBin: function (n) { binItems = n; },
   /* AUDIO (SEAT-AUDIO, 2026-11-01): the probe's instrument of record, on the same terms as getBin.
