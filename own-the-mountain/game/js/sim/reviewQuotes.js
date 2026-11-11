@@ -200,3 +200,59 @@ export function guestReview(h, unit, review) {
   }
   return '';
 }
+
+/* ---- W-06: standard voice templates for a rating-driven pay cut ------------------
+   PLAYTEST-2026-11-09-PHONE60, S2 Major: fifteen identical bad reviews, and nightly
+   income went H$485 → H$368 with no sentence connecting the score to the money.
+
+   The MECHANISM is the lead's: `tourism.js` logs one line when `rateFor()` actually moves
+   (`69fca0b`), keyed to `h.rateNotice`. That line is canonical — ONE writer, ONE string.
+   This module is the COPY SOURCE ONLY. It emits nothing, holds no household field and
+   touches no stream, so adopting it cannot create a second line in the log.
+
+   Why it lives here: `reviewQuotes.js` is a leaf (imports nothing), and `tourism.js`
+   already imports `guestReview` from it — so the lead can adopt these templates by
+   extending one existing import, with no cycle. `arrivalVoice.js` cannot be the source:
+   it imports from tourism.js, and a tourism → arrivalVoice import would be a cycle.
+
+   SLOTS: {score} running rating · {rung} ACCOM label · {rate} NEW nightly rate ·
+   {was} the uncut rate. Every value is read from the sim by the CALLER; the money slot
+   must arrive already formatted by fmt.js money(), because this file is a leaf and does
+   not import the formatter. That keeps the currency strictly H$ and stops a second copy
+   of the grouping rule from drifting.
+   -------------------------------------------------------------------------------------- */
+
+export const RATE_DROP_TEMPLATES = {
+  // score under 3.5: the 0.8 band, the big cut the phone pass measured
+  refused: [
+    'Rating fell to {score} — guests refuse full price. The {rung} now earns {rate} per night.',
+    'Rating {score} out of 5. At that score guests will not pay full price: the {rung} now earns {rate} a night.',
+  ],
+  // a slip from a premium band — softer, and it names the old number
+  slipped: [
+    'Rating slipped to {score}. The {rung} now earns {rate} per night, down from {was}.',
+    'The reviews pulled the score down to {score}. The {rung} earns {rate} a night now; it was {was}.',
+  ],
+  // short form for a 390px phone panel — proposed, not shipped
+  phone: [
+    'Rating {score} · the {rung} now earns {rate} a night.',
+  ],
+};
+
+/** Fill one standard template. A missing slot becomes '' rather than literal `{x}`. */
+export function fillRateTemplate(tpl, vars) {
+  return String(tpl).replace(/\{(\w+)\}/g, (_, k) => (vars[k] == null ? '' : String(vars[k])));
+}
+
+/**
+ * The standard W-06 sentence. PURE: no household, no state, no log, no RNG.
+ * `score` picks the tier; the caller supplies already-formatted H$ strings.
+ * `form` is 'refused' | 'slipped' | 'phone', or 'auto' to pick from the score.
+ * `variant` is optional so a UI can choose a shorter line without new copy.
+ */
+export function rateDropCopy({ score, rung, rate, was = '', form = 'auto', variant = 0 }) {
+  const tier = form === 'auto' ? (Number(score) < 3.5 ? 'refused' : 'slipped') : form;
+  const list = RATE_DROP_TEMPLATES[tier] || RATE_DROP_TEMPLATES.refused;
+  return fillRateTemplate(list[Math.abs(Number(variant) || 0) % list.length],
+    { score, rung, rate, was });
+}

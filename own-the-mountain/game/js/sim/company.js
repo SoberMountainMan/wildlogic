@@ -128,6 +128,12 @@ export function maybeOfferContract(h) {
   if (h.date.day !== 1) return null;
   if (h.company.relation === 'opposed' || h.company.relation === 'owner' || h.company.relation === 'left') return null;
   if (h.contract.state === 'active') return null;
+  // W-07 (PLAYTEST-2026-11-09-PHONE60): the offer used to be logged verbatim on every
+  // 1st, with no route and no outcome for ignoring it. Read the old state BEFORE the
+  // object is replaced — an offer still sitting at 'offered' on the next 1st is exactly
+  // the "ignored it" case, and the log now says what that cost. Copy only: no state, no
+  // number and no branch changed.
+  const lapsed = h.contract.state === 'offered';
   h.contract = {
     state: 'offered',
     m3: COMPANY.contractM3,
@@ -137,8 +143,13 @@ export function maybeOfferContract(h) {
   };
   h.log.push({
     day: h.day,
-    text: `${COMPANY.name} wants ${COMPANY.contractM3} m³ of pine within ${COMPANY.contractDays} days. `
-      + `They will pay ${money(COMPANY.contractPay)}.`,
+    text: (lapsed
+      ? 'Last month\'s pine request lapsed. No timber delivered, no payment made, and that offer is gone. '
+      : '')
+      + `${COMPANY.name} wants ${COMPANY.contractM3} m³ of pine within ${COMPANY.contractDays} days `
+      + `(by day ${h.contract.dueDay}). They will pay ${money(COMPANY.contractPay)}. `
+      + 'Sign or decline in Windows → Company → The company. '
+      + 'Leave it and the request lapses on the next 1st with no payment.',
   });
   return h.contract;
 }

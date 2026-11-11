@@ -90,6 +90,9 @@
     max-width: calc(100% - 74px); font-size: 12px; color: #b9c4b3;
     background: rgba(12,18,14,.92); padding: 5px 10px; border-radius: 6px; z-index: 35; }
   #toolhint button { width: auto; margin: 4px 0 0; }
+  /* W-01 · one tap that places the armed ghost even when the camera or a sheet hides it */
+  #place-here { background: #2e4a37; border-color: #5f9e6d; color: #e9e6db;
+    font-weight: 600; margin-right: 8px; min-height: 44px; }
   #plant-overlay-note { display: block; }
   [hidden], #toolhint [hidden] { display: none !important; }
   .guide-target { outline: 3px solid #e8b45a !important; outline-offset: -3px;
@@ -252,7 +255,11 @@
     /* the goal card stays reachable one-handed: small, top-right, still collapsible */
     #goalpanel { display: flex; width: 188px; right: 8px; top: 8px; }
     #toolhint { left: 8px; right: 8px; max-width: calc(100% - 16px); font-size: 11px;
-      bottom: calc(30px + env(safe-area-inset-bottom, 0px)); }
+      bottom: calc(30px + env(safe-area-inset-bottom, 0px));
+      /* W-01: two held-tool buttons plus the caption must wrap, not run off the right edge */
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    #toolhint #hint { flex: 1 1 100%; }
+    #toolhint button { max-width: 100%; white-space: normal; }
     #attention summary { min-height: 44px; }
     header { gap: 6px; padding: calc(6px + env(safe-area-inset-top, 0px)) 10px 6px; }
     .stat b { font-size: 12px; }
@@ -407,6 +414,9 @@
       <small id="plant-overlay-note" hidden>The green tiles are the only ground a bed can stand on - flat, clear and unoccupied; water and crop cash are separate. Choose a crop under Farm, then click a green tile.
         <button data-suitable-ground type="button">Hide suitable ground</button></small>
       <button id="stop-tool" type="button" hidden>Stop road/fence tool</button>
+      <!-- W-01: the ghost can sit under a sheet or the tool bar on a phone; this one tap
+           reaches the same sim verb a tile click would, whatever the camera is doing. -->
+      <button id="place-here" type="button" hidden>Place Here</button>
     </div>
     <div id="report"></div>
     <div id="over"><div>
@@ -620,11 +630,14 @@ function echoSimLog(fromLen) {
    play 10-28: "cant see water tank or how to place it. same with ablution block").
    Which purchases the page ARMS A GHOST for instead of spending on the click: exactly the
    kinds the SIM can put on a tile. The tank takes homestead.yardSiteRefuse; every key of
-   tourism.FACILITY_SITE is sited (ablution today, 2x1) and takes facilitySiteRefuse. A kind
-   with no footprint there is deliberately NOT in this table and keeps its old purchase path -
-   braai, fireplace, wifi, generator, solar and the driveway put nothing on the ground yet,
-   and a ghost over tiles that would then go empty is the same defect wearing a hat.
-   Labels, prices and day counts are read off the sim's own tables; nothing here types one. */
+   tourism.FACILITY_SITE is sited and takes facilitySiteRefuse - as of the artist's facility-pad
+   round that is ablution, braai, fire, generator and power (the solar array's KIND is `power`,
+   not `solar`, because the renderer looks a plot building up by its kind). The table is built
+   FROM FACILITY_SITE, so a kind the sim sites tomorrow arms tomorrow with no edit here.
+   Still NOT in it: `driveway` (a surface siteworks lays tile by tile) and `wifi` (a line
+   rental) - no footprint, nothing to stand on the ground, and a ghost over tiles that would go
+   empty is the same defect wearing a hat. Those two keep the purchase path.
+   Labels, prices, day counts and footprints are read off the sim's own tables; nothing types one. */
 const PLACEMENTS = {
   tank: {
     kind: 'tank',
@@ -635,7 +648,7 @@ const PLACEMENTS = {
     cost: () => tankBill(),
     days: 0,
     exists: () => !!(h && h.water.tank),
-    say: (x, y) => yardSiteRefuse(h, x, y),
+    say: (x, y) => ghostSiteSay('tank', x, y),
     run: (x, y) => buildTank(h, x, y),
   },
   ...Object.fromEntries(Object.keys(FACILITY_SITE).map((k) => [k, {
@@ -646,33 +659,50 @@ const PLACEMENTS = {
     days: FACILITY[k].buildDays,
     exists: () => !!((h && h.facilities) || {})[k]
       || ((h && h.facilityBuilds) || []).some((b) => b.kind === k && !b.built),
-    say: (x, y) => facilitySiteRefuse(h, k, x, y),
+    say: (x, y) => ghostSiteSay(k, x, y),
     run: (x, y) => buildFacility(h, k, x, y),
   }])),
 };
 
-/** Why the ghost will not sit on THIS tile, in words the player can act on.
-    The SIM's sentence leads (it owns the money and it names what stands there). Behind it the
-    page adds the two rules the ghost's own green/red verdict applies that the sim's yard and
-    facility checks leave out - the gate tile, a neighbouring building's whole footprint, a
-    standing unit, a reserved site, a fence post - so a red footprint is never silent.
-    Widening only ever ADDS a reason, and every reason it adds is a tile the map paints red
-    (so the click never reaches the verb) or a tile the verb itself refuses (so no money can
-    move). That is why the words can be this wide without ever contradicting the click. */
-function siteSay(P, x, y) {
-  const why = P.say(x, y);
-  if (why) return why;
+/** THE sim's answer for one kind on one tile: '' when the verb would take it, the refusal
+    sentence when it would not. Three predicates, one door - `yardSiteRefuse` for the stand,
+    `facilitySiteRefuse` for every sited facility, `canPlaceAccom` for the accommodation rungs -
+    and nothing else in the file re-derives them. Handed to the renderer as the `siteSay` key of
+    tileState (its `_state()` copies it) so the ghost, the hint, the tray, the popup row and the
+    verb all answer with the same words as the purchase. */
+function simSiteSay(kind, x, y) {
+  if (!h) return 'no household to build on';
+  if (kind === 'tank') return yardSiteRefuse(h, x, y);
+  if (FACILITY_SITE[kind]) return facilitySiteRefuse(h, kind, x, y);
+  if (ACCOM[kind]) {
+    const r = canPlaceAccom(h, kind, x, y);
+    return r.ok ? '' : (r.msg || 'the ground does not hold the whole footprint');
+  }
+  // fail closed: a kind nobody gave a site rule to is a kind that cannot be placed here.
+  return 'nothing places by the kind ' + kind;
+}
+
+/** The facts about ONE TILE that the sim's own site checks leave out, in words the player can act
+    on: the gate, a neighbouring building's whole footprint (the yard and rung checks mark only a
+    building's anchor tile), a standing unit's footprint, a reserved facility site, a fence post.
+    Both answers below widen themselves with this, and the widening only ever ADDS a refusal - a
+    tile this says no to is either one the verb itself refuses (no money can move) or one the map
+    already painted red (the click never reaches the verb). So the ghost can never promise a build
+    the purchase will not do, and at worst it is stricter than the verb, which costs a retry. */
+function extraSiteSay(x, y) {
   const p = h && h.plot;
   if (!p) return 'this plot has no ground to build on';
   const covers = (ox, oy, w, ht) => x >= ox && x < ox + w && y >= oy && y < oy + ht;
   const at = (o) => o.x === x && o.y === y;
+  // the gate: `canPlaceAccom` refuses it and the rung never reaches here, but the tank stand and
+  // the facility sites do not look at it, and an entrance the guests walk through is not a pad.
   if (p.gate && at(p.gate)) return 'that is the gate - keep the entrance clear';
   for (const b of p.buildings || []) {
     if (covers(b.x, b.y, b.fw || 1, b.fh || 1) && !at(b)) return 'a building stands there - clear it first';
   }
   for (const a of h.accom || []) {
     const [w, ht] = accomFootprint(a.kind);
-    if (covers(a.x, a.y, Math.max(1, w), Math.max(1, ht))) {
+    if (covers(a.x, a.y, Math.max(1, w), Math.max(1, ht)) && !at(a)) {
       return `${(ACCOM[a.kind] || {}).label ? ACCOM[a.kind].label.toLowerCase() : 'a unit'} stands there - clear it first`;
     }
   }
@@ -683,22 +713,152 @@ function siteSay(P, x, y) {
   return '';
 }
 
-/** The tiles that would take this footprint, nearest the plot's middle first. The rule is the
-    sim's (`P.say`), the scan is the page's, and the tie breaks on scan order, so the same save
-    always arms on the same ground. */
+/** The WHOLE-SITE answer from this anchor - the page's own door: where a ghost may open, what the
+    hint says, what the tray says when the renderer has not carried a sentence on the ghost. */
+function ghostSiteSay(kind, x, y) {
+  return simSiteSay(kind, x, y) || extraSiteSay(x, y);
+}
+
+/** The 1x1 member of each footprint family, read out of the sim's own tables. A one-tile kind
+    carries the same per-tile rule as its big siblings, so it answers "what stands on THIS tile"
+    without the page inventing a second list of facts. */
+const ONE_TILE = {
+  facility: Object.keys(FACILITY_SITE)
+    .find((k) => FACILITY_SITE[k][0] === 1 && FACILITY_SITE[k][1] === 1) || null,
+  accom: Object.keys(ACCOM).find((k) => !ACCOM[k].only && Array.isArray(ACCOM[k].footprint)
+    && ACCOM[k].footprint[0] === 1 && ACCOM[k].footprint[1] === 1) || null,
+};
+
+/** The per-TILE answer - which is what the renderer's footprint walk asks for (iso-render
+    `_siteCheck`: "the SIM is asked for every tile of the footprint"). The sim's predicates are
+    ANCHORED: `canPlaceAccom(h,'camp',x,y)` tests the whole 4x3 from (x,y), so asking it per tile
+    judges ground the site never touches. Measured on the live Homesteader plot: 58 of 108 legal
+    2x1 facility sites and 46 of 60 legal camp sites came back RED that way, with the sentence
+    naming a tile outside the footprint. Answering with the 1x1 member of the same family makes
+    the walk exact, because these rules are per-tile lists over a footprint.
+    COUPLING, and it is the load-bearing kind: if `_siteCheck` ever asks the predicate ONCE at the
+    anchor instead of once per tile, this must go back to `ghostSiteSay` or the ghost will be green
+    on a tree. The two only agree while the walk is per tile. */
+function tileSiteSay(kind, x, y) {
+  let why = '';
+  if (kind === 'tank') why = yardSiteRefuse(h, x, y);            // the stand is already 1x1
+  else if (FACILITY_SITE[kind]) why = facilitySiteRefuse(h, ONE_TILE.facility || kind, x, y);
+  else if (ACCOM[kind]) {
+    const r = canPlaceAccom(h, ONE_TILE.accom || kind, x, y);
+    why = r.ok ? '' : (r.msg || 'the ground will not hold it');
+  } else why = simSiteSay(kind, x, y);                            // unknown kind: refuse, fail closed
+  return why || extraSiteSay(x, y);
+}
+
+/* ---------------- W-01 · the armed ghost must land where a thumb can reach it ----
+   Playtest 2026-11-09, phone 390×844: the tank ghost armed GREEN on a legal tile, but
+   that tile projected to (215,789) — under #toolhint and under the default-open Plot
+   sheet. elementFromPoint there returned DIV#toolhint. Every tile the player COULD tap
+   was refused, "Buy water" stays disabled until a tank exists, and the life died of
+   thirst. The placement RULES were right; the camera and the chrome were not. So the
+   site scan now measures where each candidate would actually appear, ranks by the
+   centre of the free map area, and refuses to arm on ground a finger cannot touch. */
+function siteOccluders() {
+  const list = [$('toolhint'), $('goalpanel'), $('report'), $('over')];
+  for (const w of document.querySelectorAll('.win.show')) list.push(w);
+  return list.filter((el) => el && !el.hidden && el.getClientRects && el.getClientRects().length)
+    .map((el) => {
+      const b = el.getBoundingClientRect();
+      /* "Place Here" and "Stop placing" make the hint bar grow UPWARDS when the ghost
+         appears — reserve that headroom so the site stays tappable after refresh(). */
+      const grow = el.id === 'toolhint' ? 52 : 0;
+      return { left: b.left, right: b.right, top: b.top - grow, bottom: b.bottom };
+    });
+}
+
+/** The point on the tappable map the scan aims for: the middle of the canvas, with the
+    hint bar and its scale-label band taken off the bottom. */
+function viewFocus() {
+  const cv = $('map');
+  const b = cv && cv.getBoundingClientRect ? cv.getBoundingClientRect() : null;
+  if (!b) return { x: window.innerWidth / 2, y: window.innerHeight / 2, box: null };
+  const th = $('toolhint');
+  const tb = th && th.getClientRects && th.getClientRects().length ? th.getBoundingClientRect() : null;
+  const bottom = tb && tb.top > b.top ? Math.min(b.bottom, tb.top - 10) : b.bottom;
+  return {
+    x: (b.left + b.right) / 2,
+    y: (b.top + Math.max(b.top + 40, bottom)) / 2,
+    box: b,
+  };
+}
+
+/** Where a tile's centre lands in PAGE pixels. `_at` speaks device pixels and the DOM
+    speaks CSS pixels, so both the canvas rect and the renderer's dpr are needed. */
+function siteScreen(x, y) {
+  const cv = $('map');
+  if (!cv || !cv.getBoundingClientRect || !r || typeof r._at !== 'function' || !r.p) return null;
+  const box = cv.getBoundingClientRect();
+  if (!box.width || !box.height) return null;
+  const dpr = r.dpr || window.devicePixelRatio || 1;
+  const [sx, sy] = r._at(x, y);
+  return { x: box.left + sx / dpr, y: box.top + sy / dpr, sx, sy, dpr, box };
+}
+
+/** Tappable only if the topmost element at that point is the canvas. The rectangle
+    pass is the fallback for overlays with pointer-events:none (headless Chrome and the
+    screenshot pack both need it) and for browsers without elementFromPoint. */
+function siteVisible(pt, occ) {
+  if (!pt) return false;
+  const { x, y, box } = pt;
+  if (x < box.left + 8 || x > box.right - 8 || y < box.top + 8 || y > box.bottom - 8) return false;
+  if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
+  for (const b of occ) {
+    if (x >= b.left - 4 && x <= b.right + 4 && y >= b.top - 4 && y <= b.bottom + 4) return false;
+  }
+  if (typeof document.elementFromPoint === 'function') {
+    const hit = document.elementFromPoint(x, y);
+    if (hit && hit !== $('map')) return false;
+  }
+  return true;
+}
+
+/** Move the camera so ONE site sits on the free centre. Projection is linear in
+    cam.ox/oy (iso-math.project), so the delta is exact; _clampCam still gets the last
+    word, which is why "Place Here" remains the belt-and-braces door. */
+function panSiteIntoView(site) {
+  if (!r || !r.cam || typeof r._at !== 'function') return;
+  const pt = siteScreen(site.x, site.y);
+  const f = viewFocus();
+  if (!pt || !f.box) return;
+  r.cam.ox += (f.x - pt.box.left) * pt.dpr - pt.sx;
+  r.cam.oy += (f.y - pt.box.top) * pt.dpr - pt.sy;
+  r._userCam = true;                 // a later resize must not undo the player's view
+  if (typeof r._clampCam === 'function') r._clampCam();
+  if (typeof r.frame === 'function') r.frame();
+}
+
+/** The tiles that would take this footprint, nearest the CENTRE OF THE VISIBLE MAP
+    first — not the plot's middle, which on a phone is under the hint bar. The rule is
+    still the sim's (`P.say`), the scan is the page's, and tie breaks on scan order, so
+    the same save always arms on the same ground. A hidden site is only handed back as
+    a pan target when nothing tappable exists at all. */
 function legalSites(P, limit = 24) {
   const p = h && h.plot;
   if (!p || !p.ground) return [];
   const cx = (p.w - 1) / 2, cy = (p.h - 1) / 2;
-  const sites = [];
+  const f = viewFocus();
+  const candidates = [];
   for (let y = 0; y <= p.h - P.fp[1]; y++) {
     for (let x = 0; x <= p.w - P.fp[0]; x++) {
       if (P.say(x, y)) continue;
-      sites.push({ x, y, d: Math.abs(x + (P.fp[0] - 1) / 2 - cx) + Math.abs(y + (P.fp[1] - 1) / 2 - cy) });
+      const pt = siteScreen(x, y);
+      const d = pt ? Math.hypot(pt.x - f.x, pt.y - f.y)
+        : Math.abs(x + (P.fp[0] - 1) / 2 - cx) + Math.abs(y + (P.fp[1] - 1) / 2 - cy);
+      candidates.push({ x, y, d, pt, visible: false });
     }
   }
-  sites.sort((a, b) => a.d - b.d || a.y - b.y || a.x - b.x);
-  return sites.slice(0, limit);
+  candidates.sort((a, b) => a.d - b.d || a.y - b.y || a.x - b.x);
+  // hit-testing 400 nearest candidates is enough for a 65×64 plot and stays cheap
+  const near = candidates.slice(0, Math.min(candidates.length, 400));
+  const occ = siteOccluders();
+  for (const s of near) s.visible = siteVisible(s.pt, occ);
+  const tappable = near.filter((s) => s.visible).slice(0, limit);
+  return tappable.length ? tappable : near.slice(0, limit);
 }
 
 /** The ghost the verb last answered, so the tile it was standing on is not reported twice -
@@ -707,6 +867,16 @@ let placementEcho = null;
 /** The last tile the canvas listener spoke about, so a pan that ends on a refused footprint
     does not repeat a refusal the player has already been told. Reset with every new arm. */
 let reportedTile = null;
+
+/** A placement answer the player can hear as well as read. The arm refuses for four
+    reasons (already built, no cash, flat map, no legal ground) and a ghost tap refuses
+    for a fifth (rock under the footprint) — all five are the same event, so they get
+    the same cue from one place. `place-refuse` is the quiet one, not `error`: W-01's
+    homesteader tapped eight refused tiles before dying of thirst. */
+function refusePlacement(msg) {
+  sfx('place-refuse');
+  return log(msg, 'bad');
+}
 
 /** Arm the placement for a tank or a sited facility: the same 1x1/2x1 footprint the house and
     the cabins use, under the cursor, and NO money moves until a click lands on ground the sim
@@ -719,20 +889,34 @@ function armPlacement(kind) {
   // crop rows do; the ghost itself also backs out on Escape and on right-click.
   if (r.ghost && r.ghost.kind === kind) return disarmPlacement();
   if (h.ended) return;
-  if (P.exists()) return log(`The ${P.label} is already on this plot - nothing was charged.`, 'bad');
+  if (P.exists()) return refusePlacement(`The ${P.label} is already on this plot - nothing was charged.`);
   const bill = P.cost();
   if (h.cash < bill) {
-    return log(`A ${P.label} is ${money(bill)} and you have ${money(Math.round(h.cash))} - nothing was charged.`, 'bad');
+    return refusePlacement(`A ${P.label} is ${money(bill)} and you have ${money(Math.round(h.cash))} - nothing was charged.`);
   }
   if (typeof r._setGhost !== 'function') {
     // ?view=top (the flat rollback renderer) never grew a ghost. Refuse the purchase instead
     // of taking money for a building the player can neither see nor site.
-    return log('The flat map cannot show a placement - open the iso map to place it.', 'bad');
+    return refusePlacement('The flat map cannot show a placement - open the iso map to place it.');
   }
-  const sites = legalSites(P);
+  /* W-01 · on a phone the default-open Plot sheet and the goal card eat the same ground
+     the ghost wants. Get them out of the way BEFORE ranking sites, so the visibility
+     test is asked about the screen the player is actually looking at. */
+  if (isSheet()) {
+    closeWin('win-plot');
+    setGoalCollapsed(true);
+  }
+  let sites = legalSites(P);
   if (!sites.length) {
-    return log(`No ground inside your boundary will hold the ${P.label} yet - clear or flatten a site first.`
-      + ' Nothing was charged.', 'bad');
+    return refusePlacement(`No ground inside your boundary will hold the ${P.label} yet - clear or flatten a site first.`
+      + ' Nothing was charged.');
+  }
+  /* If every legal site is behind an overlay or off the visible map, move the camera
+     once and re-rank. One pan, never a loop: "Place Here" covers the case where the
+     camera clamp cannot bring the tile into the clear. */
+  if (!sites[0].visible) {
+    panSiteIntoView(sites[0]);
+    sites = legalSites(P);
   }
   placementEcho = null;
   reportedTile = null;
@@ -750,12 +934,19 @@ function armPlacement(kind) {
   // none of them agreed: put it back on the nearest site the SIM accepted, where the hint can
   // name what the map objects to, rather than parked on the last tile the loop tried.
   if (r.ghost && !r.ghost.ok) r._setGhost(kind, sites[0].x, sites[0].y);
+  // The arm is a QUESTION, not a purchase — nothing was charged. A single falling tick
+  // says "the ghost is live, find a tile" without celebrating a decision not yet made.
+  sfx('ghost-arm');
   refresh();
 }
 
-/** Take a placement off the map. No sim call runs here, so no price, no lumber, no cash. */
+/** Take a placement off the map. No sim call runs here, so no price, no lumber, no cash.
+    `cancelGhost()` is the public door the renderer published for exactly this (the artist's
+    11-03 pass); `_cancelGhost` is kept only as the fallback for a build that has not got it. */
 function disarmPlacement() {
-  if (r.ghost && typeof r._cancelGhost === 'function') r._cancelGhost();
+  if (!r.ghost) { refresh(); return; }
+  if (typeof r.cancelGhost === 'function') r.cancelGhost();
+  else if (typeof r._cancelGhost === 'function') r._cancelGhost();
   placementEcho = null;
   reportedTile = null;
   refresh();
@@ -773,24 +964,45 @@ function placeSite(P, x, y) {
     // the boundary edge, a reserved site). Put the ghost back on the tile it was refused at, so
     // the refusal sits on the map beside the hint line rather than only in the Log.
     log(`${P.label} will not stand at ${x},${y} - ${res.msg} Nothing was charged.`, 'bad');
+    sfx('place-refuse');      // the sim said no after the map said yes — one dull knock
     if (typeof r._setGhost === 'function') r._setGhost(P.kind, x, y);
     refresh();
     return;
   }
+  /* A tile click reaches this verb with the renderer having ALREADY dropped its ghost
+     (`_actAt` cancels before onAction). W-01's "Place Here" button does not go through
+     that path, so the success must disarm here or a built tank keeps a live ghost and a
+     live button — one more tap would be refused as "already on this plot". */
+  if (typeof r.cancelGhost === 'function') r.cancelGhost();
+  else if (typeof r._cancelGhost === 'function') r._cancelGhost();
+  placementEcho = null;
+  reportedTile = null;
   sfx(VERB_SOUND.accom);   // a building going up: the same sound every other build verb has
   echoSimLog(simFrom);     // the sim names the cost and the days; no page copy of it
   save(); refresh();
 }
 
+/** The sentence for a refused footprint. The renderer carries it on the ghost (`why`, plus
+    `whyTile` when the tile that refused is not the anchor) because the verdict and its words
+    have to come from one answer - a page that re-asks can end up explaining a colour it did not
+    paint. The re-ask through `ghostSiteSay` is only the fallback for a renderer that does not
+    carry it yet, and it asks the same `siteSay` the renderer asked, so the two cannot diverge. */
+function ghostWhy(g) {
+  const why = String(g.why || ghostSiteSay(g.kind, g.x, g.y) || '').trim();
+  if (!why) return g.ok ? '' : 'the ground there will not hold it';
+  const t = g.whyTile;
+  const at = (t && (t[0] !== g.x || t[1] !== g.y)) ? ` (the tile at ${t[0]},${t[1]})` : '';
+  return why + at;
+}
+
 /** The live caption for an armed tank/facility ghost. Reads as the owner asked for it: what is
     happening, what it costs, when it is ready, and how to stop. */
 function placementHint(P, g) {
-  const why = siteSay(P, g.x, g.y);
+  const why = ghostWhy(g);
   const size = g.fp[0] * g.fp[1] > 1 ? ` - ${g.fp[0]}x${g.fp[1]} tiles` : '';
-  if (why || !g.ok) {
+  if (why) {
     $('hint').textContent = `The ${P.label} will not stand at ${g.x},${g.y}: `
-      + (why || 'the map will not hold it there')
-      + ' - move it, or Esc to stop';
+      + why + ' - move it, or Esc to stop';
     return;
   }
   const when = P.days > 0 ? `, ready in ${P.days} day${P.days === 1 ? '' : 's'} (day ${h.day + P.days})` : '';
@@ -958,6 +1170,14 @@ const r = new RClass($('map'), {
     // sim's single rule, so the popup can never promise what the verb will not do.
     fenceOk: (x, y) => fenceRefuse(h.plot, x, y) === '',
     fenceSay: (x, y) => fenceRefuse(h.plot, x, y),
+    /* The ghost's answer, PER TILE (lead's contract, 11-03): '' when the ground takes it, the
+       refusal sentence when it does not. The renderer imports no sim module, so the predicates
+       arrive as this one function, and iso-render's `_siteCheck` asks it for every tile of the
+       footprint - which is why it answers the tile, not the site (see `tileSiteSay`: the sim's
+       predicates are anchored, and asking them per tile judges ground the site never touches).
+       The `_state()` copy is the artist's line, landed in `1c9b4dc`; `tests/47` is what says out
+       loud if a key the page hands over is ever dropped again. */
+    siteSay: (kind, x, y) => tileSiteSay(kind, x, y),
     // ACCOM footprints (verdict 5): the build menu and ghost read the sim's own table.
     // PR-placement: the sited facilities join the same table, because the ablution block's 2x1
     // is tourism.FACILITY_SITE's fact and not this page's to type - without it the renderer
@@ -1040,10 +1260,11 @@ function reportRefusedClick() {
   placementEcho = null;
   if (answered || reportedTile === key) { reportedTile = key; return; }
   reportedTile = key;
-  const why = siteSay(P, g.x, g.y);
-  if (!why && g.ok) return;                             // the tile takes it: the click placed it
-  log(`${P.label} cannot stand at ${g.x},${g.y} - ${why || 'the map will not hold it there'}.`
+  const why = ghostWhy(g);
+  if (!why) return;                                     // the tile takes it: the click placed it
+  log(`${P.label} cannot stand at ${g.x},${g.y} - ${why}.`
     + ' Move it, or press Esc to stop. Nothing was charged.', 'bad');
+  sfx('place-refuse');        // W-01: the rock tap. One knock, never a two-thud rebuke.
 }
 r.cv.addEventListener('click', reportRefusedClick);
 r.cv.addEventListener('touchend', reportRefusedClick);
@@ -1134,10 +1355,51 @@ function freeRoofSite() {
   return [Math.floor(p.w / 2), Math.floor(p.h / 2)];
 }
 
+/* FIND-A (the 10-28 fresh-player pass, replayed on the placement build): "the refusals are
+   excellent but nothing helps me find legal ground" - thirteen refusals in a row on the
+   Homesteader. The buildability map the renderer already draws (green flat, amber slope, red
+   knoll, blue water) lives behind the G key and a popup hint, so a player who has never pressed
+   G has to discover legal ground by being refused. It now follows an armed ghost the way the
+   planting map has followed the crop tool since PR-01 (`89eb4e2`).
+   Owned by the GHOST, not by the mode: the renderer arms the rung ghosts from inside its own
+   build menu without ever calling setMode, so onGhost is the one place that sees every arm and
+   every cancel - Escape, right-click, the Stop button, the accepted click, a sidebar tool taking
+   the click over. It switches the map on when a ghost appears and off when the last one goes,
+   and it never fights the planting overlay (arming a crop clears the ghost first, and leaving
+   the crop tool clears that one). A player who put the ground map on himself with G loses it
+   when the placement ends - the same trade the crop tool already makes, and the honest one: the
+   map is placement feedback, so it goes when the placement does. */
+let ghostOverlay = false;
+function ghostOverlaySync(armed) {
+  if (typeof r.setOverlay !== 'function') return;
+  if (armed && !ghostOverlay) { r.setOverlay('build'); ghostOverlay = true; }
+  else if (!armed && ghostOverlay) { r.setOverlay(null); ghostOverlay = false; }
+}
+
+/** W-01 · the one-tap door on the hint bar. It is live only while the page's own
+    placement ghost is armed and green, and it calls the SAME sim verb a tile click
+    would — so a sheet, a camera clamp or a thumb over the wrong pixel cannot turn a
+    legal site into a refusal. Kept in sync from both refresh() and onGhost. */
+function syncPlaceHere(g) {
+  const b = $('place-here');
+  if (!b) return;
+  const P = g && PLACEMENTS[g.kind];
+  b.hidden = !(P && g.ok);
+}
+$('place-here').onclick = (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const g = r.ghost;
+  const P = g && PLACEMENTS[g.kind];
+  if (P) placeSite(P, g.x, g.y);
+};
+
 /** The ghost's live caption. A blocked site quotes the sim's own refusal sentence rather
     than a generic phrase, because "blocked" without a reason is the thing the owner has
     been telling this seat about since the fence round. */
 function ghostHint(g) {
+  ghostOverlaySync(!!g);
+  syncPlaceHere(g);
   if (!g) { $('hint').textContent = ''; return; }
   if (PLACEMENTS[g.kind]) return placementHint(PLACEMENTS[g.kind], g);
   const d = ACCOM[g.kind];
@@ -1210,7 +1472,8 @@ function setMode(m, kind) {
      renderer publishes `cancelPaint` but no cancel for the ghost, so this reaches the same
      method the page already reaches to arm one (`_setGhost`); Escape and right-click in the
      renderer land on the identical call. No sim call runs on this path - stopping is free. */
-  if (typeof r._cancelGhost === 'function' && r.ghost) r._cancelGhost();
+  if (typeof r.cancelGhost === 'function') r.cancelGhost();
+  else if (typeof r._cancelGhost === 'function' && r.ghost) r._cancelGhost();
   if (m === 'drag') {
     // the drag-build tool: the renderer owns the gesture, the sim owns every rule
     r.cancelPaint();
@@ -1372,7 +1635,15 @@ function renderYard() {
         + (h.cash < d.cost ? ` · need ${money(d.cost - h.cash)} more` : '')
         + (sited ? ` - click, then place it (${FACILITY_SITE[k][0]}x${FACILITY_SITE[k][1]} tiles)` : '');
     const running = `${d.monthly ? ' · ' + money(d.monthly) + '/mo' : ''}${d.fuelPerDay ? ' · fuel ' + money(d.fuelPerDay) + '/day' : ''}`;
-    const location = d.where || (going && going.x != null ? `at tile ${going.x},${going.y}` : '');
+    /* The row's place line follows the same ruling the sim applied to its own log line in
+       `7fa3092`: a place sentence is a claim about a tile. For the five kinds the PLAYER sites,
+       the tile is the answer and the canned `where` prose is a claim about ground nobody chose -
+       the row used to lead with the prose and hide the tile behind it (`d.where || tile`), so a
+       braai the player put at 33,32 still read "in the camp yard, where the guests sit".
+       The unsited kinds (wifi, the driveway) have no tile, so their `where` stays: it is the only
+       reason the money is given, and the sim keeps it in their log line too. */
+    const placed = builds.find((b) => b.kind === k && b.x != null);
+    const location = sited ? (placed ? `at tile ${placed.x},${placed.y}` : '') : (d.where || '');
     html += `<button data-act="facility" data-kind="${k}"${r.ghost && r.ghost.kind === k ? ' class="active"' : ''} ${have || going || h.cash < d.cost || h.ended ? 'disabled' : ''}>${esc(d.label)} <small>${esc(sub + running)}${location ? '<br>' + esc(location) : ''}</small></button>`;
   }
 
@@ -1425,16 +1696,48 @@ function guideButton(target, route) {
   return `<button type="button" data-reveal="${esc(target)}">Show: ${esc(route)}</button>`;
 }
 
-/** A cash incident is already settled; repairs are a separate queue of work. */
+/** W-03 · a cash incident is already SETTLED; it stops being news after five days.
+ *  PLAYTEST-2026-11-09-PHONE60 kept a day-6 geyser bill on screen at day 60, taking
+ *  ~35% of a 390×844 viewport with a card that offers no action. Repairs and the camp
+ *  gate are live work; they never expire. The incident is still in the Log and the
+ *  money ledger — only the attention card goes away. */
+const CASH_CARD_DAYS = 5;
+function liveCashHit() {
+  const hit = h && h.lastHit;
+  if (!hit || !Number.isFinite(hit.day)) return null;
+  const age = h.day - hit.day;
+  return age >= 0 && age <= CASH_CARD_DAYS ? hit : null;
+}
+
+/** W-13 · on a phone an open sheet owns the screen. Fold the attention tray and the
+ *  goal card to their headers so the map the player was asked to act on stays visible. */
+function sheetOpenOnPhone() {
+  return isSheet() && !!document.querySelector('.win.show');
+}
+function collapsePhonePanels() {
+  if (!isSheet()) return;
+  const a = $('attention');
+  if (a) a.open = false;
+  setGoalCollapsed(true);
+}
+
+/** A cash incident is already SETTLED; repairs are a separate queue of work.
+ *  W-03 (PLAYTEST-2026-11-09-PHONE60): the card used to say "no repair action is
+ *  implied by this event" — QA language, not an answer. Both branches now say which
+ *  kind of card this is. The unresolved rows below say "Action needed"; this one says
+ *  the event is over and there is nothing to do. */
 function renderAttention() {
   const jobs = h.repairs || [];
   const unbooked = jobs.filter((j) => !j.booked).length;
   const camp = (h.accom || []).some((a) => a.kind === 'camp') && !h.facilities.ablution;
-  const hit = h.lastHit;
+  const hit = liveCashHit();            // W-03: an old settled incident is not attention
   let html = '';
   if (hit) {
+    const settled = `Already ${hit.amount < 0 ? 'charged to' : 'added to'} your cash. `
+      + 'This event is settled: the money has already moved and there is nothing to do. '
+      + 'Review your remaining budget if needed.';
     html += `<p><b>Cash event · day ${hit.day}: ${signedMoney(hit.amount)}</b> — ${esc(hit.why)}</p>`
-      + `<p>${hit.amount < 0 ? 'Already charged to' : 'Already added to'} your cash. No repair action is implied by this event. Review your remaining budget if needed.</p>`
+      + `<p>${settled}</p>`
       + guideButton('#bankcard', 'Windows → Money');
   }
   for (const job of jobs) {
@@ -1455,13 +1758,15 @@ function renderAttention() {
   if (html !== renderAttention._html) {
     renderAttention._html = html;
     $('attentionbody').innerHTML = html;
-    if (html) $('attention').open = true;
+    // W-13: a refresh while a phone sheet is up must not reopen the tray the sheet
+    // just folded. The live item is still one tap away in the summary's status line.
+    if (html) $('attention').open = !sheetOpenOnPhone();
   }
   $('attention-status').textContent = [
     unbooked ? `${unbooked} repair${unbooked === 1 ? '' : 's'} need booking` : '',
     jobs.length > unbooked ? `${jobs.length - unbooked} repair(s) booked` : '',
     camp ? 'Camp needs ablutions' : '',
-    hit ? `Cash event day ${hit.day}: ${signedMoney(hit.amount)} · already ${hit.amount < 0 ? 'charged' : 'received'}` : '',
+    hit ? `Cash event day ${hit.day}: ${signedMoney(hit.amount)} · already ${hit.amount < 0 ? 'charged' : 'received'} · settled` : '',
   ].filter(Boolean).join(' · ');
 }
 
@@ -1987,6 +2292,7 @@ function refresh() {
      The rung ghosts the renderer arms from inside its own build menu keep their old behaviour:
      Escape and right-click still cancel them, this row only covers the page's two. */
   const placement = r.ghost && PLACEMENTS[r.ghost.kind] ? PLACEMENTS[r.ghost.kind] : null;
+  syncPlaceHere(r.ghost);              // W-01: the one-tap door follows the ghost
   $('btn-tank').classList.toggle('active', !!placement && placement.kind === 'tank');
   // (the facility rows are rebuilt by renderYard below, so the armed one is marked there)
   for (const b of document.querySelectorAll('.dragtool')) {
@@ -2448,6 +2754,7 @@ function reclampWins() {
 function openWin(id) {
   const w = $(id);
   if (!w) return;
+  const wasShown = w.classList.contains('show');
   // on a phone the sheets stack — one at a time, so a window never hides a window
   if (isSheet()) {
     for (const other of ALLWINS) {
@@ -2477,19 +2784,30 @@ function openWin(id) {
     }
   }
   w.style.zIndex = ++winZ;
+  // W-13 · a sheet that opens on a phone must not leave the attention tray and the
+  // goal card sharing the same few pixels of map. One panel at a time.
+  if (!wasShown) collapsePhonePanels();
   if (id === 'win-log') { logUnread = 0; paintLogDot(); }
   saveWinOpen();
 }
 function closeWin(id) {
   const w = $(id);
   if (!w) return;
+  const wasShown = w.classList.contains('show');
   w.classList.remove('show');
+  // W-13: on a phone a sheet covers the map the player was asked to act on, so the
+  // collapse is a real event. Every close path lands here — the [x], the toggle,
+  // Escape, the drag-down dismissal, and openWin closing the sheet under a new one.
+  // Desktop windows stay silent: this cue belongs to the thumb, not to the window.
+  if (wasShown && isSheet()) sfx('sheet-close');
   saveWinGeo(id);
   saveWinOpen();
   paintLogDot();
 }
 function closeAllWins() {
+  const anyShown = ALLWINS.some((id) => $(id) && $(id).classList.contains('show'));
   for (const id of ALLWINS) { const w = $(id); if (w) w.classList.remove('show'); }
+  if (anyShown && isSheet()) sfx('sheet-close');   // one collapse, not one per window
   saveWinOpen();
   paintLogDot();
 }
@@ -2591,10 +2909,22 @@ for (const [label, mi] of railDefs) {
 }
 
 // Goal panel: pinned, collapsible — the "What now" card without the scroll column.
+/** One door for folding the goal card, so the phone's arm/open paths and the head tap
+    cannot leave the arrow pointing the wrong way. W-01 and W-13 both call this. */
+function setGoalCollapsed(on) {
+  const p = $('goalpanel');
+  if (!p) return;
+  p.classList.toggle('closed', !!on);
+  const t = $('goaltoggle');
+  if (t) t.textContent = on ? '▸' : '▾';
+}
 $('goalhead').addEventListener('click', () => {
   const p = $('goalpanel');
   p.classList.toggle('closed');
-  $('goaltoggle').textContent = p.classList.contains('closed') ? '▸' : '▾';
+  const closed = p.classList.contains('closed');
+  $('goaltoggle').textContent = closed ? '▸' : '▾';
+  // the "What now" card is a drawer too — its collapse gives the map back on a phone
+  if (closed && isSheet()) sfx('sheet-close');
 });
 
 /* ---------------- U2 · one key table, two readers ----------------

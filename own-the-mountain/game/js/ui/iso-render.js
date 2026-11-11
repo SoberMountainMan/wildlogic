@@ -250,7 +250,9 @@ const BUILD_ITEMS = [
 ];
 const DEFAULT_FPS = { house: [2, 2], camp: [4, 3], caravan: [2, 2], room: [1, 1], spare: [0, 0], cabin: [2, 2] };
 const GHOST = {
-  ok: { fill: 'rgba(150,220,160,0.30)', edge: 'rgba(150,220,160,0.85)' },
+  /* W-01 (11-11): at 390x844 the 1x1 tank ghost has to out-shout the rock/scrub
+     texture under it. Fill 0.30 -> 0.42, edge 0.85 -> 1.0 and brighter. */
+  ok: { fill: 'rgba(150,220,160,0.42)', edge: 'rgba(224,255,224,1)' },
   bad: { fill: 'rgba(232,116,88,0.32)', edge: 'rgba(232,116,88,0.9)' },
 };
 
@@ -746,7 +748,18 @@ export class IsoPlotRenderer {
       }
       this._moved = false;
       const c = this._cellAt(...pos(e));
-      if (!c || !this.p) return;
+      if (!c || !this.p) {
+        /* A click that resolves to NO tile dismisses the tile card. It used to `return`
+           before touching `this._popup`, and the document-level dismissal below skips any
+           click whose target IS the canvas - so clicking the backdrop left the previous
+           tile's card on screen naming a tile the player is not looking at (the tester's
+           round 2: six off-boundary clicks, one stale card, "pine - 18y - 8,20 - 878 m"
+           every time). DISMISS, not replace: a click that lands on no tile has no tile to
+           describe, and inventing a "nothing here" card would put words on screen the sim
+           never said. */
+        if (this._popup) this._closePopup();
+        return;
+      }
       this._actAt(c[0], c[1]);
     });
     cv.addEventListener('mousedown', (e) => { this._down = [e.clientX, e.clientY]; this._moved = false; });
@@ -920,7 +933,12 @@ export class IsoPlotRenderer {
       for a moment first — otherwise an inspect tap has no feedback before the log. */
   _tap(sx, sy) {
     const c = this._cellAt(sx, sy);
-    if (!c || !this.p) return;
+    if (!c || !this.p) {
+      // the same dismissal the mouse path got: a phone tap that lands off the plot must not
+      // leave the last tile's card up either
+      if (this._popup) this._closePopup();
+      return;
+    }
     if (this.mode === 'inspect') {
       this.hover = c;
       this._draw();
@@ -1117,6 +1135,21 @@ export class IsoPlotRenderer {
       // Copied explicitly for the same reason as `plantSay`: a field the page hands over
       // and this object does not copy is a row that quietly lies (tests/47).
       fenceSay: typeof s.fenceSay === 'function' ? s.fenceSay : null,
+      /* THE VERB'S ANSWER FOR ONE TILE: `(kind, x, y) -> ''` when the sim would accept that
+         tile for that kind, or the refusal sentence when it would not. This is the contract
+         the lead ruled (11-03) after my own Request row: `_siteOk` below is the ACCOM rule
+         re-typed in the renderer, and the re-typing is not complete - it knows water,
+         corner-flatness, trees, buildings, the gate, beds, hives and accom, and it does NOT
+         know rock (`homestead.js:229` refuses a tank stand on rock), the one-tile boundary
+         margin (`yardRefuseWith`), or a fence post (`yardTaken` marks `p.fence`). So a GREEN
+         ghost could sit on ground the verb refuses: the map guessed, the sim answered, and
+         the player paid for the difference. With this key present the ghost's colour means
+         "this click will be accepted", because it is the sim's own predicate being asked.
+         Copied explicitly for the same reason as `plantSay` and `fenceSay`: a field the page
+         hands over and this object does not copy is a row that quietly lies (tests/47).
+         Absent (the standalone probes, any page that has not wired it) -> `_siteOk` keeps its
+         local checks, which is today's behaviour, not a regression into blindness. */
+      siteSay: typeof s.siteSay === 'function' ? s.siteSay : null,
       // ACCOM footprints, kind → [w, h] (owner verdict 5). Absent → DEFAULT_FPS.
       footprints: s.footprints || null,
       // U8: ACCOM's rung NAMES, kind → label. BUILD_ITEMS below hand-types a label only as a
@@ -1204,43 +1237,84 @@ export class IsoPlotRenderer {
   /* ---- the ghost: footprint follows the cursor, green fits, red blocked ---- */
 
   /** Renderer-side placement check — the same rules as sim canPlaceAccom, read off
-      the plot/homestead the renderer already holds. One answer, two witnesses. */
-  _siteOk(x, y, fp) {
+      the plot/homestead the renderer already holds. One answer, two witnesses.
+
+      SINCE 11-03 there are two paths, and which one runs is not a style choice:
+      - the page supplies `siteSay` (the contract in `_state()`): the SIM is asked for every
+        tile of the footprint and its answer is the verdict. This is the only correct path,
+        because the list below is provably incomplete - no rock, no boundary margin, no
+        fence post - and an incomplete list that returns TRUE is a green ghost on ground the
+        verb refuses.
+      - no `siteSay` (the standalone probes, any page not yet wired): the local checks, i.e.
+        exactly today's behaviour.
+      Returns `{ ok, why }`; `why` is the sim's own sentence, so the hint can say WHY red
+      instead of only showing red. */
+  _siteCheck(x, y, fp, kind) {
     const p = this.p, h = this.h;
-    if (!p) return false;
+    if (!p) return { ok: false, why: 'no plot' };
+    const say = this._state().siteSay;
     for (let cx = x; cx < x + fp[0]; cx++) {
       for (let cy = y; cy < y + fp[1]; cy++) {
-        if (cx < 0 || cy < 0 || cx >= p.w || cy >= p.h) return false;
-        if (p.ground[cy * p.w + cx] === 'water') return false;
+        if (cx < 0 || cy < 0 || cx >= p.w || cy >= p.h) return { ok: false, why: 'off the plot' };
+        if (say) {
+          // A throwing predicate is a page bug, not a refusal: fall back to the local
+          // checks for this tile rather than paint the whole map red.
+          let why = '';
+          try { why = String(say(kind, cx, cy) || ''); } catch (e) { why = ''; }
+          if (why) return { ok: false, why, tile: [cx, cy] };
+          continue;
+        }
+        if (p.ground[cy * p.w + cx] === 'water') return { ok: false, why: 'water stands there', tile: [cx, cy] };
         // same flat rule the sim enforces (canPlaceAccom): the ground must hold the
         // whole cell — the ghost turns red on a slope before money moves
-        if (!this._tileFlat(cx, cy)) return false;
-        if ((p.trees || []).some((t) => t.x === cx && t.y === cy)) return false;
-        if ((p.buildings || []).some((b) => cx >= b.x && cx < b.x + (b.fw || 1) && cy >= b.y && cy < b.y + (b.fh || 1))) return false;
-        if (p.gate && p.gate.x === cx && p.gate.y === cy) return false;
+        if (!this._tileFlat(cx, cy)) return { ok: false, why: 'too steep to build', tile: [cx, cy] };
+        if ((p.trees || []).some((t) => t.x === cx && t.y === cy))
+          return { ok: false, why: 'a tree stands there', tile: [cx, cy] };
+        if ((p.buildings || []).some((b) => cx >= b.x && cx < b.x + (b.fw || 1) && cy >= b.y && cy < b.y + (b.fh || 1)))
+          return { ok: false, why: 'a building stands there', tile: [cx, cy] };
+        if (p.gate && p.gate.x === cx && p.gate.y === cy)
+          return { ok: false, why: 'that is the gate', tile: [cx, cy] };
         if (h) {
-          if ((h.beds || []).some((b) => b.x === cx && b.y === cy)) return false;
-          if ((h.hives || []).some((v) => v.x === cx && v.y === cy)) return false;
-          if ((h.accom || []).some((a) => {
+          if ((h.beds || []).some((b) => b.x === cx && b.y === cy))
+            return { ok: false, why: 'a bed is planted there', tile: [cx, cy] };
+          if ((h.hives || []).some((v) => v.x === cx && v.y === cy))
+            return { ok: false, why: 'a hive stands there', tile: [cx, cy] };
+          const acc = (h.accom || []).find((a) => {
             const af = this._fpOf(a.kind);
             return cx >= a.x && cx < a.x + af[0] && cy >= a.y && cy < a.y + af[1];
-          })) return false;
+          });
+          if (acc) return { ok: false, why: 'a unit stands there', tile: [cx, cy] };
         }
       }
     }
-    return true;
+    return { ok: true, why: '' };
   }
+
+  /** The boolean the probes and the old call sites use. `kind` is optional: with no
+      `siteSay` wired it changes nothing, and with it wired the sim needs to know WHICH
+      verb is asking - a tank stand and a 4x3 camp do not have the same rules. */
+  _siteOk(x, y, fp, kind) { return this._siteCheck(x, y, fp, kind).ok; }
 
   _setGhost(kind, x, y) {
     const fp = this._fpOf(kind);
     const onPlot = x >= 0 && y >= 0 && x + fp[0] <= this.p.w && y + fp[1] <= this.p.h;
-    this.ghost = { kind, x, y, fp, ok: onPlot && this._siteOk(x, y, fp) };
+    const check = onPlot ? this._siteCheck(x, y, fp, kind) : { ok: false, why: 'off the plot' };
+    // `why` is new and additive: the ghost used to be one bit, so a page that wanted to say
+    // WHY the tile was red had to re-ask the sim itself. Now the verdict and its sentence
+    // travel together, and the hint and the colour cannot disagree.
+    this.ghost = { kind, x, y, fp, ok: check.ok, why: check.ok ? '' : (check.why || ''), whyTile: check.tile || null };
     this._emitGhost();
     this._setCursor(this.hover);
     if (this.opts.onGhost) this.opts.onGhost(this.ghost);
   }
 
-  _cancelGhost() {
+  /** PUBLIC: the page disarms a placement through this. It used to reach for
+      `_cancelGhost` (plot.html:758 and :1213 still do), which is a private method holding
+      the ghost's whole state - the same duplicated-fact class as a hand-typed label, except
+      here the page was depending on an underscore. `cancelGhost()` is the contract;
+      `_cancelGhost()` stays as a delegating alias so nothing breaks between my commit and
+      the UI seat's, and it goes when their side lands. */
+  cancelGhost() {
     if (!this.ghost) return;
     this.ghost = null;
     this._emitGhost();
@@ -1248,6 +1322,8 @@ export class IsoPlotRenderer {
     if (this.opts.onGhost) this.opts.onGhost(null);
     this._draw();
   }
+
+  _cancelGhost() { this.cancelGhost(); }
 
   /* A2 · the cursor is mode feedback, so the mode is felt before the hint is read:
      crosshair while a tool is armed (not-allowed when the footprint will not sit there),
@@ -1271,8 +1347,12 @@ export class IsoPlotRenderer {
 
   _emitGhost() {
     if (typeof window === 'undefined') return;
+    // `why` rides along: the ghost holds the sim's sentence, and a QA hook that publishes
+    // only the bit cannot tell "red because rock" from "red because the page refused it".
+    // Additive - nothing read this field before, so no page or probe can break on it.
     window.__ghost = this.ghost
-      ? { kind: this.ghost.kind, x: this.ghost.x, y: this.ghost.y, fp: this.ghost.fp, ok: this.ghost.ok }
+      ? { kind: this.ghost.kind, x: this.ghost.x, y: this.ghost.y, fp: this.ghost.fp,
+        ok: this.ghost.ok, why: this.ghost.why || '', whyTile: this.ghost.whyTile || null }
       : null;
   }
 
@@ -3262,7 +3342,14 @@ export class IsoPlotRenderer {
       const dy = b.minY * this.cam.zoom + this.cam.oy - pad * k - (this.groundCv.maxZ || 0) * this.cam.zoom;
       ctx.drawImage(this.groundCv.cv, dx, dy, this.groundCv.cv.width * k, this.groundCv.cv.height * k);
     }
-    this._drawOverlay(ctx);
+
+    /* W-01 (11-11): the buildability tint is drawn AFTER the object layer now, not
+       under it. At the phone fit zoom a pine canopy is wider than its own 30 px tile,
+       so a tint painted before the trees was hidden on most of the plot: measured
+       1.2-3.8 RGB shift at 390x844, while the same pixel read 142,128,82 immediately
+       after _drawOverlay and returned to the untinted 71,87,59 by the end of the
+       frame. The ghost is still drawn after this pass, so its own highlight stays on
+       top. See tools/w01-overlay-probe.mjs. */
 
     /* ---- object layer, ascending depthKey (painter's order) ---- */
     const items = [];
@@ -3683,6 +3770,10 @@ export class IsoPlotRenderer {
     items.sort((a, b) => a.k - b.k);
     for (const it of items) it.fn();
 
+    /* The ground map sits ABOVE the tree canopies (W-01). Under the highlight and
+       the ghost, so neither is washed out by it. */
+    this._drawOverlay(ctx);
+
     /* The tile under the pointer (or the last tap, or the tile the popup is about):
        a diamond, 1 px light stroke at 55%, filled 6%. This is the "these are tiles and
        you can click them" cue, so it is drawn at every zoom and in every mode —
@@ -3741,8 +3832,14 @@ export class IsoPlotRenderer {
       ctx.moveTo(w0[0], w0[1]); ctx.lineTo(w1[0], w1[1]);
       ctx.lineTo(w2[0], w2[1]); ctx.lineTo(w3[0], w3[1]);
       ctx.closePath();
+      /* W-01: a dark halo under the bright edge. A 0.85-alpha green line over a
+         rock/scrub tile at phone zoom vanished into the texture; the halo makes the
+         footprint read on light rock and dark canopy alike. */
+      ctx.strokeStyle = 'rgba(10,22,12,0.78)';
+      ctx.lineWidth = Math.max(3, 2.8 * this.dpr);
+      ctx.stroke();
       ctx.strokeStyle = col.edge;
-      ctx.lineWidth = Math.max(1.5, 1.4 * this.dpr);
+      ctx.lineWidth = Math.max(1.8, 1.6 * this.dpr);
       ctx.stroke();
     }
 

@@ -1517,6 +1517,157 @@ function drawAblution(ctx, s, o = {}) {
   ctx.fillRect(tx - w * 0.08, ty - h * 0.72, w * 0.05, h * 0.40);
 }
 
+/* ---- the four yard facilities (v10, lead 11-02) ---------------------------------
+   braai, fireplace, generator, solar: four rungs that took money and put NOTHING on the
+   ground, which is why the owner asked "going up, but where?". They are PAINTED now; these
+   are the vector fallbacks the registry needs before the bitmaps decode (and in node, where
+   they never do). Same apron diamond as the ablution block, because the apron IS the
+   footprint the sim reserved: [2,1] is 96 x 48 design px, [1,1] is 64 x 32. Flat shading,
+   hue steps not gradients, light from the same side as every other building. */
+function yardApron(ctx, s, pw, ph) {
+  ctx.fillStyle = 'rgba(150,140,120,.95)';
+  ctx.beginPath();
+  ctx.moveTo(0, 0); ctx.lineTo(pw, -ph / 2); ctx.lineTo(0, -ph); ctx.lineTo(-pw, -ph / 2);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(60,50,36,.45)';
+  ctx.lineWidth = Math.max(0.6, 0.9 * s);
+  ctx.stroke();
+}
+
+function drawBraai(ctx, s) {
+  const pw = 48 * s, ph = 24 * s;
+  yardApron(ctx, s, pw, ph);
+  const P = PALETTE.prop, W = PALETTE.wood;
+  const bx = -14 * s, by = -ph * 0.42, bw = 30 * s, bh = 15 * s;
+  // the stone box: front face lit, right face sheared back at 2:1
+  ctx.fillStyle = P.stone;
+  ctx.fillRect(bx - bw / 2, by - bh, bw, bh);
+  ctx.fillStyle = P.stoneDark;
+  ctx.beginPath();
+  ctx.moveTo(bx + bw / 2, by - bh); ctx.lineTo(bx + bw / 2 + 8 * s, by - bh - 4 * s);
+  ctx.lineTo(bx + bw / 2 + 8 * s, by - 4 * s); ctx.lineTo(bx + bw / 2, by);
+  ctx.closePath(); ctx.fill();
+  // course lines, so it reads as stacked fieldstone and not one grey brick
+  ctx.strokeStyle = 'rgba(40,38,34,.45)';
+  ctx.lineWidth = Math.max(0.5, 0.8 * s);
+  for (const f of [0.34, 0.66]) {
+    ctx.beginPath();
+    ctx.moveTo(bx - bw / 2, by - bh * f); ctx.lineTo(bx + bw / 2, by - bh * f);
+    ctx.stroke();
+  }
+  // coals inside, then the grill bars across the top
+  ctx.fillStyle = '#8a3f1c';
+  ctx.fillRect(bx - bw * 0.38, by - bh - 1.5 * s, bw * 0.76, 2.5 * s);
+  ctx.strokeStyle = '#2b2723';
+  ctx.lineWidth = Math.max(0.8, 1.3 * s);
+  for (let i = 0; i <= 4; i++) {
+    const t = i / 4;
+    ctx.beginPath();
+    ctx.moveTo(bx - bw / 2 + bw * t, by - bh - 2 * s - 4 * s * t);
+    ctx.lineTo(bx - bw / 2 + bw * t + 8 * s, by - bh - 2 * s - 4 * s * t - 4 * s);
+    ctx.stroke();
+  }
+  // the bench beside it: a plank seat on two trestles
+  ctx.fillStyle = W.gatePost;
+  ctx.fillRect(14 * s, -6 * s, 22 * s, 3 * s);
+  ctx.fillRect(16 * s, -3.5 * s, 2.5 * s, 4 * s);
+  ctx.fillRect(31 * s, -3.5 * s, 2.5 * s, 4 * s);
+}
+
+function drawFire(ctx, s) {
+  const pw = 32 * s, ph = 16 * s;
+  yardApron(ctx, s, pw, ph);
+  const P = PALETTE.prop;
+  const cy = -ph * 0.5;
+  // the scorch ring first - the burn is what says this fire has been lit before
+  ctx.fillStyle = 'rgba(30,24,18,.55)';
+  ctx.beginPath();
+  ctx.ellipse(0, cy, 13 * s, 6.5 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // the stone ring, eight of them, each with its own lit cap
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const x = Math.cos(a) * 10 * s, y = cy + Math.sin(a) * 5 * s;
+    ctx.fillStyle = P.stone;
+    ctx.beginPath(); ctx.ellipse(x, y, 2.6 * s, 2.0 * s, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = P.stoneLit;
+    ctx.beginPath(); ctx.ellipse(x - 0.6 * s, y - 0.7 * s, 1.3 * s, 0.9 * s, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  // coals, and two logs crossed in the middle
+  ctx.fillStyle = '#7d3413';
+  ctx.beginPath(); ctx.ellipse(0, cy, 6 * s, 3 * s, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = P.bark;
+  ctx.lineWidth = Math.max(1, 2 * s);
+  ctx.beginPath();
+  ctx.moveTo(-5 * s, cy + 1 * s); ctx.lineTo(4 * s, cy - 2 * s);
+  ctx.moveTo(-4 * s, cy - 2 * s); ctx.lineTo(5 * s, cy + 1 * s);
+  ctx.stroke();
+}
+
+function drawGenerator(ctx, s) {
+  const pw = 32 * s, ph = 16 * s;
+  yardApron(ctx, s, pw, ph);
+  const M = PALETTE.metal;
+  const by = -ph * 0.45, w = 22 * s, h = 11 * s;
+  // the frame and its feet
+  ctx.fillStyle = '#2f3236';
+  ctx.fillRect(-w / 2 - 1.5 * s, by - 3 * s, w + 3 * s, 3 * s);
+  ctx.fillRect(-w / 2, by - 5 * s, 2 * s, 2 * s);
+  ctx.fillRect(w / 2 - 2 * s, by - 5 * s, 2 * s, 2 * s);
+  // the tank, lit on the left, with the muffler at the right end
+  ctx.fillStyle = M.tankBody;
+  ctx.fillRect(-w / 2, by - 3 * s - h, w, h);
+  ctx.fillStyle = 'rgba(255,255,255,.28)';
+  ctx.fillRect(-w / 2, by - 3 * s - h, 3 * s, h);
+  ctx.fillStyle = M.tankEdge;
+  ctx.fillRect(-w * 0.18, by - 3 * s - h - 2.5 * s, 5 * s, 2.5 * s);
+  ctx.fillStyle = '#8d8578';
+  ctx.beginPath();
+  ctx.ellipse(w / 2 + 2 * s, by - 3 * s - h * 0.45, 3 * s, 3.4 * s, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // rust streaks, because it sits in the weather
+  ctx.fillStyle = 'rgba(122,58,26,.55)';
+  ctx.fillRect(-w * 0.22, by - 3 * s - h, 1.4 * s, h);
+  ctx.fillRect(w * 0.10, by - 3 * s - h, 1.0 * s, h * 0.7);
+  // the cable off one side, coiled on the ground
+  ctx.strokeStyle = '#23262a';
+  ctx.lineWidth = Math.max(0.9, 1.6 * s);
+  ctx.beginPath();
+  ctx.moveTo(w / 2 + 2 * s, by - 2 * s);
+  ctx.quadraticCurveTo(w / 2 + 9 * s, by + 1 * s, w / 2 + 6 * s, by + 3 * s);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(w / 2 + 7 * s, by + 3 * s, 4 * s, 2 * s, 0, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawSolarPower(ctx, s) {
+  const pw = 48 * s, ph = 24 * s;
+  yardApron(ctx, s, pw, ph);
+  const M = PALETTE.metal;
+  const by = -ph * 0.40, rise = 12 * s;
+  // four panels in a row, each a tilted parallelogram - low at the back edge, high at the
+  // front - so the array reads as tilted to the sun and not as a flat roof
+  for (let i = 0; i < 4; i++) {
+    const x = -22 * s + i * 11 * s;
+    ctx.fillStyle = i % 2 ? '#31424d' : '#3a4d5a';
+    ctx.beginPath();
+    ctx.moveTo(x, by - rise * 0.35);
+    ctx.lineTo(x + 10 * s, by - rise * 0.35 - 3 * s);
+    ctx.lineTo(x + 10 * s, by - rise);
+    ctx.lineTo(x, by - rise + 3 * s);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.22)';
+    ctx.fillRect(x + 1 * s, by - rise + 1 * s, 8 * s, 1.6 * s);
+    ctx.fillStyle = M.tankEdge;            // the post under each panel
+    ctx.fillRect(x + 4 * s, by - rise * 0.35 + 1 * s, 1.8 * s, rise * 0.35);
+  }
+  ctx.fillStyle = '#6d757c';               // the rail the posts stand on
+  ctx.fillRect(-22 * s, by - 1.5 * s, 44 * s, 1.8 * s);
+  ctx.fillStyle = M.tankBody;              // junction box at the near end
+  ctx.fillRect(20 * s, by - 5 * s, 4 * s, 3.5 * s);
+}
+
 /**
  * side (SE) wall sheared back at 2:1 so the building has volume — that sheared face is
  * what stops the sprite reading as a cardboard cutout at fit zoom.
@@ -2080,6 +2231,44 @@ export const SPRITES = {
       drawAblution(c, s, o);
     },
     bounds: [-48, 48, -62, 6],
+  },
+  // THE FOUR YARD FACILITIES (v10, lead 11-02). Keys are the SIM's FACILITY kinds, because
+  // iso-render draws a plot building by `SPRITES[bd.kind]` (iso-render.js:3623) - the solar
+  // array's kind is `power`, so a sprite named `solar` would be invisible with no error
+  // anywhere. Footprints are the lead's ruling: braai [2,1], fire [1,1], generator [1,1],
+  // power [2,1]; the `w/h` and `bounds` below are the pre-derivation boxes and the bitmap
+  // union widens them at load (see "bounds vs the painted box").
+  braai: {
+    w: 96, h: 46,
+    draw: (c, s, o) => {
+      if (imageState.braai === 'ready') { drawImageSprite(c, 'braai', s, 0.5); return; }
+      drawBraai(c, s, o);
+    },
+    bounds: [-48, 48, -50, 6],
+  },
+  fire: {
+    w: 64, h: 30,
+    draw: (c, s, o) => {
+      if (imageState.fire === 'ready') { drawImageSprite(c, 'fire', s, 0.5); return; }
+      drawFire(c, s, o);
+    },
+    bounds: [-32, 32, -34, 4],
+  },
+  generator: {
+    w: 64, h: 36,
+    draw: (c, s, o) => {
+      if (imageState.generator === 'ready') { drawImageSprite(c, 'generator', s, 0.5); return; }
+      drawGenerator(c, s, o);
+    },
+    bounds: [-32, 32, -40, 4],
+  },
+  power: {
+    w: 100, h: 46,
+    draw: (c, s, o) => {
+      if (imageState.power === 'ready') { drawImageSprite(c, 'power', s, 0.5); return; }
+      drawSolarPower(c, s, o);
+    },
+    bounds: [-50, 50, -52, 6],
   },
   // THE SPRITE KEY IS THE SIM KIND IT SERVES (owner delegated the naming, 10-22).
   // iso-render.js draws `a.kind` straight off this registry, so there is no mapping

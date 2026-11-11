@@ -177,6 +177,14 @@ export function layTrack(p, x, y, h, kind = 'dirt', axis = null, turn = false) {
   if (!trackConnects(p, x, y)) {
     return err('track has to start at the gate and run tile by tile — that tile does not touch the track');
   }
+  // Owner live play 11-03: "you can still make a road on the wrong tiles." Measured on the
+  // real bake: this verb accepted 713 tiles with a tree standing on the Homesteader, while
+  // the blade (grade, below), the tank stand and the bed all refuse a tree. A road is cut,
+  // not conjured — Forestry is the verb that opens the line. AFTER the connectivity rule,
+  // so a line that could never reach here is told that, not told to go and fell a tree.
+  if (p.trees.some((t) => t.x === x && t.y === y)) {
+    return err('a tree stands there — fell it before the track comes through');
+  }
   const sideways = sidewaysRefuse(p, x, y, axis, turn);
   if (sideways) return err(sideways);
   const overMud = mudAt(p, x, y);
@@ -218,6 +226,11 @@ export function layMud(p, x, y, h, axis = null, turn = false) {
   if (trackAt(p, x, y)) return err('that tile is already gravelled');
   if (!trackConnects(p, x, y)) {
     return err('the mud has to start at the gate and run tile by tile — that tile does not touch the track');
+  }
+  // The cheap surface is not a loophole around the tree rule (owner 11-03, same defect as
+  // the track verb, and same order: connectivity first, so the message is the real reason).
+  if (p.trees.some((t) => t.x === x && t.y === y)) {
+    return err('a tree stands there — fell it before the track comes through');
   }
   // The same rollover rule as track (owner ruling 11-02): mud is the cheap surface, not
   // a licence to run sideways along the contour.

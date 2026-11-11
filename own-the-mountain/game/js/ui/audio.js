@@ -671,6 +671,78 @@ function buildSfx(c, dest, name, when) {
     latch.start(t + 0.11); latch.stop(t + 0.16);
     return;
   }
+
+  /* ---- mobile UI feedback (2026-11-11, PHONE60 W-01/W-13) ---------------
+     Three gestures the phone pass found blind: a sheet collapsing over the map, a
+     placement ghost arming, and a tap on ground that refuses the build. These are NOT
+     events in the sim — they are UI state, so the page calls them by name and the module
+     stays pure output. All three are deliberately quieter than `error`: a player can
+     collapse six sheets or tap eight rocks in a row (W-01 measured eight), and a cue
+     that scolds on every tap becomes the thing they mute. No melody, no rising shape,
+     no second note — the no-jingles rule is the whole design here. */
+
+  if (name === 'sheet-close') {
+    // A bottom sheet going down: air past the thumb, then the card settling. One
+    // downward gesture, no note. The lowpass falls with the sheet rather than the gain
+    // swelling, so it reads as something closing, not something arriving.
+    const n = noiseSrc(c);
+    const lp = filt(c, 'lowpass', 1800, 0.7);
+    lp.frequency.setValueAtTime(1800, t);
+    lp.frequency.exponentialRampToValueAtTime(320, t + 0.26);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.11, t + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+    n.connect(lp); lp.connect(g); g.connect(dest);
+    n.start(t); n.stop(t + 0.3);
+
+    const settle = osc(c, 'sine', 96);
+    settle.frequency.setValueAtTime(96, t + 0.19);
+    settle.frequency.exponentialRampToValueAtTime(62, t + 0.3);
+    const sg = c.createGain(); env(sg, t + 0.19, 0.004, 0.1, 0.09);
+    settle.connect(sg); sg.connect(dest);
+    settle.start(t + 0.19); settle.stop(t + 0.32);
+    return;
+  }
+
+  if (name === 'ghost-arm') {
+    // A tool picked up: one dry click and a short low tick that FALLS. A rising pair
+    // would be a fanfare for a decision the player has not made yet — the ghost is a
+    // question, not a purchase, and nothing has been charged.
+    const n = noiseSrc(c);
+    const hp = filt(c, 'highpass', 2200, 0.8);
+    const ng = c.createGain(); env(ng, t, 0.001, 0.1, 0.03);
+    n.connect(hp); hp.connect(ng); ng.connect(dest);
+    n.start(t); n.stop(t + 0.05);
+
+    const o = osc(c, 'triangle', 520);
+    o.frequency.setValueAtTime(520, t);
+    o.frequency.linearRampToValueAtTime(430, t + 0.1);
+    const og = c.createGain(); env(og, t, 0.002, 0.09, 0.09);
+    o.connect(og); og.connect(dest);
+    o.start(t); o.stop(t + 0.13);
+    return;
+  }
+
+  if (name === 'place-refuse') {
+    // A tap on ground that will not hold the build: one dull stone knock, and nothing
+    // after it. Quieter and shorter than `error` on purpose (the probe pins both): a
+    // refusal is a fact about a tile, not a scolding. W-01's homesteader tapped eight
+    // refused tiles before dying of thirst — eight two-thud rebukes would be a punishment.
+    const n = noiseSrc(c);
+    const bp = filt(c, 'bandpass', 420, 1.1);
+    const ng = c.createGain(); env(ng, t, 0.002, 0.12, 0.07);
+    n.connect(bp); bp.connect(ng); ng.connect(dest);
+    n.start(t); n.stop(t + 0.1);
+
+    const o = osc(c, 'sine', 150);
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(96, t + 0.12);
+    const og = c.createGain(); env(og, t, 0.003, 0.14, 0.12);
+    o.connect(og); og.connect(dest);
+    o.start(t); o.stop(t + 0.16);
+    return;
+  }
 }
 
 /* ---------------------------------------------------------------- birdsong */

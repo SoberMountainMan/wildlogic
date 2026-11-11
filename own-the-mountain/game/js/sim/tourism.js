@@ -11,7 +11,7 @@ import { initVoices, recordVoice, recentVoices, decemberRegular } from './voices
 import { roadWearMult, guestMult, isWinter } from './weather.js';
 import { waterOut, repairPenalty, repairComplaint } from './handyman.js';
 import { guestReview } from './reviewQuotes.js';
-import { mulberry32, seedOf, drivewaySurcharge, drivewayTiles, steep, tileFlat } from './plotmap.js';
+import { mulberry32, seedOf, drivewaySurcharge, drivewayTiles, tileFlat } from './plotmap.js';
 import { trackWithin, driveWithin, driveAccess, stuckChance, MUD, isFlat } from './siteworks.js';
 import { FIREWOOD, inFirewoodSeason, lumberOff } from './firewood.js';
 import { money } from './fmt.js';   // one money formatter for every log line (fmt.js)
@@ -204,12 +204,24 @@ export const FACILITY_KINDS = Object.keys(FACILITY);
  *  already knows how to hold one. So an ablution build now reserves a tile at the moment
  *  it is paid for and pushes the building when it finishes — same rhythm as a unit.
  *
- *  Deliberately NOT sited: `braai` and `fire` are fittings inside/at a unit that already
- *  has art, `driveway` is a surface (siteworks lays it), `wifi` is a line rental, and
- *  `generator`/`power` are still vector-only — each would need its own sprite to stop
- *  being a second invisible purchase, and that is a separate round. One building, drawn
- *  properly, beats six reserved tiles nobody painted. */
-export const FACILITY_SITE = { ablution: [2, 1] };
+ *  SITED, four more (lead 11-03, after the artist's `6a62cb7`): `braai`, `fire`,
+ *  `generator` and `power` now hold ground too, at the footprints the ruling set —
+ *  [2,1] braai, [1,1] fire circle, [1,1] generator, [2,1] solar array. The keys are the
+ *  SIM's kinds, which is why solar is `power` here and not `solar`: `iso-render` looks a
+ *  plot building up by `SPRITES[bd.kind]`, so a site named for the shop label would draw
+ *  nothing and say nothing. The owner's complaint was "click braai or generator etc and
+ *  it says going up but where?" — the answer is a tile, and a tile is a footprint.
+ *
+ *  Deliberately still NOT sited: `driveway` is a surface `siteworks` lays tile by tile,
+ *  and `wifi` is a line rental the village exchange switches on — neither stands on the
+ *  ground, so neither has a footprint to reserve. */
+export const FACILITY_SITE = {
+  ablution: [2, 1],
+  braai: [2, 1],
+  fire: [1, 1],
+  generator: [1, 1],
+  power: [2, 1],
+};
 
 /** Where a sited facility should go: beside the unit it serves, else the plot's middle.
  *  Deterministic — same plot, same camp, same tile, forever. No rng is drawn, so no
@@ -276,7 +288,7 @@ export function freeFacilityTile(h, fw = 1, fh = 1) {
         if (cx < 1 || cy < 1 || cx >= p.w - 1 || cy >= p.h - 1) return false;
         if (p.ground[cy * p.w + cx] === 'water') return false;
         if (taken.has(cx + ',' + cy)) return false;
-        if (steep(p, cx, cy) !== 0) return false;
+        if (!tileFlat(p, cx, cy)) return false;
       }
     }
     return true;
@@ -539,8 +551,9 @@ export function initTourism(h) {
  *  always place things, thats the building sim", so the site is the player's choice and
  *  the refusal has to be worth reading: it names the thing standing there.
  *  The legality is the SAME set `freeFacilityTile` applies (dry, inside the boundary,
- *  nothing standing on it, `steep` 0), so the auto-spiral and the player's ghost can
- *  never disagree about a tile. */
+ *  nothing standing on it, CORNER-flat by `tileFlat`), so the auto-spiral and the
+ *  player's ghost can never disagree about a tile — and neither can disagree with the
+ *  wall and tank gates, which are the same rule (ui → lead Request, closed 11-03). */
 export function facilitySiteRefuse(h, kind, x, y) {
   initTourism(h);
   const p = h.plot;
@@ -575,7 +588,11 @@ export function facilitySiteRefuse(h, kind, x, y) {
       if (p.ground[cy * p.w + cx] === 'water') return 'water stands there — choose dry ground';
       const what = taken.get(cx + ',' + cy);
       if (what) return `${what} stands there — clear it first`;
-      if (steep(p, cx, cy) !== 0) return 'too steep to build — flatten it first';
+      // CORNER-flat, the same gate a wall and a tank stand by (`tileFlat`: no touching
+      // tile higher, diagonals in). `steep` is the orthogonal pair and is looser: a tile
+      // can read flat to it and still stand on a diagonal step, so a facility bought
+      // through this rule could sit on ground the game calls too steep for a bed.
+      if (!tileFlat(p, cx, cy)) return 'too steep to build — flatten it first';
     }
   }
   return '';
@@ -619,8 +636,17 @@ export function buildFacility(h, kind, x = null, y = null) {
     x: site ? site.x : null, y: site ? site.y : null,
     fw: fp ? fp[0] : 1, fh: fp ? fp[1] : 1,
   });
+  // WHERE IT WENT, in terms the player can check. When THEY sited it, the tile is the
+  // answer and the canned prose is a claim about ground nobody chose - measured on the
+  // Stayed plot: "a fire circle in the camp yard, beside the braai" while the fire went
+  // to 40,4 and the braai to 40-41,7. When the SIM sited it, name the tile and keep the
+  // prose, because the prose is the only reason the player is given. An unsited kind
+  // (wifi, driveway) has no tile and keeps its sentence untouched.
+  const chosen = x != null && y != null;
+  const at = site ? ` At ${site.x},${site.y}.` : '';
+  const prose = (site && chosen) || !def.where ? '' : ` ${def.where}.`;
   h.log.push({ day: h.day, text: `${def.label} started. Ready in ${def.buildDays} day${def.buildDays === 1 ? '' : 's'}. −${money(def.cost)}`
-    + (def.where ? ` ${def.where}.` : '') });
+    + at + prose });
   return ok('facility started', { kind, cost: def.cost, doneDay: h.day + def.buildDays, site });
 }
 
@@ -1134,6 +1160,22 @@ export function tickTourism(h) {
       h.lastParty = party;
       // the rate is the player's own: market × multiplier, carried by the reputation
       const gross = rateFor(h, a.kind);
+      // W-06 (phone playtest 2026-11-09, owner GO 11-11): fifteen identical bad reviews cut
+      // the nightly rate from H$485 to H$368 and no line ever said why. ratingMult() is the
+      // culprit. Say it once, when the rate actually moves — not fifteen times. Both the log
+      // and `rateNotice` are outside snap()'s whitelist, so no golden hash can move.
+      const baseRate = Math.round((MARKET[a.kind] || 0) * ((h.rates && h.rates[a.kind]) || 1));
+      const cut = baseRate - gross;
+      const notices = h.rateNotice || (h.rateNotice = {});
+      if (cut > 0 && notices[a.kind] !== gross) {
+        notices[a.kind] = gross;
+        const score = Math.round((h.rating ?? 4) * 10) / 10;
+        const rung = ((ACCOM[a.kind] && ACCOM[a.kind].label) || a.kind).toLowerCase();
+        h.log.push({ day: h.day, text: `Rating fell to ${score} — the ${rung} now earns H$${gross} a night.` });
+        if (h.log.length > 200) h.log.shift();
+      } else if (cut <= 0) {
+        delete notices[a.kind];   // recovered: a later fall must speak again
+      }
       // a village housekeeper is paid per clean, only on nights you actually let
       const net = Math.round(gross * (1 - PLATFORM_FEE) - cleaningCost(h));
       h.cash += net;
