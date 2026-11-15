@@ -733,6 +733,7 @@ export class IsoPlotRenderer {
       this._userCam = true;
       this._closePopup(true);
       this._clampCam();
+      this._deferBake();
       this._draw();
     }, { passive: false });
     cv.addEventListener('click', (e) => {
@@ -820,6 +821,7 @@ export class IsoPlotRenderer {
         this._userCam = true;
         this._closePopup(true);
         this._clampCam();
+        this._deferBake();
         this._draw();
         return;
       }
@@ -980,6 +982,18 @@ export class IsoPlotRenderer {
   }
 
   frame() { this._draw(); }
+
+  /* PERF (owner 11-15: "feels very heavy in the browser"): a zoom bucket crossing used
+     to re-bake all ~4k tiles synchronously (~225 ms measured) on EVERY wheel tick, so a
+     zoom gesture read as a run of quarter-second freezes. The ground already blit-scales
+     between bake steps (k = cam.zoom / bakeZoom in _draw), so during an active gesture we
+     keep the last bake and scale it, then re-bake ONCE ~150 ms after the gesture settles.
+     _ensureGround honours _bakeDeferUntil; the trailing timer clears it and redraws. */
+  _deferBake() {
+    this._bakeDeferUntil = Date.now() + 150;
+    clearTimeout(this._bakeTimer);
+    this._bakeTimer = setTimeout(() => { this._bakeDeferUntil = 0; this._draw(); }, 160);
+  }
 
   /** The buildability ground map: 'build' or null. Tints every tile by what the
       ground will take — green flat (build/plant), amber slope (track only), red
@@ -2341,6 +2355,9 @@ export class IsoPlotRenderer {
     // night a guest count changed, for a change in a line 0.05 alpha wide.
     const trafficBucket = Math.round(clamp(((this.h && this.h.lastNights) || 0) / 8, 0, 1) * 4);
     const key = `${p.w}x${p.h}:${bz.toFixed(2)}:${tint.season}:${hh}:${trackLen}:${gravelLen}:${mudLen}:${damList.length}:${damFill}:${surfKey}:${roadSideKey}:${roadBucket}:${trafficBucket}`;
+    // PERF: during an active zoom gesture keep the last bake and blit-scale it (see
+    // _deferBake); the trailing timer re-bakes once the gesture settles.
+    if (this.groundCv && Date.now() < (this._bakeDeferUntil || 0)) return;
     if (this._groundKey === key && this.groundCv) return;
     this._groundKey = key;
     const bakeT0 = (typeof performance !== 'undefined') ? performance.now() : 0;
