@@ -994,7 +994,7 @@ export function buildAccom(h, kind, x, y) {
   h.cash -= cost;
   if (lumber.used) h.lumber -= lumber.used;
   const unit = {
-    id: 'a' + h.accom.length, kind, x, y,
+    id: nextAccomId(h), kind, x, y,
     built: false, doneDay: h.day + def.buildDays,
     // the ladder rungs are built unlisted — listing is the player's decision (and the
     // mistake the review engine exists to punish). The old rungs keep letting as before.
@@ -1021,6 +1021,71 @@ export function buildAccom(h, kind, x, y) {
     h.log.push({ day: h.day, text: `${def.label} on flat ground — no cut, no fill.` });
   }
   return ok('building started', { unit, cost, surcharge });
+}
+
+/* ---- #2 (owner go 11-15): the ladder earns its keep -------------------------
+   The cold pass found the starter house "does nothing mechanically" and there was no
+   way to undo or climb a build. Three bounded moves, all reusing existing numbers:
+   a built house cuts the daily living bill and halves the cold-house night (a proper
+   roof holds heat); demolish refunds a quarter and frees the tiles; upgrade replaces a
+   built garden room with a cabin on the nearest ground that takes it, paying the
+   difference. None of these is exercised by the golden script (it never builds a house
+   and never demolishes/upgrades), so the traces stay byte-identical. */
+export const HOUSE = { livingSave: 60, coldFactor: 0.5, demolishRefund: 0.25 };
+
+export function hasHouse(h) {
+  return (h.accom || []).some((a) => a.kind === 'house' && a.built);
+}
+
+/* ids must survive demolish/upgrade: 'a'+length reused a freed id and a new cabin could
+   carry the id of the room it replaced. A monotonic counter, seeded from the current
+   count so old saves keep their ids. */
+function nextAccomId(h) {
+  h.accomSeq = (h.accomSeq ?? ((h.accom || []).length - 1)) + 1;
+  return 'a' + h.accomSeq;
+}
+
+/** Undo a built rung: a quarter of its list price back, its tiles freed. A home is a
+    home — demolishing it is allowed but the benefit goes with it. Going-up builds are
+    not demolished here (the money is already committed to the blade). */
+export function demolishAccom(h, id) {
+  const i = (h.accom || []).findIndex((a) => a.id === id);
+  if (i < 0) return err('nothing there to pull down');
+  const a = h.accom[i];
+  if (!a.built) return err('it is still going up — wait for it to finish, or let it stand');
+  const def = ACCOM[a.kind];
+  const refund = Math.round(def.cost * HOUSE.demolishRefund);
+  h.accom.splice(i, 1);
+  h.cash += refund;
+  h.log.push({ day: h.day, text: `Pulled down the ${def.label.toLowerCase()}. +${money(refund)} back in salvage; the ground is open again.` });
+  return ok('demolished', { refund });
+}
+
+/** Climb one rung: a built garden room becomes a cabin on the nearest legal 2x2, paying
+    the list-price difference. The room is removed (its tile freed); the cabin goes up
+    over its own build days. Refuses, with a reason, when no ground will take a cabin. */
+export function upgradeAccom(h, id) {
+  const a = (h.accom || []).find((q) => q.id === id);
+  if (!a) return err('nothing there to upgrade');
+  if (a.kind !== 'room') return err('only a garden room can be upgraded to a cabin');
+  if (!a.built) return err('let the room finish before upgrading it');
+  const diff = ACCOM.cabin.cost - ACCOM.room.cost;
+  if (h.cash < diff) return err(`the upgrade is ${money(diff)} — you have ${money(Math.round(h.cash))}`);
+  const p = h.plot;
+  let best = null, bestD = Infinity;
+  for (let y = 1; y < p.h - 2; y++) for (let x = 1; x < p.w - 2; x++) {
+    if (!canPlaceAccom(h, 'cabin', x, y).ok) continue;
+    const d = Math.abs(x - a.x) + Math.abs(y - a.y);
+    if (d < bestD) { bestD = d; best = { x, y }; }
+  }
+  if (!best) return err('no ground on this plot will hold a cabin yet — clear or flatten a 2x2 first');
+  h.cash -= diff;
+  h.accom.splice(h.accom.indexOf(a), 1);
+  const unit = { id: nextAccomId(h), kind: 'cabin', x: best.x, y: best.y,
+    built: false, doneDay: h.day + ACCOM.cabin.buildDays, listed: false };
+  h.accom.push(unit);
+  h.log.push({ day: h.day, text: `Upgraded the garden room to a cabin at ${best.x},${best.y}. −${money(diff)}; ready in ${ACCOM.cabin.buildDays} days.` });
+  return ok('upgrading', { unit, diff });
 }
 
 /**

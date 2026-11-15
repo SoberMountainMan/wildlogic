@@ -1163,6 +1163,10 @@ export class IsoPlotRenderer {
       // household facility flags, so the build menu can say what a rung demands
       facilities: s.facilities || null,
       facilityDefs: s.facilityDefs || null,
+      // #2: per-rung list prices and the house benefit, so the popup can price demolish /
+      // upgrade and name what a roof saves. Whitelisted like the rest (see below).
+      accomCosts: s.accomCosts || null,
+      houseBenefit: s.houseBenefit || null,
       // LD-12 / B2 — the terraform timing and the dozer day. THIS IS A WHITELIST: a field
       // the page supplies but this object does not copy is silently dropped, and the popup
       // quietly falls back to the default. Both of the terraform features were dead for
@@ -1573,6 +1577,27 @@ export class IsoPlotRenderer {
         `ready day ${a.doneDay} / ${Math.max(0, (a.doneDay || 0) - st.day)} days left`);
       else if (a.kind === 'house') note('home', nm, 'your home · never listed');
       else note('listed', nm, a.listed ? 'listed' : 'unlisted');
+      /* #2 (owner go 11-15): the ladder earns its keep. A built rung can be pulled down
+         (a quarter back, tiles freed) and a built garden room can climb to a cabin; a
+         built house names what it saves. Prices come from the page's accomCosts so the
+         sim stays the single source. */
+      if (a.built) {
+        const hb = st.houseBenefit || {};
+        const cost = (st.accomCosts || {})[a.kind];
+        if (a.kind === 'house') {
+          note('house-benefit', 'Your home',
+            `−H$${hb.livingSave ?? 60}/day living · half the cold-house night`);
+        }
+        if (cost != null) {
+          act('demolish', 'Pull it down', `+${money(Math.round(cost * (hb.refund ?? 0.25)))} salvage`,
+            { kind: 'demolish', id: a.id }, st.ended);
+        }
+        if (a.kind === 'room') {
+          const diff = ((st.accomCosts || {}).cabin ?? 0) - cost;
+          act('upgrade', 'Upgrade to a cabin', money(diff), { kind: 'upgrade', id: a.id },
+            st.ended || st.cash < diff);
+        }
+      }
       if (a.kind === 'camp' || a.kind === 'caravan') {
         for (const [kind, def] of Object.entries(st.facilityDefs || {})) {
           const target = `[data-act="facility"][data-kind="${kind}"]`;
@@ -3863,6 +3888,26 @@ export class IsoPlotRenderer {
         ctx.translate(mx, my);
         ctx.transform(1, slope, 0, 1, 0, 0);
         drawSprite(ctx, 'gate', (s * (TW / 2)) / (SPRITES.gate.w || 40));
+        ctx.restore();
+        /* #3 (owner go 11-15): the gate was named in its popup but nothing on the map said
+           WHICH tile it was, so a player could not aim at it (BUG-013: nine clicks along the
+           boundary road, no popup). A small label makes the one tile that opens the gate
+           card findable. Screen-space, above the posts, so it stays upright on any seam. */
+        const gscale = (s * (TW / 2)) / (SPRITES.gate.w || 40);
+        const fs = Math.max(9, 10 * s);
+        ctx.save();
+        ctx.font = `600 ${fs}px system-ui, sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+        const label = 'GATE';
+        const lw = ctx.measureText(label).width + fs * 0.9;
+        const ly = my - (SPRITES.gate.h || 20) * gscale - fs * 0.5;
+        ctx.fillStyle = 'rgba(16,24,20,0.72)';
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(mx - lw / 2, ly - fs, lw, fs * 1.4, fs * 0.35);
+        else ctx.rect(mx - lw / 2, ly - fs, lw, fs * 1.4);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(240,246,240,0.92)';
+        ctx.fillText(label, mx, ly + fs * 0.32);
         ctx.restore();
       });
     }

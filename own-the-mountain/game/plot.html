@@ -494,7 +494,10 @@
 <script type="module">
 import { START_OPTIONS, startPlan, landPlan, LAND_MORTGAGE, PRICES, setupCost, STEM_M3, drivewaySurcharge, STUB_NOTE,
   tileFlat } from './js/sim/plotmap.js';
-import { SITE_BY_ID, lifeSpec } from './js/sim/sites.js';
+import { SITE_BY_ID, siteSpec, lifeSpec } from './js/sim/sites.js';
+// Slice 1 spine: the household (meta) above this plot (instance). The estate owns
+// the shared wallet; this page syncs cash in on load and out on every save.
+import { loadEstate, saveEstate, ownedPlots, setActive, syncFromEstate, syncToEstate, plotPlan } from './js/sim/estate.js';
 import {
   newHomestead, summary, endDay, plantBed, buyHive, harvest, sellAll, fell, buildTank, buyWater, hireCasual,
   waterOk, toJSON, fromJSON, BED, CROPS, DEFAULT_CROP, HIVE, TANK, WATER, FOOD, LABOUR, LIVING_PER_DAY, FUEL_PER_TRIP, bedSlots,
@@ -503,7 +506,8 @@ import {
 import { sellFirewood, sellPoles, inFirewoodSeason, FIREWOOD, lumberOff } from './js/sim/firewood.js';
 import { ACCOM, buildAccom, patchRoad, patchCost, getCleaner, PATCH_COST, tourismSummary,
   FACILITY, FACILITY_KINDS, FACILITY_SITE, buildFacility, facilitySiteRefuse, setListed, setOpen,
-  MARKET, rateFor, setRate, priceDemand, canPlaceAccom, accomFootprint, accomSurcharge, UNLISTED_ON_BUILD } from './js/sim/tourism.js';
+  MARKET, rateFor, setRate, priceDemand, canPlaceAccom, accomFootprint, accomSurcharge, UNLISTED_ON_BUILD,
+  HOUSE, demolishAccom, upgradeAccom } from './js/sim/tourism.js';
 import { FAULTS, bookRepair } from './js/sim/handyman.js';
 import { COST, layTrack, layMud, layFence, removeFence, removeTrack, flatten, grade, dop, fenceRefuse, FILL_PER_DAY,
   driveWithin, damEstimate, trackAt, mudAt, fenceAt } from './js/sim/siteworks.js';
@@ -602,17 +606,32 @@ const option = START_OPTIONS[optionIndex];
 // the catalog measured. No ?site → the canonical three, unchanged.
 const site = SITE_BY_ID[params.get('site')] || null;
 const sideParam = params.get('side');
-const side = site
-  ? (sideParam && site.entranceSide.includes(sideParam) ? sideParam : site.roadSide)
+// Slice 1: the household meta, if one exists. The effective ground is the URL's
+// site, else the estate's active plot; the wallet is the estate's. With no estate
+// every line below behaves exactly as it always has (the canonical three and the
+// picker's single-plot buys never load an estate).
+const estate = loadEstate();
+const estateSiteId = site ? site.id : (estate ? estate.active : null);
+const estateMode = !!(estate && estateSiteId && ownedPlots(estate).some((o) => o.siteId === estateSiteId));
+// Ground the household does not own is bought on the valley map, not here: a
+// hand-typed URL for unowned land goes to the market, so no run ever starts with
+// a wallet that never paid for it.
+if (estate && site && !estateMode) {
+  location.replace('valley.html?site=' + encodeURIComponent(site.id) + '&start=' + encodeURIComponent(option.key));
+  await new Promise(() => {});   // the navigation is the rest of this boot
+}
+const effSite = estateMode ? SITE_BY_ID[estateSiteId] : site;
+const side = effSite
+  ? (sideParam && effSite.entranceSide.includes(sideParam) ? sideParam : effSite.roadSide)
   : null;
-const plotSpec = site
+const plotSpec = effSite
   // the LIFE's own terms ride along: the incomer's H$320k already promised to a builder
   // and the stayed's H$40k are properties of the life, not of the ground
-  ? lifeSpec(site.id, side, option)
+  ? lifeSpec(effSite.id, side, option)
   : option.plot;
 // One save per life AND per site: buying different ground is a different run. The formula
 // lives in js/ui/saves.js so the picker can ask the same question about a life.
-const SAVE = saveKey(option.key, site ? site.id : '');
+const SAVE = saveKey(option.key, effSite ? effSite.id : '');
 
 let h = null;
 let mode = 'inspect';
@@ -1054,6 +1073,7 @@ const VERB_SOUND = {
   flatten: 'dozer', dop: 'dozer', raise: 'dozer', lower: 'dozer',
   bed: 'plant', hive: 'plant', harvest: 'plant',
   accom: 'build',
+  demolish: 'dozer', upgrade: 'build',
   buildmenu: 'ui', buildpick: 'ui', guide: 'ui',
 };
 window.__verbSound = VERB_SOUND;
@@ -1087,6 +1107,12 @@ function tileAction(a) {
   } else if (a.kind === 'accom') {
     simFrom = h.log.length;
     res = buildAccom(h, a.accom, a.x, a.y);
+  } else if (a.kind === 'demolish') {
+    simFrom = h.log.length;
+    res = demolishAccom(h, a.id);
+  } else if (a.kind === 'upgrade') {
+    simFrom = h.log.length;
+    res = upgradeAccom(h, a.id);
   } else if (a.kind === 'track' || a.kind === 'gravel') {
     // gravel is a stone finish on the same rate — the sim prices both at COST.track
     res = layTrack(h.plot, a.x, a.y, h, a.kind === 'gravel' ? 'gravel' : 'dirt');
@@ -1235,6 +1261,10 @@ const r = new RClass($('map'), {
       const { label, cost, buildDays, where } = FACILITY[k];
       return [k, { label, cost, buildDays, where: where || '' }];
     })),
+    // #2: the popup prices demolish (a quarter back) and the room->cabin upgrade, and
+    // names what a built house saves. One source: the sim's ACCOM / HOUSE.
+    accomCosts: Object.fromEntries(Object.keys(ACCOM).map((k) => [k, ACCOM[k].cost])),
+    houseBenefit: { livingSave: HOUSE.livingSave, coldFactor: HOUSE.coldFactor, refund: HOUSE.demolishRefund },
     costs: {
       // `bed` is now just the DEFAULT crop's price, kept for the standalone probes that
       // carry no page. The popup reads `crops` — every crop the sim has, keyed by crop so a
@@ -1782,7 +1812,12 @@ $('notice-dismiss').onclick = () => {
    rule in a file. */
 setInterval(pruneNotice, 5000);
 
-function save() { try { localStorage.setItem(SAVE, toJSON(h)); } catch { /* private mode */ } }
+function save() {
+  try { localStorage.setItem(SAVE, toJSON(h)); } catch { /* private mode */ }
+  // Slice 1: the wallet is the household's. Every save writes the cash back to the
+  // estate, so switching plots carries the purse. No estate → no extra write.
+  if (estateMode) { syncToEstate(h, estate); saveEstate(estate); }
+}
 function load() {
   try {
     const raw = localStorage.getItem(SAVE);
@@ -3361,14 +3396,29 @@ if (params.get('retry') === '1') {
 }
 
 h = load();
+// the shared wallet comes IN on every load: the estate is the household's truth,
+// so a plot opened after another always starts with the purse that plot left.
+// Running a plot also makes it the active one, so the valley previews the ground
+// the player was last on -- whether the run was loaded or just created.
+if (h && estateMode) {
+  syncFromEstate(h, estate);
+  setActive(estate, estateSiteId);
+  saveEstate(estate);
+}
 if (!h) {
   try { await bootTerrain(); } catch { /* no bake here — the fallback slope model plays */ }
   let spec = plotSpec;
   let plan = landPlan(spec, option.mode);
   let shortfall = null;
-  // The picker disables ground this life cannot even put a deposit on; a hand-typed URL
-  // lands here. Refuse the purchase rather than start a run in the red — and say so.
-  if (plan.mode === 'none') {
+  if (estateMode) {
+    // the household already bought this ground on the valley map: the terms are
+    // the purchase's (estate.plotPlan) and the cash is the shared wallet's --
+    // no second purchase happens here, at the life's terms or any other
+    spec = siteSpec(estateSiteId, side);
+    plan = plotPlan(estate, estateSiteId);
+  } else if (plan.mode === 'none') {
+    // The picker disables ground this life cannot even put a deposit on; a hand-typed URL
+    // lands here. Refuse the purchase rather than start a run in the red — and say so.
     shortfall = `That ground is ${money(plan.price)} — the deposit alone is ${money(plan.deposit)} `
       + 'and this life cannot raise it. You are on the old plot instead; the picker will '
       + 'show you what you can afford.';
@@ -3381,7 +3431,22 @@ if (!h) {
   const seedQ = params.get('seed');
   h = newHomestead({ ...option, plot: spec }, plan,
     seedQ != null && Number.isFinite(Number(seedQ)) ? Number(seedQ) : null);
-  if (site && !shortfall) {
+  if (estateMode) {
+    const entry = ownedPlots(estate).find((o) => o.siteId === estateSiteId);
+    h.site = { id: estateSiteId, side: h.plot.gate.side, place: SITE_BY_ID[estateSiteId].place };
+    // the bond is the one the household took at purchase; monthlyBills charges it
+    // from the shared wallet unchanged -- there is no second credit system
+    h.bond = { principal: entry.bond, monthly: entry.monthly };
+    syncFromEstate(h, estate);
+    setActive(estate, estateSiteId);
+    saveEstate(estate);
+    if (entry.mortgage) {
+      h.log.push({ day: h.day, text: `Bought ${h.site.place}: ${money(plan.deposit)} down, `
+        + `${money(entry.monthly)} a month for ${LAND_MORTGAGE.years} years.` });
+    }
+    // the starter stub (plotmap.STUB_NOTE): log-only, day one, never in snap()
+    h.log.push({ day: h.day, text: STUB_NOTE });
+  } else if (site && !shortfall) {
     // the site you bought, on the household (the plot carries the ground; this carries
     // the choice, so the HUD and the save can say which entrance you took)
     h.site = { id: site.id, side: h.plot.gate.side, place: site.place };
@@ -3578,6 +3643,10 @@ if (params.get('ground') === '1' && r && typeof r.setOverlay === 'function') {
 }
 window.__home = {
   get h() { return h; }, get r() { return r; }, option,
+  // Slice 1: the household meta and whether this run is an estate plot, so a
+  // probe can assert the shared wallet without poking localStorage itself
+  get estate() { return estate; },
+  get estateMode() { return estateMode; },
   // U1 — the probe reads the remembered desk without poking localStorage itself
   ui: {
     get geo() { return WIN_GEO; },

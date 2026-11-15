@@ -105,6 +105,9 @@
   <div class="stat bad"><b id="v-road">—</b>road</div>
   <div class="stat"><b id="v-km">—</b>to the village</div>
   <div class="stat cash"><b id="v-cash">—</b>cash</div>
+  <!-- Slice 1: the shared wallet's other half. Hidden until a household exists. -->
+  <div class="stat bad" id="stat-debt" hidden><b id="v-debt">—</b>debt</div>
+  <div class="stat" id="stat-plots" hidden><b id="v-plots">—</b>plots</div>
 </header>
 <main>
   <div id="stage">
@@ -165,8 +168,14 @@ import { MapRenderer } from './js/ui/render.js';
 import { loadTerrain, setTerrain } from './js/sim/terrain.js';
 import { fromJSON, toJSON, summary, newHomestead } from './js/sim/homestead.js';
 import { patchRoad, patchCost, roadDecay, tourismSummary } from './js/sim/tourism.js';
-import { START_OPTIONS, startPlan, landPlan, plotPrice, bondPayment, LAND_MORTGAGE } from './js/sim/plotmap.js';
+import { START_OPTIONS, startPlan, landPlan, plotPrice, bondPayment, LAND_MORTGAGE, START_CASH } from './js/sim/plotmap.js';
 import { SITES, SITE_BY_ID, siteSpec, lifeSpec } from './js/sim/sites.js';
+// Slice 1 spine: the household above the plots. With an estate this page is a
+// live portfolio (owned vs for-sale, one shared wallet); without one it is the
+// start-picker it always was -- every estate behaviour below is gated on `est`.
+import { loadEstate, saveEstate, createEstate, buyPlot, ownsPlot, setActive,
+  suitedBusinesses, BUSINESSES, syncToEstate } from './js/sim/estate.js';
+import { saveKey } from './js/ui/saves.js';
 import { initAudio, world, setMuted, isMuted } from './js/ui/audio.js';
 import { seasonOf } from './js/sim/weather.js';
 // U10b: the same js/sim/fmt.js the sim writes its own sentences with — the land office
@@ -183,13 +192,20 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 // A game bought off the main map (sites.js): ?site=<id>. One save per life AND site.
 const siteQ = params.get('site');
 const siteStart = siteQ ? SITE_BY_ID[siteQ] : null;
-const SAVE = 'otm-home-' + option.key + (siteStart ? '-' + siteStart.id : '');
+// The household meta, if one exists. In portfolio mode the preview household is
+// the ACTIVE plot's run; otherwise it is the picker's own (life, site) run.
+let est = loadEstate();
+let SAVE = saveKey(option.key, est ? (est.active || '') : (siteStart ? siteStart.id : ''));
 
 let h = null;
-try { const raw = localStorage.getItem(SAVE); h = raw ? fromJSON(raw) : null; } catch { /* ignore */ }
+let autoStarted = false;   // true when THIS visit created the preview run below
+if (!est || est.active) {
+  try { const raw = localStorage.getItem(SAVE); h = raw ? fromJSON(raw) : null; } catch { /* ignore */ }
+}
 
 $('back').href = 'plot.html?start=' + encodeURIComponent(option.key)
-  + (siteStart ? '&site=' + encodeURIComponent(siteStart.id) : '');
+  + (est && est.active ? '&site=' + encodeURIComponent(est.active)
+    : siteStart ? '&site=' + encodeURIComponent(siteStart.id) : '');
 
 // QA hook: ?road=N forces a condition so screenshots can show a worn road
 // Number(null) is 0, so an absent parameter used to zero the road on every load.
@@ -212,9 +228,10 @@ setTerrain(t);   // the SIM sees the real ground too: a new game samples real he
    apart"): this page never called setState, so the renderer had an EMPTY plot list and
    drew no markers at all — the whole map was terrain and roads. Hand it the land
    office's 30 sites AND the 24 baked anchors (the three canonical lives live in the
-   bake, not in SITES), deduped by id, and select the player's own ground. */
-const MY_SITE = siteQ || option.plot.id;
-{
+   bake, not in SITES), deduped by id, and select the player's own ground.
+   Slice 1: with a household, EVERY owned plot is marked, not just one. */
+function paintOwned() {
+  const mySite = est ? est.active : (siteQ || option.plot.id);
   const byId = new Map();
   for (const p of (mapJson.plots || [])) {
     byId.set(p.id, { id: p.id, name: p.place || p.id, x: p.x, y: p.y });
@@ -222,17 +239,19 @@ const MY_SITE = siteQ || option.plot.id;
   for (const s of SITES) {
     if (!byId.has(s.id)) byId.set(s.id, { id: s.id, name: s.place, x: s.x, y: s.y, tier: s.tier });
   }
-  for (const p of byId.values()) p.owned = p.id === MY_SITE;
+  for (const p of byId.values()) p.owned = est ? ownsPlot(est, p.id) : p.id === mySite;
   r.setState({ plots: [...byId.values()] });
-  r.selected = MY_SITE;
+  r.selected = mySite;
 }
+paintOwned();
 r.fitToMap();
 
 // no save yet: start this life here so the page works on its own — AFTER the DEM is
 // in, so the plot samples the real heights (TERRAIN-SPEC.md). A site you cannot afford
 // is not started and not saved: the picker disables that card, and this is the page's
-// preview household, not a game.
-if (!h) {
+// preview household, not a game. Portfolio mode never auto-starts a run: an owned
+// plot's household is created on the plot page, from the household's wallet.
+if (!h && !est) {
   const spec = siteStart ? lifeSpec(siteStart.id, params.get('side'), option) : option.plot;
   const plan = landPlan(spec, option.mode);
   if (plan.mode === 'none') {
@@ -241,6 +260,7 @@ if (!h) {
     h = newHomestead({ ...option, plot: spec }, plan);
     if (siteStart) h.site = { id: siteStart.id, side: h.plot.gate.side, place: siteStart.place };
     try { localStorage.setItem(SAVE, toJSON(h)); } catch { /* ignore */ }
+    autoStarted = true;
   }
 }
 // QA hooks, applied after a fresh start too
@@ -465,8 +485,9 @@ function drawOverlay() {
    road comes in from, and starts a life on the one you choose. A site with two roads
    (a corner) offers both entrances — that is the difference between two plots of the
    same kind. */
-let picked = siteStart ? siteStart.id : null;
+let picked = (est && est.active) || (siteStart ? siteStart.id : null);
 let pickedSide = params.get('side') || null;
+let pickedBusiness = null;   // the business the next purchase will commit to
 
 const WATER_LABEL = { stream: 'stream on the boundary', 'dam-site': 'dam site', null: 'dry' };
 /** The forest as the buyer sees it: the rough ground is wattle-heavy, and saying
@@ -482,15 +503,20 @@ function landCalc(s, side) {
   const deposit = Math.round(price * LAND_MORTGAGE.depositFrac);
   const monthly = bondPayment(price - deposit, LAND_MORTGAGE.rate, LAND_MORTGAGE.years);
   const plan = landPlan(lifeSpec(s.id, side || s.roadSide, option), option.mode);
-  return { price, deposit, monthly, afford: plan.mode !== 'none', side: side || s.roadSide };
+  // portfolio mode: affordability is the household's shared purse, not a life's
+  const afford = est ? est.cash >= deposit : plan.mode !== 'none';
+  return { price, deposit, monthly, afford, side: side || s.roadSide };
 }
 
 function siteRow(s) {
   const c = landCalc(s, pickedSide && s.entranceSide.includes(pickedSide) ? pickedSide : null);
   const water = s.water === 'stream' ? 'stream' : s.water === 'dam-site' ? 'dam site' : 'dry';
-  return `<button class="srow${s.id === picked ? ' on' : ''}${c.afford ? '' : ' poor'}" data-site="${s.id}">`
-    + `<span class="s-name">${esc(s.place)}<i>${s.ha} ha · ${s.kmFromShop} km · ${water}`
-    + ` · gate ${s.entranceSide.join('/')}${c.afford ? '' : ' · this life cannot raise the deposit'}</i></span>`
+  const entry = est ? est.owned.find((o) => o.siteId === s.id) : null;
+  const poor = !entry && !c.afford;
+  const shortNote = est ? 'the household cannot raise the deposit' : 'this life cannot raise the deposit';
+  return `<button class="srow${s.id === picked ? ' on' : ''}${poor ? ' poor' : ''}" data-site="${s.id}">`
+    + `<span class="s-name">${esc(s.place)}<i>${entry ? 'owned · ' + esc(BUSINESSES[entry.business] || 'pick a business') + ' · ' : ''}${s.ha} ha · ${s.kmFromShop} km · ${water}`
+    + ` · gate ${s.entranceSide.join('/')}${poor ? ' · ' + shortNote : ''}</i></span>`
     + `<span class="s-num">${money(c.price)}</span>`
     + `<span class="s-num">${money(c.deposit)}</span>`
     + `<span class="s-num">${money(c.monthly)}/mo</span>`
@@ -501,23 +527,35 @@ let VALLEY_ROWS = [];
 function renderSites() {
   // two piles (owner, 2026-10-21: "is there no really cheap shitty property?"): the
   // workable ground that needs a mortgage, and the rough ground a poor life can own.
-  const groups = [
-    ['Workable ground — a mortgage buys these', SITES.filter((s) => s.tier === 'good')],
-    ['Cheap rough ground — steep, far, dry', SITES.filter((s) => s.tier === 'rough')],
-  ];
+  // Portfolio mode adds a third pile on top -- your own ground -- and the two market
+  // piles shrink to what is still for sale. The 30 rows are PARTITIONED, never
+  // duplicated: the map probe counts one row per site.
+  const ownedIds = est ? new Set(est.owned.map((o) => o.siteId)) : null;
+  const groups = [];
+  if (est) {
+    const mine = SITES.filter((s) => ownedIds.has(s.id));
+    if (mine.length) groups.push(['Your plots -- run one, or grow the household', mine]);
+    groups.push(['Workable ground — a mortgage buys these', SITES.filter((s) => s.tier === 'good' && !ownedIds.has(s.id))]);
+    groups.push(['Cheap rough ground — steep, far, dry', SITES.filter((s) => s.tier === 'rough' && !ownedIds.has(s.id))]);
+  } else {
+    groups.push(['Workable ground — a mortgage buys these', SITES.filter((s) => s.tier === 'good')]);
+    groups.push(['Cheap rough ground — steep, far, dry', SITES.filter((s) => s.tier === 'rough')]);
+  }
+  const shown = groups.filter(([, list]) => list.length);
   $('sites').innerHTML = '<div class="shead"><span>Plot</span><span>Cash</span>'
     + `<span>Deposit ${Math.round(LAND_MORTGAGE.depositFrac * 100)}%</span>`
     + `<span>Bond · ${LAND_MORTGAGE.years}y</span></div>`
-    + groups.map(([label, list]) =>
+    + shown.map(([label, list]) =>
       `<div class="sgroup">${label} · ${list.length}</div>` + list.map(siteRow).join('')).join('');
   const sel = picked && $('sites').querySelector(`button[data-site="${picked}"]`);
   if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest' });
-  $('sitewin-count').textContent =
-    `${groups[0][1].length} workable · ${groups[1][1].length} rough · ${option.name}'s money`;
+  $('sitewin-count').textContent = est
+    ? `${ownedIds.size} owned · ${SITES.length - ownedIds.size} for sale · the household's money`
+    : `${groups[0][1].length} workable · ${groups[1][1].length} rough · ${option.name}'s money`;
   // QA: the probe asserts every one of the 30 is listed, priced and reachable
   VALLEY_ROWS = SITES.map((s) => {
     const c = landCalc(s, null);
-    return { id: s.id, tier: s.tier, ...c };
+    return { id: s.id, tier: s.tier, owned: est ? ownedIds.has(s.id) : false, ...c };
   });
 }
 
@@ -581,23 +619,56 @@ function renderPick() {
         + `${side === pickedSide ? 'background:#2e4a37;border-color:#5f9e6d;' : ''}">from the ${side}</button>`).join('')
       + '</div>';
   }
-  html += '<div style="font-size:11px;color:#7f8d7b;margin:6px 0 4px">Take this ground as…</div>';
-  for (const o of START_OPTIONS) {
-    // the life's own terms ride along: the incomer's H$320k promised to a builder, the
-    // stayed's H$40k — properties of the life, not of the ground. landPlan picks the
-    // richest move the life can actually make: cash, else the deposit, else nothing.
-    const plan = landPlan(lifeSpec(s.id, pickedSide, o), o.mode);
-    const can = plan.mode !== 'none';
-    const sub = plan.mode === 'family'
-      ? `a share of the ground · ${money(plan.cashLeft)} in hand, no bond`
-      : plan.mode === 'cash'
-        ? `${money(plan.price)} outright · ${money(plan.cashLeft)} left`
-        : plan.mode === 'mortgage'
-          ? `${money(plan.deposit)} down · ${money(plan.monthly)}/month · ${money(plan.cashLeft)} left`
-          : `${money(plan.deposit)} deposit — this life cannot raise it`;
-    html += `<button data-life="${o.key}" ${can ? '' : 'disabled'}>${o.name} <small>${sub}</small></button>`;
+  // Slice 1: what the ground is good for, read off the catalog (estate.suitedBusinesses).
+  // The choice is stored on the owned entry; Slice 2 gives each identity its loop.
+  const suited = suitedBusinesses(s);
+  const entry = est ? est.owned.find((o) => o.siteId === s.id) : null;
+  const bizNow = entry ? entry.business : (pickedBusiness || suited[0]);
+  html += '<div style="font-size:11px;color:#7f8d7b;margin:6px 0 4px">This ground suits</div>'
+    + '<div style="display:flex;gap:6px;margin:0 0 7px;flex-wrap:wrap">'
+    + suited.map((b) => `<button data-biz="${b}" style="flex:1;padding:5px;text-align:center;font-size:11.5px;min-width:84px;`
+      + `${b === bizNow ? 'background:#2e4a37;border-color:#5f9e6d;' : ''}">${BUSINESSES[b]}</button>`).join('')
+    + '</div>';
+  if (est) {
+    html += entry
+      ? `<button data-run="1">Run this plot<small>${esc(s.place)} · gate ${pickedSide} · ${BUSINESSES[entry.business] || 'pick a business'}</small></button>`
+      : buyButtons(price, deposit, monthly, est.cash, false);
+  } else {
+    html += '<div style="font-size:11px;color:#7f8d7b;margin:6px 0 4px">Take this ground as…</div>';
+    for (const o of START_OPTIONS) {
+      // the life's own terms ride along: the incomer's H$320k promised to a builder, the
+      // stayed's H$40k — properties of the life, not of the ground. landPlan picks the
+      // richest move the life can actually make: cash, else the deposit, else nothing.
+      const plan = landPlan(lifeSpec(s.id, pickedSide, o), o.mode);
+      const can = plan.mode !== 'none';
+      const sub = plan.mode === 'family'
+        ? `a share of the ground · ${money(plan.cashLeft)} in hand, no bond`
+        : plan.mode === 'cash'
+          ? `${money(plan.price)} outright · ${money(plan.cashLeft)} left`
+          : plan.mode === 'mortgage'
+            ? `${money(plan.deposit)} down · ${money(plan.monthly)}/month · ${money(plan.cashLeft)} left`
+            : `${money(plan.deposit)} deposit — this life cannot raise it`;
+      html += `<button data-life="${o.key}" ${can ? '' : 'disabled'}>${o.name} <small>${sub}</small></button>`;
+    }
+    // the portfolio door: the same purchase, but for a household that keeps the
+    // wallet across plots. Bootstraps the estate with the picker's starting purse.
+    html += '<div style="font-size:11px;color:#7f8d7b;margin:9px 0 4px">…or one household, many plots</div>'
+      + buyButtons(price, deposit, monthly, START_CASH, true);
   }
   $('pick').innerHTML = html;
+}
+
+/** The two ways to buy (owner: "maybe a deposit and rest mortgaged? like real life?"),
+ *  priced once and refused honestly when the purse cannot raise the money. */
+function buyButtons(price, deposit, monthly, cash, bootstrap) {
+  const canCash = cash >= price;
+  const canBond = cash >= deposit;
+  const startNote = bootstrap ? `starts a household with ${money(START_CASH)}` : '';
+  return `<button data-buy="cash" ${canCash ? '' : 'disabled'}>Buy outright — ${money(price)}`
+    + `<small>${canCash ? (bootstrap ? startNote : `${money(cash - price)} left in the wallet`) : `${money(price - cash)} short`}</small></button>`
+    + `<button data-buy="bond" ${canBond ? '' : 'disabled'}>Buy with bond — ${money(deposit)} down`
+    + `<small>${money(monthly)}/month for ${LAND_MORTGAGE.years} years`
+    + `${canBond ? (bootstrap ? ' · ' + startNote : '') : ` · ${money(deposit - cash)} short`}</small></button>`;
 }
 
 $('sites').onclick = (e) => {
@@ -605,6 +676,7 @@ $('sites').onclick = (e) => {
   if (!b) return;
   picked = b.dataset.site;
   pickedSide = null;
+  pickedBusiness = null;   // a new plot's business choice starts at its best suit
   const s = SITE_BY_ID[picked];
   if (s) centreOn(s.x, s.y, 1.8);
   renderSites(); renderPick();
@@ -613,6 +685,49 @@ $('sites').onclick = (e) => {
 $('pick').onclick = (e) => {
   const sb = e.target.closest('button[data-side]');
   if (sb) { pickedSide = sb.dataset.side; renderPick(); return; }
+  // the business identity: on owned ground it re-commits the entry, on a purchase
+  // it stages the choice the Buy button will store
+  const bz = e.target.closest('button[data-biz]');
+  if (bz) {
+    const entry = est ? est.owned.find((o) => o.siteId === picked) : null;
+    if (entry) { entry.business = bz.dataset.biz; saveEstate(est); renderSites(); }
+    else pickedBusiness = bz.dataset.biz;
+    renderPick();
+    return;
+  }
+  const run = e.target.closest('button[data-run]');
+  if (run && est && ownsPlot(est, picked)) {
+    setActive(est, picked);
+    saveEstate(est);
+    const entry = est.owned.find((o) => o.siteId === picked);
+    location.href = 'plot.html?site=' + encodeURIComponent(picked)
+      + '&start=' + encodeURIComponent(option.key)
+      + '&side=' + encodeURIComponent((entry && entry.side) || pickedSide || SITE_BY_ID[picked].roadSide);
+    return;
+  }
+  const buy = e.target.closest('button[data-buy]');
+  if (buy) {
+    // the first purchase bootstraps the household; every later one spends its wallet
+    if (!est) est = createEstate();
+    const res = buyPlot(est, picked, { mortgage: buy.dataset.buy === 'bond', business: pickedBusiness, side: pickedSide });
+    if (!res.ok) { $('hint').textContent = res.msg; return; }
+    saveEstate(est);
+    // a preview run THIS visit auto-started for the very ground just bought is the
+    // picker's, not the household's: clear it so the plot page creates the run from
+    // the estate's own terms. A pre-existing run is left alone.
+    if (autoStarted && h && h.site && h.site.id === picked) {
+      try { localStorage.removeItem(SAVE); } catch { /* ignore */ }
+    }
+    h = null;
+    autoStarted = false;
+    SAVE = saveKey(option.key, est.active || '');
+    $('back').href = 'plot.html?start=' + encodeURIComponent(option.key)
+      + '&site=' + encodeURIComponent(est.active);
+    paintOwned();
+    renderSites(); renderPick(); refresh();
+    $('hint').textContent = `Bought ${SITE_BY_ID[picked].place} — ${res.msg}. Run it from the card.`;
+    return;
+  }
   const lb = e.target.closest('button[data-life]');
   if (!lb) return;
   const s = SITE_BY_ID[picked];
@@ -659,15 +774,43 @@ function loop(tMs) {
 requestAnimationFrame(loop);
 
 /* ---------------- panel ---------------- */
+/** Portfolio mode with no active run yet: the map and the market are the page,
+ *  and the plot panels say nothing rather than showing a stale household. */
+function blankPanels() {
+  for (const id of ['v-date', 'v-road', 'v-km', 'c-anchor', 'c-ha', 'c-on', 'c-dist',
+    'v-forest', 'v-cut', 'v-book', 'c-cond', 'c-km', 'c-decay', 'c-cost',
+    'c-rating', 'c-nights', 'c-comp', 'c-rel']) $(id).textContent = '—';
+  $('bar-fill').style.width = '0%';
+  $('bar2-fill').style.width = '0%';
+  $('log').innerHTML = '';
+  $('btn-patch').disabled = true;
+}
+
 function refresh() {
+  if (est) {
+    // the shared wallet, on top: cash, debt and the size of the portfolio
+    $('stat-debt').hidden = false;
+    $('stat-plots').hidden = false;
+    $('title').textContent = 'The household — the valley';
+    $('v-cash').textContent = money(est.cash);
+    $('v-debt').textContent = money(est.debt);
+    $('v-plots').textContent = String(est.owned.length);
+    if (!h) {
+      blankPanels();
+      $('hint').textContent = 'Your ground is marked on the map. Run a plot to open its day.';
+      return;
+    }
+  }
   if (!h) return;
   const s = summary(h);
   const ts = tourismSummary(h);
-  $('title').textContent = `${option.name} — the road in`;
+  if (!est) {
+    $('title').textContent = `${option.name} — the road in`;
+    $('v-cash').textContent = money(s.cash);
+  }
   $('v-date').textContent = s.date;
   $('v-road').textContent = ts.road + '%';
   $('v-km').textContent = ts.roadKm + ' km';
-  $('v-cash').textContent = money(s.cash);
   $('c-cond').textContent = ts.road + '%';
   $('c-km').textContent = ts.roadKm + ' km to the village';
   $('c-decay').textContent = roadDecay(h).toFixed(2) + ' a day';
@@ -717,9 +860,12 @@ function refresh() {
 }
 
 $('btn-patch').onclick = () => {
+  if (!h) return;
   const res = patchRoad(h);
   if (!res.ok) { $('hint').textContent = res.msg; return; }
   try { localStorage.setItem(SAVE, toJSON(h)); } catch { /* ignore */ }
+  // the patch spends the household's money, so the wallet goes back to the estate
+  if (est) { syncToEstate(h, est); saveEstate(est); }
   $('hint').textContent = `Patched — road now ${res.condition}%.`;
   refresh();
 };
@@ -741,6 +887,9 @@ window.__valley = {
   get side() { return pickedSide; },
   landCalc,
   life: option.key,
+  // Slice 1: the portfolio state, so a probe can buy and run without a mouse
+  get estate() { return est; },
+  businesses: BUSINESSES,
 };
 </script>
 </body>

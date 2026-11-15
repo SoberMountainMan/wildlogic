@@ -7,7 +7,7 @@
 // the 133-test gate; this is the new game growing beside it until it replaces it.
 
 import { makePlot, startPlan, PRICES, fellTree, tileFlat } from './plotmap.js';
-import { initTourism, tickTourism, tourismSummary, flushFuel, FACILITY } from './tourism.js';
+import { initTourism, tickTourism, tourismSummary, flushFuel, FACILITY, hasHouse, HOUSE } from './tourism.js';
 import { initCompany, companySummary, tickCompany, maybeOfferContract, noteFelled } from './company.js';
 import { quote, appetite, SHOP } from './market.js';
 import { rollWeather, livingExtra, cropMult, weatherLine } from './weather.js';
@@ -578,8 +578,11 @@ export function endDay(h) {
     food = FOOD.eatKg * FOOD.shopPerKg;
   }
 
-  // the casuals went home — labour is bought per day, on the days you work
-  living = LIVING_PER_DAY + food + livingExtra(h);
+  // the casuals went home — labour is bought per day, on the days you work.
+  // #2 (owner go 11-15): a built house is a settled home — it cuts the daily living bill
+  // (no rent/paraffin elsewhere). The golden script never builds a house, so this is
+  // invisible to the traces.
+  living = LIVING_PER_DAY + food + livingExtra(h) - (hasHouse(h) ? HOUSE.livingSave : 0);
   h.labourToday = 0;
   h.cash -= living;
 
@@ -608,7 +611,8 @@ export function endDay(h) {
       burnFirewood(h, FIREWOOD.householdBurn);
       h.coldHouseNights = 0;
     } else {
-      h.cash -= FIREWOOD.coldHouseNight;
+      // #2: a proper roof holds heat — a built house halves the cold-house night.
+      h.cash -= Math.round(FIREWOOD.coldHouseNight * (hasHouse(h) ? HOUSE.coldFactor : 1));
       h.coldHouseNights = (h.coldHouseNights || 0) + 1;
       if (h.coldHouseNights === 1) {
         // the sentence is the narrative seat's (`coldHouseLine`), because "the house goes
