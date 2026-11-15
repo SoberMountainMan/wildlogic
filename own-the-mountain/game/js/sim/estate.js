@@ -44,9 +44,12 @@ function storeOf(store) {
   return store || (typeof localStorage !== 'undefined' ? localStorage : null);
 }
 
-/** A fresh household: the picker's starting purse, no ground, no debt. */
+/** A fresh household: the picker's starting purse, no ground, no debt.
+ *  Slice 2 adds the world clock (month): every canonical life begins on 1
+ *  September, so the valley's demand bars read 9 until a plot save carries
+ *  the real month over (syncToEstate). */
 export function createEstate(cash = START_CASH) {
-  return { cash, debt: 0, rep: 0, owned: [], active: null };
+  return { cash, debt: 0, rep: 0, owned: [], active: null, month: 9 };
 }
 
 /**
@@ -77,11 +80,16 @@ export function loadEstate(store) {
       bond: Number.isFinite(o.bond) ? o.bond : 0,
       monthly: Number.isFinite(o.monthly) ? o.monthly : 0,
       side: typeof o.side === 'string' ? o.side : null,
+      // Slice 2: the per-plot skill rides the entry, never the household (snap()
+      // must not see it). No upper clamp on the read path -- XP_MAX lives in
+      // business.js, which imports THIS file; the write path (gainXp) clamps.
+      xp: Number.isFinite(o.xp) ? Math.max(0, Math.round(o.xp)) : 0,
     });
   }
   const active = typeof j.active === 'string' && owned.some((o) => o.siteId === j.active)
     ? j.active : null;
-  return { cash: j.cash, debt: j.debt, rep: Number.isFinite(j.rep) ? j.rep : 0, owned, active };
+  const month = Number.isFinite(j.month) && j.month >= 1 && j.month <= 12 ? Math.round(j.month) : 9;
+  return { cash: j.cash, debt: j.debt, rep: Number.isFinite(j.rep) ? j.rep : 0, owned, active, month };
 }
 
 /** Write the household. Returns false when there is no store (node, private mode). */
@@ -128,13 +136,13 @@ export function buyPlot(e, siteId, { mortgage = false, business = null, side = n
     }
     e.cash -= deposit;
     e.debt += bond;
-    e.owned.push({ siteId, business: biz, mortgage: true, bond, monthly, side });
+    e.owned.push({ siteId, business: biz, mortgage: true, bond, monthly, side, xp: 0 });
   } else {
     if (e.cash < price) {
       return { ok: false, msg: `the ground costs ${money(price)} -- the household has ${money(Math.round(e.cash))}` };
     }
     e.cash -= price;
-    e.owned.push({ siteId, business: biz, mortgage: false, bond: 0, monthly: 0, side });
+    e.owned.push({ siteId, business: biz, mortgage: false, bond: 0, monthly: 0, side, xp: 0 });
   }
   e.active = siteId;
   return {
@@ -215,8 +223,11 @@ export function syncFromEstate(h, e) {
 }
 
 /** The wallet OUT: every plot save writes the household cash back, so the next
- *  plot -- on this page or another -- opens with the same purse. */
+ *  plot -- on this page or another -- opens with the same purse. Slice 2 adds the
+ *  world clock: the plot's month rides out too, so the valley's demand bars read
+ *  the real season instead of the September anchor. */
 export function syncToEstate(h, e) {
   e.cash = h.cash;
+  if (h.date && Number.isFinite(h.date.month)) e.month = h.date.month;
   return e;
 }

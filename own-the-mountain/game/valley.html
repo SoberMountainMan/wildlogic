@@ -137,6 +137,9 @@
       <div id="bar2" style="height:6px;border-radius:99px;background:#22302a;overflow:hidden;margin:6px 0 2px"><i id="bar2-fill" style="display:block;height:100%;width:0%;background:#7fc48d"></i></div>
       <div class="row muted"><span>Cut so far</span><span id="v-cut">—</span></div>
       <div class="row muted"><span>Your bookings</span><span id="v-book">—</span></div>
+      <!-- Slice 2: the mountain's own demand, from the household's world clock.
+           Empty without a household: a single life has no portfolio to price. -->
+      <div id="v-demand"></div>
     </div>
     <h2>Your road</h2>
     <div style="display:flex;gap:6px;margin:0 0 8px">
@@ -166,7 +169,7 @@
 <script type="module">
 import { MapRenderer } from './js/ui/render.js';
 import { loadTerrain, setTerrain } from './js/sim/terrain.js';
-import { fromJSON, toJSON, summary, newHomestead } from './js/sim/homestead.js';
+import { fromJSON, toJSON, summary, newHomestead, dateLabel } from './js/sim/homestead.js';
 import { patchRoad, patchCost, roadDecay, tourismSummary } from './js/sim/tourism.js';
 import { START_OPTIONS, startPlan, landPlan, plotPrice, bondPayment, LAND_MORTGAGE, START_CASH } from './js/sim/plotmap.js';
 import { SITES, SITE_BY_ID, siteSpec, lifeSpec } from './js/sim/sites.js';
@@ -177,7 +180,12 @@ import { loadEstate, saveEstate, createEstate, buyPlot, ownsPlot, setActive,
   suitedBusinesses, BUSINESSES, syncToEstate } from './js/sim/estate.js';
 import { saveKey } from './js/ui/saves.js';
 import { initAudio, world, setMuted, isMuted } from './js/ui/audio.js';
-import { seasonOf } from './js/sim/weather.js';
+import { seasonOf, SEASON_LABEL } from './js/sim/weather.js';
+// Slice 2: the business identities and their demand bars. The valley needs no
+// household to draw them -- the estate carries the world clock (month) and the
+// village's opinion (rep), and business.js reads the shipped demand functions
+// behind the bars (market prices, the firewood season, the letting calendar).
+import { IDENTITIES, demandFor, mountainDemand, skillLine, levelUnlocked, XP_MAX } from './js/sim/business.js';
 // U10b: the same js/sim/fmt.js the sim writes its own sentences with — the land office
 // quotes a deposit and an instalment side by side, so a second grouping rule here would
 // show two formats on one screen. (fmt.js imports nothing, so this crosses no boundary.)
@@ -212,6 +220,14 @@ $('back').href = 'plot.html?start=' + encodeURIComponent(option.key)
 const q = (k) => (params.get(k) === null ? null : Number(params.get(k)));
 const forced = q('road');
 const forcedValley = q('valley');
+// Slice 2 QA hook: ?bizxp=N fills every owned plot's skill ladder, so a reviewer
+// can see an unlocked life -- and the plot's needs radar -- without playing forty
+// nights. It writes the estate through the same save the page's own buys use.
+const forcedXp = q('bizxp');
+if (est && forcedXp !== null && Number.isFinite(forcedXp)) {
+  for (const o of est.owned) o.xp = Math.max(0, Math.min(XP_MAX, Math.round(forcedXp)));
+  saveEstate(est);
+}
 
 /* ---------------- map ---------------- */
 const cv = $('map');
@@ -485,7 +501,11 @@ function drawOverlay() {
    road comes in from, and starts a life on the one you choose. A site with two roads
    (a corner) offers both entrances — that is the difference between two plots of the
    same kind. */
-let picked = (est && est.active) || (siteStart ? siteStart.id : null);
+/* A link that NAMES a piece of ground shows that ground. plot.html sends a click on
+   unowned land here as ?site=<id>, and until now the household's active plot won the
+   argument -- so the card you were sent to buy from showed the plot you already own.
+   With no ?site the active plot is still the one you land on (portfolio mode). */
+let picked = (siteStart ? siteStart.id : null) || (est && est.active) || null;
 let pickedSide = params.get('side') || null;
 let pickedBusiness = null;   // the business the next purchase will commit to
 
@@ -592,6 +612,31 @@ function renderSites() {
   bar.addEventListener('pointercancel', drop);
 })();
 
+/* ---- Slice 2: demand bars and the skill ladder (Skylines / Stardew shapes) ----
+   The bar is a READ of business.js, which reads the shipped demand functions --
+   the page never re-derives a price or an occupancy here. A null bar is a refusal
+   (level note rule 6: no bar for a lane the ground cannot run), and the card says
+   so instead of drawing a lying meter. */
+const barColor = (v) => (v >= 0.66 ? '#7fc48d' : v >= 0.34 ? '#e8b45a' : '#c07a53');
+function demandBar(name, d, mini) {
+  if (!d) return '';
+  const pct = Math.round(d.level * 100);
+  return `<div class="row${mini ? ' muted' : ''}" style="margin-top:${mini ? 3 : 6}px;font-size:${mini ? '11px' : '12px'}`
+    + `"><span>${esc(name)} demand</span><span>${pct}%</span></div>`
+    + `<div style="height:${mini ? 4 : 6}px;border-radius:99px;background:#22302a;overflow:hidden;margin:2px 0 1px">`
+    + `<i style="display:block;height:100%;width:${pct}%;background:${barColor(d.level)}"></i></div>`
+    + (d.detail ? `<div class="row muted" style="font-size:10.5px"><span>${esc(d.detail)}</span></div>` : '');
+}
+function skillBar(sk) {
+  if (!sk) return '';
+  const pct = Math.round(sk.pct * 100);
+  return `<div class="row" style="margin-top:7px"><span>Skill · ${sk.xp}/${sk.at}</span>`
+    + `<span>${sk.unlocked ? esc(sk.name) : pct + '%'}</span></div>`
+    + `<div style="height:6px;border-radius:99px;background:#22302a;overflow:hidden;margin:2px 0 1px">`
+    + `<i style="display:block;height:100%;width:${pct}%;background:${sk.unlocked ? '#e8b45a' : '#5f9e6d'}"></i></div>`
+    + `<div class="row muted" style="font-size:10.5px"><span>${sk.unlocked ? esc(sk.says) : 'not yet · ' + esc(sk.name) + ': ' + esc(sk.says)}</span></div>`;
+}
+
 function renderPick() {
   const s = SITE_BY_ID[picked];
   if (!s) {
@@ -629,6 +674,27 @@ function renderPick() {
     + suited.map((b) => `<button data-biz="${b}" style="flex:1;padding:5px;text-align:center;font-size:11.5px;min-width:84px;`
       + `${b === bizNow ? 'background:#2e4a37;border-color:#5f9e6d;' : ''}">${BUSINESSES[b]}</button>`).join('')
     + '</div>';
+  // Slice 2: the chosen life, priced against the mountain's world. The identity is
+  // read off business.js; the bar is read off the demand functions the sim runs on;
+  // the ladder only exists once the household OWNS the ground (XP lives on the entry).
+  const id = IDENTITIES[bizNow];
+  const d = demandFor(bizNow, {
+    month: est ? est.month : 9,
+    rep: est ? est.rep : 0,
+    km: s.kmFromShop,
+    water: s.water,
+    forest: s.forest,
+  }, { unlocked: entry ? levelUnlocked(entry) : false });
+  if (id) {
+    html += `<div style="font-size:11px;color:#7f8d7b;margin:6px 0 4px">${esc(BUSINESSES[bizNow])} · what it is</div>`
+      + `<div class="row muted" style="font-size:11px"><span>${esc(id.produces[0])}</span></div>`
+      + `<div class="row muted" style="font-size:11px"><span>${esc(id.cadence)}</span></div>`;
+  }
+  html += demandBar(BUSINESSES[bizNow], d, false);
+  if (id && !d) {
+    html += '<div class="row muted" style="font-size:10.5px"><span>this ground cannot run that life — no bar, no promise</span></div>';
+  }
+  if (entry) html += skillBar(skillLine(entry));
   if (est) {
     html += entry
       ? `<button data-run="1">Run this plot<small>${esc(s.place)} · gate ${pickedSide} · ${BUSINESSES[entry.business] || 'pick a business'}</small></button>`
@@ -774,6 +840,20 @@ function loop(tMs) {
 requestAnimationFrame(loop);
 
 /* ---------------- panel ---------------- */
+/** Slice 2: the mountain's own demand -- farm, forestry, host -- read off the
+ *  household's world clock. It draws with no run open, because it belongs to the
+ *  estate: what the village wants this month, whether or not you are standing on
+ *  a plot while you look. */
+function renderMountainDemand() {
+  if (!est) return;
+  const bars = mountainDemand({ month: est.month, rep: est.rep });
+  $('v-demand').innerHTML =
+    `<div class="row" style="margin-top:8px"><b>${esc(dateLabel({ day: 1, month: est.month }))}</b>`
+    + `<span>${SEASON_LABEL[seasonOf(est.month)]}</span></div>`
+    + bars.map((b) => demandBar(BUSINESSES[b.key], b, true)).join('')
+    + '<div class="row muted" style="font-size:10.5px"><span>what the mountain wants, this month</span></div>';
+}
+
 /** Portfolio mode with no active run yet: the map and the market are the page,
  *  and the plot panels say nothing rather than showing a stale household. */
 function blankPanels() {
@@ -795,6 +875,7 @@ function refresh() {
     $('v-cash').textContent = money(est.cash);
     $('v-debt').textContent = money(est.debt);
     $('v-plots').textContent = String(est.owned.length);
+    renderMountainDemand();
     if (!h) {
       blankPanels();
       $('hint').textContent = 'Your ground is marked on the map. Run a plot to open its day.';
@@ -890,6 +971,15 @@ window.__valley = {
   // Slice 1: the portfolio state, so a probe can buy and run without a mouse
   get estate() { return est; },
   businesses: BUSINESSES,
+  // Slice 2: the demand bars and the ladder, readable without a mouse. A probe
+  // sets localStorage and reloads; these read whatever the page drew.
+  get month() { return est ? est.month : 9; },
+  mountainBars: () => mountainDemand({ month: est ? est.month : 9, rep: est ? est.rep : 0 }),
+  demand: (k, w) => demandFor(k, w || { month: est ? est.month : 9, rep: est ? est.rep : 0 }),
+  skill: (siteId) => {
+    const o = est && est.owned.find((x) => x.siteId === siteId);
+    return o ? skillLine(o) : null;
+  },
 };
 </script>
 </body>

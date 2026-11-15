@@ -1017,9 +1017,12 @@ export class IsoPlotRenderer {
     if (this.overlay !== 'build' || !Array.isArray(p.level)) return;
     for (let y = 0; y < p.h; y++) {
       for (let x = 0; x < p.w; x++) {
-        if (p.ground[y * p.w + x] === 'water') {
-          ctx.fillStyle = 'rgba(90,150,200,0.30)';
-        } else {
+        // VIS (owner 11-15: "the tile highlights are running over the river"): the tint
+        // quad is the WHOLE diamond but the river is a narrow ribbon, so tinting water
+        // spilled highlight across the banks. Water is never buildable — leave it the
+        // ribbon's own blue and tint only the ground a tool could actually take.
+        if (p.ground[y * p.w + x] === 'water') continue;
+        {
           const L = this._lvl(x, y);
           const c0 = this._cornerL(x, y), c1 = this._cornerL(x + 1, y);
           const c2 = this._cornerL(x + 1, y + 1), c3 = this._cornerL(x, y + 1);
@@ -2586,6 +2589,28 @@ export class IsoPlotRenderer {
           /* (the wheel lanes used to be drawn HERE, per tile - see the strip pass below) */
         }
       }
+      /* VIS (owner 11-15, third roads pass: "main road still looks wrong with darker
+         line down the middle"): the band is two strips and their anti-aliased shared
+         edge left a hairline of the dark backdrop at the band centre — a continuous
+         darker line down the middle. Close it by stroking the shared edge in the road's
+         own base colour (the VIS-05 seam trick, applied to the flat road fill). */
+      {
+        g.beginPath();
+        for (let i2 = 0; i2 <= roadLen; i2++) {
+          let gx2, gy2, zz;
+          if (side === 'S') { gx2 = i2; gy2 = p.h + 1; zz = cE(i2, p.h); }
+          else if (side === 'N') { gx2 = i2; gy2 = -1; zz = cE(i2, 0); }
+          else if (side === 'W') { gx2 = -1; gy2 = i2; zz = cE(0, i2); }
+          else { gx2 = p.w + 1; gy2 = i2; zz = cE(p.w, i2); }
+          const pt = project(gx2, gy2, zz, bake);
+          if (!i2) g.moveTo(pt[0], pt[1]); else g.lineTo(pt[0], pt[1]);
+        }
+        g.strokeStyle = rgb(roadRgb, 1);
+        g.lineWidth = Math.max(1.5, bz * 1.2);
+        g.lineCap = 'butt';
+        g.lineJoin = 'round';
+        g.stroke();
+      }
       /* ---- the wheel lanes: ONE polyline per lane for the whole run ----
          Owner 10-29: "road tracks/segments do not line up", and the photograph that proved
          it is _shots/road-public.png (tools/asset-review.html frame 18): the lanes used to
@@ -2864,8 +2889,15 @@ export class IsoPlotRenderer {
         }
         // a bank tile is NOT painted bank: it takes the ground it stands in and the damp
         // goes on top of that, tight against the water (see bankBase above)
+        // VIS (owner 11-15: "the brown mud tiles are unknown… why a tyre track on them
+        // when they're not road"): natural wet-mud patches used the SAME tan as a laid
+        // mud drive, so they read as stray road. Natural mud now takes a darker damp-earth
+        // tone and no track texture; a laid drive (surf) keeps the drive look.
+        const natMud = kind === 'mud' && !surf && !dam;
         const baseTone = kind === 'bank' ? bankBase(x, y)
-          : kind === 'water' ? bedTone : (T[col] || T.grass);
+          : kind === 'water' ? bedTone
+          : natMud ? T.mud.map((v, i2) => Math.round(v * 0.60 + (T.grass[i2] || 0) * 0.12))
+          : (T[col] || T.grass);
         g.fillStyle = rgb(baseTone, shade);
         quad(
           project(x, y, zc[0], bake),
@@ -2878,7 +2910,7 @@ export class IsoPlotRenderer {
            matrix is the iso projection itself, so the texture follows the ground
            across tile boundaries — no per-tile crops, no patchwork. ---- */
         if (groundTexState === 'ready') {
-          const texName = GROUND_TEX_KIND[col];
+          const texName = natMud ? null : GROUND_TEX_KIND[col];
           /* water tiles take their texture from the RIBBON only (VIS-01: a per-tile
              overlay on top of the ribbon's own overlay produced a plaid — two pattern
              passes at different origins). */
@@ -3357,10 +3389,14 @@ export class IsoPlotRenderer {
     }
 
     /* Props (the artist's registry), sprinkled deterministically: grassTuft ~1 per 6
-       grass cells, flowerPatch ~1 per 12, logs and rocks ~1 per 20 and only within two
+       grass cells, flowerPatch ~1 per 12, rocks ~1 per 20 and only within two
        cells of a standing tree (the treeline). Never on a cell that already carries a
-       tree, bed, hive, building or the gate. Absent from SPRITES → the block is skipped. */
-    if (SPRITES.grassTuft || SPRITES.logs) {
+       tree, bed, hive, building or the gate. Absent from SPRITES → the block is skipped.
+       VIS (owner 11-15: "the chopped log props are out of place… how do we get rid of
+       them"): the log piles were pure decoration, NOT felling output — cutting a tree
+       never created one and the wood economy is numeric. They read as dumped timber, so
+       the logs scatter is removed; rocks/flowers/grass stay. */
+    if (SPRITES.grassTuft || SPRITES.rocks || SPRITES.flowerPatch) {
       const used = new Set();
       const nearTree = new Set();
       for (const t of p.trees || []) {
@@ -3386,7 +3422,6 @@ export class IsoPlotRenderer {
       const pick = (x, y) => {
         const k = `${x},${y}`;
         const near = nearTree.has(k);
-        if (near && SPRITES.logs && jitter(x, y, 120) < 1 / 20) return 'logs';
         if (near && SPRITES.rocks && jitter(x, y, 125) < 1 / 20) return 'rocks';
         if (SPRITES.flowerPatch && jitter(x, y, 126) < 1 / 12) return 'flowerPatch';
         if (SPRITES.grassTuft && jitter(x, y, 127) < 1 / 6) return 'grassTuft';

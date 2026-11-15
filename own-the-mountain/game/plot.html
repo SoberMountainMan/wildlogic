@@ -497,17 +497,25 @@ import { START_OPTIONS, startPlan, landPlan, LAND_MORTGAGE, PRICES, setupCost, S
 import { SITE_BY_ID, siteSpec, lifeSpec } from './js/sim/sites.js';
 // Slice 1 spine: the household (meta) above this plot (instance). The estate owns
 // the shared wallet; this page syncs cash in on load and out on every save.
-import { loadEstate, saveEstate, ownedPlots, setActive, syncFromEstate, syncToEstate, plotPlan } from './js/sim/estate.js';
+// BUSINESSES is the label table for the life this ground was bought for (Slice 2).
+import { loadEstate, saveEstate, ownedPlots, setActive, syncFromEstate, syncToEstate, plotPlan, BUSINESSES } from './js/sim/estate.js';
+// Slice 2: the life loop. Every bar, chip and needs list on this page is a READ of the
+// sim through these functions -- the page models nothing itself. guestNeeds mirrors the
+// review engine's checks rather than calling tourism.reviewNight, because reviewNight
+// draws h.rng on a storm or snow night (the power roll) and a repaint must never be able
+// to move the sim's future.
+import { IDENTITIES, demandFor, unitDemand, skillLine, levelUnlocked, guestNeeds,
+  needsScore, reviewNeeds, inputs, xpNight, xpSale, xpFell, gainXp } from './js/sim/business.js';
 import {
   newHomestead, summary, endDay, plantBed, buyHive, harvest, sellAll, fell, buildTank, buyWater, hireCasual,
   waterOk, toJSON, fromJSON, BED, CROPS, DEFAULT_CROP, HIVE, TANK, WATER, FOOD, LABOUR, LIVING_PER_DAY, FUEL_PER_TRIP, bedSlots,
   NATIVE_FINE, yardSiteRefuse, answerOffer,
 } from './js/sim/homestead.js';
-import { sellFirewood, sellPoles, inFirewoodSeason, FIREWOOD, lumberOff } from './js/sim/firewood.js';
+import { sellFirewood, sellPoles, inFirewoodSeason, FIREWOOD, lumberOff, firewoodWeekLeft } from './js/sim/firewood.js';
 import { ACCOM, buildAccom, patchRoad, patchCost, getCleaner, PATCH_COST, tourismSummary,
   FACILITY, FACILITY_KINDS, FACILITY_SITE, buildFacility, facilitySiteRefuse, setListed, setOpen,
   MARKET, rateFor, setRate, priceDemand, canPlaceAccom, accomFootprint, accomSurcharge, UNLISTED_ON_BUILD,
-  HOUSE, demolishAccom, upgradeAccom } from './js/sim/tourism.js';
+  HOUSE, demolishAccom, upgradeAccom, weedShare, occupancyChance } from './js/sim/tourism.js';
 import { FAULTS, bookRepair } from './js/sim/handyman.js';
 import { COST, layTrack, layMud, layFence, removeFence, removeTrack, flatten, grade, dop, fenceRefuse, FILL_PER_DAY,
   driveWithin, damEstimate, trackAt, mudAt, fenceAt } from './js/sim/siteworks.js';
@@ -632,6 +640,98 @@ const plotSpec = effSite
 // One save per life AND per site: buying different ground is a different run. The formula
 // lives in js/ui/saves.js so the picker can ask the same question about a life.
 const SAVE = saveKey(option.key, effSite ? effSite.id : '');
+
+/* ---- Slice 2: the life this ground runs -----------------------------------------
+   The business identity and its XP ride the ESTATE entry (the household's), never the
+   household object: snap() must not see them, and the canonical three -- which never load
+   an estate -- read bizKey === null and render exactly what they rendered yesterday.
+   Everything in this block is a READ of the sim's own state (business.js), so the plot
+   page invents no economy of its own. */
+const bizEntry = estateMode ? ownedPlots(estate).find((o) => o.siteId === estateSiteId) : null;
+const bizKey = bizEntry ? bizEntry.business : null;
+
+/** Climb this plot's ladder by n XP and put it where it belongs: the household. */
+function bizXp(n) {
+  if (!bizEntry || !estate || !n) return;
+  gainXp(estate, estateSiteId, n);
+  saveEstate(estate);
+}
+
+/** The world the demand bar reads: this household's season and weather, its standing
+ *  ground, the village's opinion of the household and how much bed it actually has. */
+function bizWorld() {
+  const s = summary(h);
+  return {
+    month: h.date.month,
+    weather: h.weather ? h.weather.kind : null,
+    rep: estate ? estate.rep : 0,
+    km: h.plot.kmFromShop,
+    water: h.plot.water,
+    forest: h.plot.forest,
+    beds: s.beds,
+    units: s.tourism.units,
+    treeKinds: (h.plot.trees || []).map((t) => t.kind),
+  };
+}
+
+/** The little horizontal meter, the same shape the valley card draws: one rule for
+ *  "how full is this bar", so a bar on a plot and a bar on a portfolio mean one thing. */
+function meter(frac) {
+  const v = Math.max(0, Math.min(1, frac || 0));
+  const col = v >= 0.66 ? '#7fc48d' : v >= 0.34 ? '#e8b45a' : '#c07a53';
+  return `<div style="height:6px;border-radius:99px;background:#22302a;overflow:hidden;margin:2px 0 5px">
+    <i style="display:block;height:100%;width:${Math.round(v * 100)}%;background:${col}"></i></div>`;
+}
+
+/**
+ * The plot's life block (estate plots only): what the ground was bought for, what the
+ * mountain wants of it this month, the three inputs the loop runs on and the ladder.
+ * The inputs come from business.js inputs() and the needs preview from guestNeeds() --
+ * both reads, neither calls the review engine, because tourism.reviewNight draws h.rng
+ * on a storm or snow night (the power roll) and a repaint must never move the sim.
+ */
+function bizRows() {
+  if (!bizKey || !IDENTITIES[bizKey]) return '';
+  const id = IDENTITIES[bizKey];
+  const s = summary(h);
+  const un = levelUnlocked(bizEntry);
+  const d = demandFor(bizKey, bizWorld(), { unlocked: un });
+  const sk = skillLine(bizEntry);
+  let html = `<div class="row"><b>The life</b><span>${esc(BUSINESSES[bizKey])}</span></div>`;
+  html += `<div class="row"><span>what it makes</span><span>${esc(id.produces[0])}</span></div>`;
+  if (d) {
+    html += `<div class="row"><span>${esc(BUSINESSES[bizKey])} demand</span><span>${Math.round(d.level * 100)}%</span></div>`;
+    html += meter(d.level);
+    html += `<div class="row muted" style="font-size:10.5px"><span>${esc(d.detail)}</span><span></span></div>`;
+  } else {
+    /* The level note's rule 6: no bar for a lane the GROUND cannot run -- and it says so.
+       But an empty plot is a NOT YET, not a verdict: a host with nothing built and a
+       farmer with no bed planted are one click away from a bar, and telling that player
+       the ground cannot run his own business is a lie about the ground. */
+    const notYet = (bizKey === 'host' && s.tourism.units === 0) || (bizKey === 'farm' && s.beds === 0);
+    html += `<div class="row"><span>${esc(BUSINESSES[bizKey])} demand</span><span style="color:${
+      notYet ? '#e8b45a' : '#e08a6a'}">${notYet ? 'not until it is built' : 'this ground cannot run it'}</span></div>`;
+  }
+  for (const r of inputs(bizKey, h, s)) {
+    html += `<div class="row muted" style="font-size:10.5px"><span>${esc(r.ask)}</span>`
+      + `<span style="color:${r.ok ? '#9fd0a8' : '#e08a6a'}">${r.ok ? 'ok' : 'needs'} · ${esc(r.says)}</span></div>`;
+  }
+  // The forestry ladder's unlock is a quota the player can see: six loads a week at
+  // winter money, and the segments empty as the week sells. Off-season there is no
+  // winter quota to watch -- the demand bar already says the price is the low one, and a
+  // full row of six segments in February would promise money the village is not paying.
+  if (bizKey === 'forestry' && un && inFirewoodSeason(h.date)) {
+    const left = firewoodWeekLeft(h);
+    const segs = Array.from({ length: FIREWOOD.weekCap }, (_, i) => (i < left ? '●' : '○')).join(' ');
+    html += `<div class="row muted" style="font-size:10.5px"><span>the week's quota</span><span>${segs} ${left}/${FIREWOOD.weekCap}</span></div>`;
+  }
+  if (sk) {
+    html += `<div class="row"><span>Skill · ${esc(sk.name)}</span><span>${sk.xp}/${sk.at}</span></div>`;
+    html += meter(sk.pct);
+    html += `<div class="row muted" style="font-size:10.5px"><span>${sk.unlocked ? esc(sk.says) : 'not yet — ' + esc(sk.says)}</span><span></span></div>`;
+  }
+  return html;
+}
 
 let h = null;
 let mode = 'inspect';
@@ -1163,6 +1263,13 @@ function tileAction(a) {
   sfx(VERB_SOUND[a.kind] || 'ui');
   if (a.kind === 'fell') sfx('fell', 0.18);   // the axe thunk, then the canopy arrives
   noticeSucceeded(topic);                   // BUG-011: the popup's own verb landed
+  /* Slice 2: the ladder climbs on the player's own hands -- a stem felled for the timber
+     lane, a cart sold for the farm and the stall. XP is written to the estate's entry,
+     never onto the household. The QA loops at the bottom of this file drive the sim
+     directly and do not come through here, so a scripted screenshot run cannot farm a
+     level; the only way to the unlock is to work the ground. */
+  if (a.kind === 'fell') bizXp(xpFell(bizKey, res));
+  if (a.kind === 'sell') bizXp(xpSale(bizKey, h, res));
   if (simFrom !== null) echoSimLog(simFrom); else log(line);
   save(); refresh();
 }
@@ -1174,6 +1281,7 @@ const r = new RClass($('map'), {
     sfx('axe');
     sfx('fell', 0.18);
     log(`Felled a ${res.kind} · +${money(res.cash)}`);
+    bizXp(xpFell(bizKey, res));   // Slice 2: the renderer's own fell route earns the same XP
     save(); refresh();
   },
   onBuild(kind, x, y) {
@@ -2011,6 +2119,19 @@ function renderYard() {
     html += `<div class="row muted"><span>${pct}% of the guests at this price</span><span></span></div>`;
     html += `<button data-act="rate" data-kind="${k}" data-step="-0.05" ${mult <= 0.5 ? 'disabled' : ''}>Cheaper <small>${Math.round((mult - 0.05) * 100)}% of market</small></button>`;
     html += `<button data-act="rate" data-kind="${k}" data-step="0.05" ${mult >= 2 ? 'disabled' : ''}>Dearer <small>${Math.round((mult + 0.05) * 100)}% of market</small></button>`;
+    // Slice 2: the demand meter, but for a bed. It is tourism.occupancyChance scaled to the
+    // 0.95 the engine clamps at -- a read, not a second model -- and a flat bar says WHY
+    // (no water / unlisted) instead of blaming the guests for the plumbing.
+    if (bizKey === 'host') {
+      const rep = (h.accom || []).find((u) => u.kind === k && u.built);
+      const ud = unitDemand(h, rep, occupancyChance);
+      if (ud) {
+        html += `<div class="row muted" style="font-size:10.5px"><span>${
+          ud.label ? 'tonight — ' + esc(ud.label) : 'how full tonight'
+        }</span><span>${Math.round(ud.level * 100)}%</span></div>`;
+        html += meter(ud.level);
+      }
+    }
   }
 
   for (const job of (h.repairs || [])) {
@@ -2024,6 +2145,28 @@ function renderYard() {
       html += `<button data-act="repair" data-id="${esc(job.id)}" data-outside="1" ${h.cash < f.cost * 2 || h.ended ? 'disabled' : ''}>Outside company <small>${money(f.cost * 2)} paid now · day ${h.day + 1}, guaranteed${h.cash < f.cost * 2 ? ' · not enough cash' : ''}</small></button>`;
     } else html += '<p>Repair definition unavailable — no price or booking can be offered.</p>';
     html += '</div>';
+  }
+
+  /* Slice 2 (the host ladder's unlock): Two Point Hospital's needs board. Every listed
+     bed gets the twelve things a guest wants and a light on each, before the night falls
+     -- the ladder buys the board, so the improvement is a decision aid, not a number.
+     It is built from business.guestNeeds, a mirror of the checks tourism.reviewNight runs,
+     precisely because it may NOT call reviewNight: that draws h.rng on a storm or snow
+     night (the power roll), and repainting a card would then move the sim's future. The
+     row set is pinned against the engine in tests/56 so the mirror cannot drift. */
+  if (bizKey === 'host' && bizEntry && levelUnlocked(bizEntry)) {
+    const weed = weedShare(h);
+    for (const a of (h.accom || []).filter((u) => u.built && u.listed && ACCOM[u.kind] && ACCOM[u.kind].capacity > 0)) {
+      const needs = guestNeeds(h, a, weed);
+      const sc = needsScore(needs);
+      html += `<div class="row" style="margin-top:9px"><b>${esc(ACCOM[a.kind].label)} tonight wants</b>`
+        + `<span>${sc.met}/${sc.total} met</span></div>`;
+      html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 4px">`
+        + needs.map((n) => `<span style="font-size:10.5px;padding:2px 6px;border-radius:99px;background:${
+          n.ok ? '#1e3226' : '#3a231d'};color:${n.ok ? '#9fd0a8' : '#e08a6a'}">${esc(n.ask)}${
+          n.risk ? ' · risk' : ''}</span>`).join('')
+        + `</div>`;
+    }
   }
   $('yardcard').innerHTML = html;
 }
@@ -2355,10 +2498,20 @@ function renderVoices() {
     $('voicecard').innerHTML = '<div class="row muted"><span>No guests yet</span><span>—</span></div>';
     return;
   }
+  /* Slice 2: the quote gets its reason. The engine already records the WORST thing about
+     the night (`h.lastReview.worst` is the penalty key that cost the most stars);
+     business.reviewNeeds turns that key into the need the guest wanted met, so a review
+     reads as "what they wanted: changed linen" instead of a bare star count. Estate plots
+     only -- the life layer speaks this sentence, and the canonical pages stay pixel-for-pixel
+     what the owner screenshot yesterday. */
+  const lr = bizKey && h.lastReview && h.lastReview.day === h.day ? h.lastReview : null;
+  const nr = lr ? reviewNeeds(lr) : null;
   $('voicecard').innerHTML = vs.slice(0, 4).map((v) => {
     const col = v.mood === 'bad' ? '#e08a6a' : v.mood === 'good' ? '#9fd0a8' : '#9aa79a';
     return `<div style="font-size:12px;color:${col};padding:3px 0;border-bottom:1px solid #1c2620">“${v.text}”</div>`;
-  }).join('');
+  }).join('')
+    + (nr ? `<div class="row muted" style="font-size:11px;margin-top:5px"><span style="color:${
+      nr.good ? '#9fd0a8' : '#e08a6a'}">${esc(nr.line)}</span><span>★${lr.score}</span></div>` : '');
 }
 
 function renderCompany() {
@@ -2516,6 +2669,15 @@ function refresh() {
   if (h.lastHit && h.lastHit.day === h.day && Math.abs(h.lastHit.amount) >= 500) {
     alarms.push(`<span class="alarm hot"><b>${signedMoney(h.lastHit.amount)}</b> already ${h.lastHit.amount < 0 ? 'charged' : 'received'} · see event panel</span>`);
   }
+  // Slice 2 (the farm ladder): a grower who has never looked at the shop's appetite
+  // over-farms in silence -- the pile rots and the cart goes down the pass for nothing.
+  // Earning the unlock turns that invisible ceiling into an alarm, which is the whole
+  // point of a ladder: the improvement is something you USE, not a number that grew.
+  if (bizKey === 'farm' && bizEntry && levelUnlocked(bizEntry) && s.produce > s.shop.veg) {
+    alarms.push(`<span class="alarm warn"><b>shop full</b> ${
+      Math.round(s.produce - s.shop.veg)
+    } kg over today's take · the shop takes ${s.shop.veg} kg at ${money(s.shop.vegPrice)}/kg</span>`);
+  }
   const alarmKey = alarms.join('');
   const alarmEl = $('alarms');
   if (alarmEl && alarmKey !== refresh._alarmKey) {
@@ -2543,6 +2705,7 @@ function refresh() {
     <div class="row muted"><span>Nights sold</span><span>${s.tourism.nights} · ${money(s.tourism.earned)}</span></div>
     <div class="row muted"><span>The shop takes</span><span>${s.shop.veg} kg veg · ${money(s.shop.vegPrice)}/kg</span></div>
     <div class="row muted"><span>Weather</span><span>${s.weather.line}</span></div>
+    ${bizKey ? bizRows() : ''}
   `;
 
   $('lbl-fell').textContent = `${s.trees} left · ${money(PRICES.pineTree * STEM_M3.pine - PRICES.fellCost)} a pine`;
@@ -2911,6 +3074,7 @@ $('btn-sell').onclick = () => {
   if (!res.ok) return log(res.msg, 'bad');
   sfx('coins');
   log(`${res.msg} · +${money(res.net)}`);
+  bizXp(xpSale(bizKey, h, res));   // Slice 2: the cart that lands is the farm/stall lesson
   save(); refresh();
 };
 $('endday').onclick = () => {
@@ -2934,6 +3098,7 @@ $('endday').onclick = () => {
   // keyed to the review's own day, so a reload or a second report cannot play it twice.
   const lr = h.lastReview;
   if (lr && lr.day !== endday._heard) { endday._heard = lr.day; review(lr.score); }
+  bizXp(xpNight(bizKey, h, res.report));   // Slice 2: nights let, a bad night on the tap, a loerie day
   save(); refresh();
   if (res.report) showReport(res.report);
 };
@@ -3475,6 +3640,15 @@ if (buildKind && ACCOM[buildKind]) {
 }
 if (params.get('sold') === '1') acceptOffer(h);   // QA hook for screenshots
 if (params.get('pile')) h.produce = Number(params.get('pile')) || 0;
+// QA hook: ?bizxp=N sets this plot's ladder, so an unlocked life can be screenshotted
+// without forty days of work. It goes through gainXp's own clamp and writes the ESTATE
+// entry only -- nothing here touches the household, so it cannot skew a sim trace. The
+// ?ff fast-forward below calls endDay directly and never passes the day button, so a
+// scripted run cannot farm XP by skipping weeks.
+if (bizEntry && params.get('bizxp') !== null) {
+  const want = Number(params.get('bizxp'));
+  if (Number.isFinite(want)) bizXp(want - bizEntry.xp);
+}
 const ff = Number(params.get('ff') || 0);
 if (ff > 0 && !h.ended) {
   for (let i = 0; i < ff && !h.ended; i++) endDay(h);
@@ -3647,6 +3821,27 @@ window.__home = {
   // probe can assert the shared wallet without poking localStorage itself
   get estate() { return estate; },
   get estateMode() { return estateMode; },
+  /* Slice 2: the life this ground runs, its bar and its ladder, readable by a probe
+     without a mouse. `demand` is the same demandFor the card draws; `needs` runs the
+     same pure preview, so a test can assert the board against tourism's own penalties
+     rather than trusting a screenshot. */
+  get life() {
+    if (!bizKey) return null;
+    const un = levelUnlocked(bizEntry);
+    return {
+      key: bizKey, label: BUSINESSES[bizKey], xp: bizEntry.xp, unlocked: un,
+      demand: demandFor(bizKey, bizWorld(), { unlocked: un }),
+      skill: skillLine(bizEntry),
+    };
+  },
+  needs: (unitId) => {
+    const a = (h.accom || []).find((u) => u.id === unitId) || (h.accom || []).find((u) => u.built);
+    return a ? guestNeeds(h, a, weedShare(h)) : [];
+  },
+  unitDemand: (unitId) => {
+    const a = (h.accom || []).find((u) => u.id === unitId) || (h.accom || []).find((u) => u.built);
+    return a ? unitDemand(h, a, occupancyChance) : null;
+  },
   // U1 — the probe reads the remembered desk without poking localStorage itself
   ui: {
     get geo() { return WIN_GEO; },
