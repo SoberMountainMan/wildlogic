@@ -58,7 +58,7 @@ export function groundTexturesReady() {
 // which texture dresses which ground kind, how strongly, and at what detail scale
 // (texture px per grid tile — smaller number = bigger painted detail)
 const GROUND_TEX_KIND = { grass: 'grass', scrub: 'scrub', rock: 'rock', mud: 'dirt', bank: 'grass', water: 'water', track: 'dirt', gravel: 'gravel' };
-const GROUND_TEX_ALPHA = { grass: 0.5, scrub: 0.55, rock: 0.62, mud: 0.7, bank: 0.45, water: 0.55, track: 0.30, gravel: 0.52 };
+const GROUND_TEX_ALPHA = { grass: 0.5, scrub: 0.55, rock: 0.62, mud: 0.7, bank: 0.45, water: 0.55, track: 0.5, gravel: 0.52 };
 /* How readily each made surface rutters, 0..1 — an ART ordering, not a sim constant:
    crushed stone drains and holds its shape, dry dirt tracks up, mud remembers every
    axle. The renderer imports no sim modules by design (the port contract), so this does
@@ -2335,6 +2335,34 @@ export class IsoPlotRenderer {
       if (mudSet.has(`${ax},${ay}`)) return 'mud';
       return null;
     };
+    /* DEFECT 3 of the roads round (11-15): the drive stopped one tile short of the road.
+       The GATE tile is not a made surface - it is an opening in the fence that the public
+       road runs through, and the sim will not let track be laid on it - so nothing was
+       ever painted there. A player who paid for a drive and ran it to the gate therefore
+       got two tiles of brown, then one tile of veld, then the road: the drive ended at the
+       fence instead of through it. `98946ab` closed the SEAM stroke at that edge but left
+       the gap itself. So the gate now takes the surface of a neighbour that has one, and
+       `toRoad` lets its bed and ruts run out under the opening onto the public road. The
+       gate is still not in p.track and still charges nothing: this is paint on the tile
+       the drive arrives through, and a plot with no made surface touching its gate gets
+       exactly the ground it used to. */
+    const atGate = (ax, ay) => !!p.gate && p.gate.x === ax && p.gate.y === ay;
+    const roadSide = this._roadSide();
+    const toRoad = (ax, ay) => {
+      if (!roadSide) return false;
+      if (roadSide === 'W') return ax < 0 && ay >= 0 && ay < p.h;
+      if (roadSide === 'E') return ax >= p.w && ay >= 0 && ay < p.h;
+      if (roadSide === 'N') return ay < 0 && ax >= 0 && ax < p.w;
+      return ay >= p.h && ax >= 0 && ax < p.w;
+    };
+    const gateSurfAt = (ax, ay) => {
+      if (!atGate(ax, ay)) return null;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const s = surfOf(ax + dx, ay + dy);
+        if (s) return s;
+      }
+      return null;
+    };
     const damMap = new Map(damList.map((t) => [`${t.x},${t.y}`, t]));
     const wt = wtKey;
 
@@ -2532,37 +2560,50 @@ export class IsoPlotRenderer {
           roadTiles++;
           /* (the wheel lanes used to be drawn HERE, per tile - see the strip pass below) */
         }
-        /* ---- the wheel lanes: ONE polyline per lane for the whole run ----
-           Owner 10-29: "road tracks/segments do not line up", and the photograph that proved
-           it is _shots/road-public.png (tools/asset-review.html frame 18): the lanes used to
-           be drawn inside the per-tile loop above, each a 0.76-tile segment at that tile's own
-           mid-height. That left a 0.24-tile gap at every tile boundary AND a vertical step
-           wherever the road crossed a level, so a long road read as a row of dashes that
-           shuffled sideways - which is also what "weird shadow lines on the main road" was.
-           Now each lane is one path whose vertices sit on the SHARED boundary corners
-           (`cE` at the plot edge, the same vertices the fence stands on since T9), so it is
-           continuous by construction and ramps with the grade instead of stepping.
-           Wear still drives it: /60 rather than /100 so the ruts are fully there by condition
-           40, where a driver is already picking their line around the holes. ---- */
-        {
-          const rDepth = rutDepth('gravel', clamp((100 - roadCond) / 60, 0, 1));
-          for (const lat2 of [-0.55, 0.55]) {
-            g.beginPath();
-            for (let i2 = 0; i2 <= roadLen; i2++) {
-              let gx2, gy2, zz;
-              if (side === 'S') { gx2 = i2; gy2 = p.h + k + 0.5 + lat2; zz = cE(i2, p.h); }
-              else if (side === 'N') { gx2 = i2; gy2 = -1 - k + 0.5 + lat2; zz = cE(i2, 0); }
-              else if (side === 'W') { gx2 = -1 - k + 0.5 + lat2; gy2 = i2; zz = cE(0, i2); }
-              else { gx2 = p.w + k + 0.5 + lat2; gy2 = i2; zz = cE(p.w, i2); }
-              const pt = project(gx2, gy2, zz, bake);
-              if (!i2) g.moveTo(pt[0], pt[1]); else g.lineTo(pt[0], pt[1]);
-            }
-            g.strokeStyle = `rgba(28,22,15,${(0.34 + rDepth * 0.40).toFixed(3)})`;
-            g.lineWidth = Math.max(1.4, bz * (1.7 + rDepth * 1.7));
-            g.lineCap = 'butt';
-            g.lineJoin = 'round';
-            g.stroke();
+      }
+      /* ---- the wheel lanes: ONE polyline per lane for the whole run ----
+         Owner 10-29: "road tracks/segments do not line up", and the photograph that proved
+         it is _shots/road-public.png (tools/asset-review.html frame 18): the lanes used to
+         be drawn inside the per-tile loop above, each a 0.76-tile segment at that tile's own
+         mid-height. That left a 0.24-tile gap at every tile boundary AND a vertical step
+         wherever the road crossed a level, so a long road read as a row of dashes that
+         shuffled sideways - which is also what "weird shadow lines on the main road" was.
+         Now each lane is one path whose vertices sit on the SHARED boundary corners
+         (`cE` at the plot edge, the same vertices the fence stands on since T9), so it is
+         continuous by construction and ramps with the grade instead of stepping.
+         Wear still drives it: /60 rather than /100 so the ruts are fully there by condition
+         40, where a driver is already picking their line around the holes.
+         11-15, DEFECT 2 (owner, on the live build: "the tracks still dont line up"). The
+         pair was still being drawn INSIDE the strip loop, each lane at its OWN STRIP's
+         centre +/- 0.55. On a W boundary the near strip (k=0) covers world x [-1, 0], so
+         its lanes landed at x = -1.05 and x = +0.05: one of them outside the strip it is
+         painted on, and one ON THE FENCE LINE, on the plot boundary, not on the road. The
+         far strip (k=1, x [-2, -1]) mirrored it at -2.05 and -0.95. Four strokes across a
+         two-tile band, two of them off it, and the one at +0.05 is why a player reads the
+         road as not lining up with anything. A two-tile road carries ONE pair of wheel
+         lanes - a car's two wheels, not two cars - so the latitudes now come from the
+         band's own centre, which is the convention `centreOf` already gives the potholes
+         and the cracks (-1, p.h+1, p.w+1), and the pass runs ONCE for the whole road after
+         both strips are down. The pair now sits at -1.55 and -0.45 on a W boundary: inside
+         the band, 0.45 tiles clear of the fence, and 0.45 clear of the outer edge. */
+      {
+        const rDepth = rutDepth('gravel', clamp((100 - roadCond) / 60, 0, 1));
+        for (const lat2 of [-0.55, 0.55]) {
+          g.beginPath();
+          for (let i2 = 0; i2 <= roadLen; i2++) {
+            let gx2, gy2, zz;
+            if (side === 'S') { gx2 = i2; gy2 = p.h + 1 + lat2; zz = cE(i2, p.h); }
+            else if (side === 'N') { gx2 = i2; gy2 = -1 + lat2; zz = cE(i2, 0); }
+            else if (side === 'W') { gx2 = -1 + lat2; gy2 = i2; zz = cE(0, i2); }
+            else { gx2 = p.w + 1 + lat2; gy2 = i2; zz = cE(p.w, i2); }
+            const pt = project(gx2, gy2, zz, bake);
+            if (!i2) g.moveTo(pt[0], pt[1]); else g.lineTo(pt[0], pt[1]);
           }
+          g.strokeStyle = `rgba(28,22,15,${(0.34 + rDepth * 0.40).toFixed(3)})`;
+          g.lineWidth = Math.max(1.4, bz * (1.7 + rDepth * 1.7));
+          g.lineCap = 'butt';
+          g.lineJoin = 'round';
+          g.stroke();
         }
       }
       // potholes: one per 8 points of wear (clamped 0-14), spread deterministically
@@ -2739,7 +2780,7 @@ export class IsoPlotRenderer {
         let shade;
         // a made surface replaces the natural ground under it (water and a dop hole win:
         // you cannot lay a drive into the stream, and the hole is below the surface)
-        const surf = (dam || kind === 'water') ? null : surfOf(x, y);
+        const surf = (dam || kind === 'water') ? null : (surfOf(x, y) || gateSurfAt(x, y));
         let col = surf || kind;
         if (dam) {
           // the dop hole shows as bare mud at the floor level until water stands in
@@ -2788,9 +2829,13 @@ export class IsoPlotRenderer {
             const rr = Math.sqrt(cdx * cdx + cdy * cdy);
             if (rr < 1) shade *= 1 + 0.07 * clamp((1 - rr) / 0.35, 0, 1);
           }
-          // a made surface is QUIET: no level banding, no clearing lift, almost no
-          // per-tile jitter. Ground breathes; gravel does not.
-          if (surf) shade = 0.96 + jitter(x, y, 152) * 0.07;
+          // a made surface is QUIET: no level banding, no clearing lift, no per-tile
+          // jitter. Ground breathes; gravel does not. DEFECT 3 (11-15): the 0.07 jitter
+          // was still enough to put a tone step at every seam of one drive - two
+          // adjacent tiles of the SAME surface came out seven percent apart and a paid
+          // route read as a row of flat diamonds. The texture carries the life, so the
+          // run is one tone from the gate to its end.
+          if (surf) shade = 0.97;
         }
         // a bank tile is NOT painted bank: it takes the ground it stands in and the damp
         // goes on top of that, tight against the water (see bankBase above)
@@ -2831,7 +2876,17 @@ export class IsoPlotRenderer {
                  along the same path closes the seam at no cost. */
               g.strokeStyle = pat;
               g.lineWidth = 1.2;
-              g.stroke();
+              /* DEFECT 3 (11-15): not on a MADE surface. The stroke is centred on the
+                 quad's own outline, so half of it lies on the neighbour. Between two
+                 tiles of the SAME made surface - one drive, two tiles - that doubles the
+                 overlay blend across a two-px band, and with the track texture at its
+                 proper strength it drew a dark RUNG at every tile boundary: a paid drive
+                 looked like a ladder of planks, not a line. The hairline this stroke
+                 exists to close cannot appear there, because both quads are now the same
+                 tone, so a made surface simply does not stroke. Edges between a drive
+                 and natural ground are still closed, by the ground tile on the other
+                 side of them. */
+              if (!surf) g.stroke();
               g.restore();
             }
           }
@@ -2859,9 +2914,9 @@ export class IsoPlotRenderer {
              agrees with it, and the drive runs out to the road instead of stopping short.
              The stroke ends at the shared edge, so nothing is painted ON the gate tile -
              the road there belongs to the public-road pass above. */
-          const atGate = (ax, ay) => !!p.gate && p.gate.x === ax && p.gate.y === ay;
           const links = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-            .filter(([dx, dy]) => surfOf(x + dx, y + dy) || atGate(x + dx, y + dy));
+            .filter(([dx, dy]) => surfOf(x + dx, y + dy) || atGate(x + dx, y + dy)
+              || (atGate(x, y) && toRoad(x + dx, y + dy)));
           const depth = rutDepth(surf);
           const tone = surf === 'gravel' ? '52,48,42' : surf === 'mud' ? '44,32,18' : '74,55,32';
           g.lineCap = 'butt';

@@ -14,6 +14,7 @@ import { rollWeather, livingExtra, cropMult, weatherLine } from './weather.js';
 import { initSubsidy, maybeOffer, tickSubsidy, settleSubsidy, subsidySummary } from './subsidy.js';
 import { initBank, bankSummary, restructure } from './bank.js';
 import { initDirector, tickDirector, directorSummary } from './director.js';
+import { initOffers, tickOffers, answerOffer as answerOfferPure } from './offers.js';
 import { tickWildlife } from './wildlife.js';
 import { tickGrapevine } from './grapevine.js';
 import { initHolding, holdingSummary, expand } from './holding.js';
@@ -163,6 +164,7 @@ export function newHomestead(option, plan = null, gameSeed = null) {
   initSubsidy(h);
   initBank(h);
   initDirector(h);
+  initOffers(h);
   initHolding(h);
   initLegacy(h);
   initGoals(h);
@@ -624,6 +626,11 @@ export function endDay(h) {
   // night can break the streak, which is the decision the subsidy was written to be.
   tickSubsidy(h);
   const directed = tickDirector(h);
+  // #1 (owner GO 11-15): the dead middle. The director's incidents are auto-settled and
+  // never ask; this asks one optional, real trade-off on its own cadence. Log-safe and
+  // golden-safe: it only sets a pending question, never a snap() field.
+  const asked = tickOffers(h, offerCtx(h));
+  if (asked) note(h, `${asked.title} ${asked.body}`);
   tickGoals(h);
   tickCompany(h);
   tickLegacy(h);
@@ -699,6 +706,25 @@ export function endDay(h) {
 }
 
 /* ---------------- save / load ---------------- */
+
+/** The balance numbers and the wattle-fell verb the offer system is allowed to use.
+    Injected so offers.js never imports homestead (no cycle) and every price has one
+    source. #1, owner GO 11-15. */
+export function offerCtx(h) {
+  return {
+    wage: LABOUR.wagePerDay,
+    shopPerKg: FOOD.shopPerKg,
+    fellWattle: (id) => fell(h, id),
+  };
+}
+
+/** The player's answer to a pending mountain offer. The only mutation path; the page
+    calls this from the offer card's two buttons. */
+export function answerOffer(h, accept) {
+  const r = answerOfferPure(h, accept, offerCtx(h));
+  if (r.ok) { note(h, r.msg); }
+  return r;
+}
 
 export function toJSON(h) { return JSON.stringify(h); }
 export function fromJSON(str) {

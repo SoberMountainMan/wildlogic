@@ -407,6 +407,15 @@
   <summary id="attention-status">Needs attention</summary>
   <div id="attentionbody"></div>
 </details>
+<details id="offer" hidden open>
+  <summary id="offer-title">The mountain asks</summary>
+  <div id="offerbody"></div>
+  <div class="row" style="gap:8px;margin-top:8px">
+    <button id="offer-accept" type="button"></button>
+    <button id="offer-decline" type="button"></button>
+  </div>
+  <p id="offer-consequence" class="muted" style="margin:6px 0 0"></p>
+</details>
 <main>
   <div id="stage">
     <canvas id="map"></canvas>
@@ -489,7 +498,7 @@ import { SITE_BY_ID, lifeSpec } from './js/sim/sites.js';
 import {
   newHomestead, summary, endDay, plantBed, buyHive, harvest, sellAll, fell, buildTank, buyWater, hireCasual,
   waterOk, toJSON, fromJSON, BED, CROPS, DEFAULT_CROP, HIVE, TANK, WATER, FOOD, LABOUR, LIVING_PER_DAY, FUEL_PER_TRIP, bedSlots,
-  NATIVE_FINE, yardSiteRefuse,
+  NATIVE_FINE, yardSiteRefuse, answerOffer,
 } from './js/sim/homestead.js';
 import { sellFirewood, sellPoles, inFirewoodSeason, FIREWOOD, lumberOff } from './js/sim/firewood.js';
 import { ACCOM, buildAccom, patchRoad, patchCost, getCleaner, PATCH_COST, tourismSummary,
@@ -830,6 +839,21 @@ function panSiteIntoView(site) {
   r._userCam = true;                 // a later resize must not undo the player's view
   if (typeof r._clampCam === 'function') r._clampCam();
   if (typeof r.frame === 'function') r.frame();
+}
+
+/* W-14 (owner yes 11-15): the day-1 camera-start. The default fit centres the whole
+   diamond, which on a phone leaves the gate and the graded clearing off the left edge
+   (measured: gate at x=-214, 0 of 74 clearing tiles on frame). A new life should open
+   looking at the yard it is meant to build on, so on a fresh boot we pan the clearing
+   (falling back to the gate) onto the free centre. The shipped _clampCam gets the last
+   word, exactly as the level seat's candidate did. Returning saves and QA camera hooks
+   are left alone. */
+function focusYardStart() {
+  if (!h || h.day !== 1) return;
+  if (params.get('arm') || params.get('paint')) return;   // QA owns the camera in those shots
+  const p = h.plot;
+  const at = p.clearing || p.gate;
+  if (at) panSiteIntoView({ x: at.x, y: at.y });
 }
 
 /** The tiles that would take this footprint, nearest the CENTRE OF THE VISIBLE MAP
@@ -2009,6 +2033,24 @@ function collapsePhonePanels() {
  *  implied by this event" — QA language, not an answer. Both branches now say which
  *  kind of card this is. The unresolved rows below say "Action needed"; this one says
  *  the event is over and there is nothing to do. */
+/* #1 (owner GO 11-15): the dead middle. When the sim has a pending mountain offer, show
+   it as a real two-button decision with the consequence stated, not a log line. Accept
+   and decline both go through the sim's single mutation path (answerOffer), then the
+   page saves and refreshes like every other verb. */
+function renderOffer() {
+  const p = h.offers && h.offers.pending;
+  const card = $('offer');
+  card.hidden = !p;
+  if (!p) return;
+  $('offer-title').textContent = p.title;
+  $('offerbody').textContent = p.body;
+  $('offer-accept').textContent = p.accept;
+  $('offer-decline').textContent = p.decline;
+  $('offer-consequence').textContent = p.consequence;
+}
+$('offer-accept').onclick = () => { const r = answerOffer(h, true); if (!r.ok) log(r.msg, 'bad', 'offer'); save(); refresh(); };
+$('offer-decline').onclick = () => { answerOffer(h, false); save(); refresh(); };
+
 function renderAttention() {
   const jobs = h.repairs || [];
   const unbooked = jobs.filter((j) => !j.booked).length;
@@ -2631,6 +2673,7 @@ function refresh() {
   renderGoals();
   renderYard();
   renderAttention();
+  renderOffer();
   renderLegacy();
   renderVillage();
   renderBank();
@@ -3419,6 +3462,7 @@ if (playerName && h.day === 1) {
 r.setPlot(h.plot);
 r.setHomestead(h);
 refresh();
+focusYardStart();   // W-14: a new life opens on the yard, not on empty forest
 // QA hook, applied last so the plot exists: ?tile=x,y opens the tile menu on that cell
 if (tileQ.length === 2 && tileQ.every(Number.isFinite) && r._openPopup) {
   r._openPopup(tileQ[0], tileQ[1]);
