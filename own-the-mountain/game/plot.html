@@ -873,9 +873,9 @@ let reportedTile = null;
     for a fifth (rock under the footprint) — all five are the same event, so they get
     the same cue from one place. `place-refuse` is the quiet one, not `error`: W-01's
     homesteader tapped eight refused tiles before dying of thirst. */
-function refusePlacement(msg) {
+function refusePlacement(msg, topic) {
   sfx('place-refuse');
-  return log(msg, 'bad');
+  return log(msg, 'bad', topic);
 }
 
 /** Arm the placement for a tank or a sited facility: the same 1x1/2x1 footprint the house and
@@ -889,15 +889,15 @@ function armPlacement(kind) {
   // crop rows do; the ghost itself also backs out on Escape and on right-click.
   if (r.ghost && r.ghost.kind === kind) return disarmPlacement();
   if (h.ended) return;
-  if (P.exists()) return refusePlacement(`The ${P.label} is already on this plot - nothing was charged.`);
+  if (P.exists()) return refusePlacement(`The ${P.label} is already on this plot - nothing was charged.`, kind);
   const bill = P.cost();
   if (h.cash < bill) {
-    return refusePlacement(`A ${P.label} is ${money(bill)} and you have ${money(Math.round(h.cash))} - nothing was charged.`);
+    return refusePlacement(`A ${P.label} is ${money(bill)} and you have ${money(Math.round(h.cash))} - nothing was charged.`, kind);
   }
   if (typeof r._setGhost !== 'function') {
     // ?view=top (the flat rollback renderer) never grew a ghost. Refuse the purchase instead
     // of taking money for a building the player can neither see nor site.
-    return refusePlacement('The flat map cannot show a placement - open the iso map to place it.');
+    return refusePlacement('The flat map cannot show a placement - open the iso map to place it.', kind);
   }
   /* W-01 · on a phone the default-open Plot sheet and the goal card eat the same ground
      the ghost wants. Get them out of the way BEFORE ranking sites, so the visibility
@@ -909,7 +909,7 @@ function armPlacement(kind) {
   let sites = legalSites(P);
   if (!sites.length) {
     return refusePlacement(`No ground inside your boundary will hold the ${P.label} yet - clear or flatten a site first.`
-      + ' Nothing was charged.');
+      + ' Nothing was charged.', kind);
   }
   /* If every legal site is behind an overlay or off the visible map, move the camera
      once and re-rank. One pan, never a loop: "Place Here" covers the case where the
@@ -963,7 +963,7 @@ function placeSite(P, x, y) {
     // The map said the footprint fits and the sim named a rule it does not carry (rock, a post,
     // the boundary edge, a reserved site). Put the ghost back on the tile it was refused at, so
     // the refusal sits on the map beside the hint line rather than only in the Log.
-    log(`${P.label} will not stand at ${x},${y} - ${res.msg} Nothing was charged.`, 'bad');
+    log(`${P.label} will not stand at ${x},${y} - ${res.msg} Nothing was charged.`, 'bad', P.kind);
     sfx('place-refuse');      // the sim said no after the map said yes — one dull knock
     if (typeof r._setGhost === 'function') r._setGhost(P.kind, x, y);
     refresh();
@@ -977,6 +977,7 @@ function placeSite(P, x, y) {
   else if (typeof r._cancelGhost === 'function') r._cancelGhost();
   placementEcho = null;
   reportedTile = null;
+  noticeSucceeded(P.kind);   // BUG-011: this verb's own dead ends leave the tray when it lands
   sfx(VERB_SOUND.accom);   // a building going up: the same sound every other build verb has
   echoSimLog(simFrom);     // the sim names the cost and the days; no page copy of it
   save(); refresh();
@@ -1043,9 +1044,12 @@ function tileAction(a) {
   let line = '';
   // where the sim's own log began, for a verb whose sentence the sim already writes
   let simFrom = null;
+  // BUG-011: the key the tray files this verb under. A rung carries it on `a.accom`; the bed
+  // is the one other popup verb whose success the tray can prove, so it names itself.
+  const topic = a.accom || (a.kind === 'bed' ? 'bed' : '');
   if (a.kind === 'bed') {
     const why = plantSay(a.x, a.y);
-    if (why) return log(why, 'bad');
+    if (why) return log(plantRefusalBanner(a.x, a.y, why), 'bad', topic);
     simFrom = h.log.length;
     res = plantBed(h, a.x, a.y, a.crop || bedCrop);
   } else if (a.kind === 'hive') {
@@ -1097,7 +1101,10 @@ function tileAction(a) {
     if (res.ok) line = `${res.msg} · +${money(res.net)}`;
   }
   if (!res) return;
-  if (!res.ok) return log(res.msg, 'bad');
+  // BUG-011: a refusal the popup ran carries the key of the thing it refused, so a later
+  // success can retire exactly that line. A verb with no kind is cleared by the tray's own
+  // clock rather than guessed at.
+  if (!res.ok) return log(res.msg, 'bad', topic);
   // A11 (audio seat): the verb the player performed, heard. The old ternary had no `accom`,
   // no `gravel` and no `raise`/`lower` branch, so a house going up played the sound of a
   // menu click, a GRAVEL run ticked while a dirt one crunched, and moving a level of ground
@@ -1105,6 +1112,7 @@ function tileAction(a) {
   // asserts no popup action is missing from it: the dead "Lay gravel road" row, in the ear.
   sfx(VERB_SOUND[a.kind] || 'ui');
   if (a.kind === 'fell') sfx('fell', 0.18);   // the axe thunk, then the canopy arrives
+  noticeSucceeded(topic);                   // BUG-011: the popup's own verb landed
   if (simFrom !== null) echoSimLog(simFrom); else log(line);
   save(); refresh();
 }
@@ -1120,12 +1128,16 @@ const r = new RClass($('map'), {
   },
   onBuild(kind, x, y) {
     if (kind === 'bed') {
+      // BUG-012: the refusal names the tile the player was standing on. BUG-011: it carries
+      // the verb's own key, so the next bed that goes in takes the line off the tray instead
+      // of leaving it there to be re-read for the next five weeks.
       const why = plantSay(x, y);
-      if (why) return log(why, 'bad');
+      if (why) return log(plantRefusalBanner(x, y, why), 'bad', 'bed');
       const simFrom = h.log.length;
       const res = plantBed(h, x, y, bedCrop);
-      if (!res.ok) return log(res.msg, 'bad');
+      if (!res.ok) return log(res.msg, 'bad', 'bed');
       sfx('plant');
+      noticeSucceeded('bed');
       echoSimLog(simFrom);      // the sim names the crop and the days; no page copy of it
       save(); refresh();
       return;
@@ -1263,11 +1275,34 @@ function reportRefusedClick() {
   const why = ghostWhy(g);
   if (!why) return;                                     // the tile takes it: the click placed it
   log(`${P.label} cannot stand at ${g.x},${g.y} - ${why}.`
-    + ' Move it, or press Esc to stop. Nothing was charged.', 'bad');
+    + ' Move it, or press Esc to stop. Nothing was charged.', 'bad', P.kind);
   sfx('place-refuse');        // W-01: the rock tap. One knock, never a two-thud rebuke.
 }
 r.cv.addEventListener('click', reportRefusedClick);
 r.cv.addEventListener('touchend', reportRefusedClick);
+/* BUG-012: the crop tool's per-tile caption. Bound here and not in the renderer because the
+   renderer owns no caption for a mode and publishes `hover` rather than a callback - and it is
+   the tech artist's file this round. This listener is registered AFTER the renderer's own
+   mousemove (bound in its constructor), so `r.hover` is already the tile under this event.
+   mouseleave runs the renderer's `hover = null` first, for the same reason: the generic line
+   comes back when the pointer leaves the map, so the caption never strands a tile name. */
+r.cv.addEventListener('mousemove', () => bedHint(false));
+r.cv.addEventListener('mouseleave', () => bedHint(true));
+
+/* One place to spell a menu route. The tray's Show button, the goal card and the hint bar all
+   name the same click, and a route typed twice is a route that can disagree - the bar earned
+   this constant by needing the water verb named twice in one sentence. The rung names live in
+   the sim, so this spells the path and lets `FACILITY` supply the last word. */
+const YARD_ROUTE = 'Windows → Guests → Bookings';
+const ROUTE = {
+  tank: 'Farm → Build a water tank',
+  buyWater: 'Farm → Buy water',
+  // The Guests window's first tab is the yard card (`#tp-yard`), and that is where
+  // `renderYard` mounts the facility rows - the ablution block has no Farm verb, which is
+  // why the SIM's own camp warning is corrected on the way to the screen just above.
+  yard: YARD_ROUTE,
+  ablution: `${YARD_ROUTE} → ${FACILITY.ablution.label}`,
+};
 
 /** Rewrite a menu button's caption without touching its <small> price line. The rung names
     live in `tourism.ACCOM`, so no caption in this file is allowed to hand-type one. */
@@ -1340,19 +1375,175 @@ function plantSay(x, y) {
   return '';
 }
 
-/** Where the roof can actually go. `freeCell()` only looks for CLEAR ground — it never
-    asked whether the ground is FLAT, which is the other half of every build gate, so the
-    house armed on a slope and opened red. This asks the sim's own rule for the site, so
-    the ghost arrives on ground that will take it. Falls back to the plot centre when a
-    life has no flat 2×2 yet — the hint then names the reason, which is the honest screen. */
-function freeRoofSite() {
-  const p = h.plot;
-  for (let y = 1; y <= p.h - 2; y++) {
-    for (let x = 1; x <= p.w - 2; x++) {
-      if (canPlaceAccom(h, 'house', x, y).ok) return [x, y];
+/** BUG-012 · the sentence a refused planting says, at both call sites. It now names the tile,
+    because "too steep to plant" without a place is the reason the playtest could not tell
+    whether the highlight was wrong or their own aim was (PLAYTEST-2026-11-14 PART 1, BUG-012:
+    three of four planting taps looked green and came back refused). The reason itself is still
+    `plantSay`'s own words, and nothing is charged on this path — the ground door runs before
+    `plantBed`, so the sentence can say so honestly. */
+function plantRefusal(x, y, why) {
+  return `No bed at ${x},${y} - ${why}.`;
+}
+
+/** The same sentence as it goes in the banner AFTER a refused click, which owes the player the
+    money verdict as well as the place. */
+function plantRefusalBanner(x, y, why) {
+  return plantRefusal(x, y, why) + ' Nothing was charged.';
+}
+
+/** The crop tool's generic line, when the pointer is not on a tile. */
+function bedModeLine() {
+  const crop = CROPS[bedCrop];
+  return `Click a green tile to plant ${crop.label.toLowerCase()} — ${crop.growDays} days, ${money(crop.cost)} in.`;
+}
+
+/** BUG-012 · what the crop tool says about ONE tile, before the click.
+   The build ghost has named tile, price and reason since the ghost round; the planting tool
+   named nothing, so the same feature asked the player to aim blind and explain itself only
+   after refusing. This is that readout, and it is built from the same three facts the click
+   will use: `plantSay` for the ground, `waterOk` and `CROPS` for the rest. Water and cash are
+   plot-wide, not tile-wide, so they get their own sentence rather than a lie about the tile
+   under the cursor. */
+function bedCaption(x, y) {
+  const crop = CROPS[bedCrop];
+  const name = crop.label.toLowerCase();
+  if (!waterOk(h)) {
+    // Water is a plot-wide gate, not a property of the tile, so it says so and names the verb
+    // that fixes it - the same route the goal card's Show button spells, from one constant.
+    return `There is no water on this plot right now, so ${name} will not go in anywhere - `
+      + (h.water.tank ? `buy a delivery (${ROUTE.buyWater}).`
+        : `build the tank (${ROUTE.tank}) or take a plot with a stream.`);
+  }
+  const why = plantSay(x, y);
+  if (why) return plantRefusal(x, y, why) + ' Move, or press Esc to stop.';
+  if (h.cash < crop.cost) {
+    return `${crop.label} would grow at ${x},${y}, but it costs ${money(crop.cost)} `
+      + `and you have ${money(h.cash)} - nothing to plant here yet.`;
+  }
+  return `Plant ${name} at ${x},${y} - ${money(crop.cost)}, ${crop.growDays} days, `
+    + `ready day ${h.day + crop.growDays}, about ${money(crop.yield)} when it comes in. `
+    + 'Click to plant, Esc to stop.';
+}
+
+/* The crop tool's live caption. The renderer publishes the tile the pointer is on (`r.hover`)
+   but has no hover callback and no per-tool caption of its own, so the page listens on the
+   canvas the way `reportRefusedClick` already does (the same precedent, the same reason: the
+   renderer is another seat's file). One walk of `plantSay` per TILE, not per pixel - the
+   renderer gates its own hover work the same way. A ghost, when one is armed, owns the line:
+   `ghostHint` is called from refresh and the renderer's own mousemove, so this stays out of it. */
+let bedCaptionTile = null;
+function bedHint(force) {
+  if (mode !== 'bed' || !h || !h.plot || r.ghost) return;
+  const c = r.hover;
+  const key = c ? `${c[0]},${c[1]}` : 'none';
+  if (!force && key === bedCaptionTile) return;
+  bedCaptionTile = key;
+  $('hint').textContent = c ? bedCaption(c[0], c[1]) : bedModeLine();
+}
+
+/** THE site the Build menu picks when it builds a rung FOR the player. Two things were
+    wrong with the page's own chooser before the 11-14 cold-start pass
+    (PLAYTEST-2026-11-14-PLACEMENT-GHOST.md, STUCK 1 / BUG-015), and both were measured,
+    not guessed. First: `freeCell()` spiralled out from the PLOT MIDDLE looking for CLEAR
+    ground and never asked the sim whether that ground was FLAT, so the guided verb opened
+    30 tiles of scrub away from the gate and answered `too steep to build on - flatten it
+    first` / `the ground falls away inside the site - flatten it first`, and on this plot
+    the blade cannot deliver that order (siteworks.js refuses any block holding a tree, and
+    the Homesteader carries 1,283-1,666 pines over a 31% slope). Second: the plot middle is
+    not where a yard is. The sim already decided where the obvious building ground is -
+    plotmap.js grades a clearing inside the gate, "One flat, open patch inside the gate: the
+    obvious place to build" - so this spirals out from the CLEARING CENTRE and asks the SIM
+    at every anchor. `canPlaceAccom(h, kind, x, y)` is the predicate the ghost is painted
+    green with AND the one `buildAccom` runs before it charges, so an automatic site that
+    this function calls legal cannot refuse. `freeRoofSite()` already did exactly this for
+    the house only; it is gone, and every rung goes through here.
+    Measured on the shipped three lives, five pinned seeds, all six rungs
+    (_tmp/ui-autosite-cost.mjs): the first anchor tried is legal on the homesteader and the
+    incomer at once, and the Stayed reaches one within 2 rings (the family house building
+    stands on its clearing) - one sim call, under a millisecond. The old site quoted a drive
+    of +H$11,200 to +H$20,000 because it was deep in the scrub; a site by the yard bills
+    +H$0 to +H$4,800, which is the number `siteBill` prints for the same tile.
+    The `blocked` set is a COST GUARD, not a second rule: it holds only tiles
+    `canPlaceAccom` itself refuses (water, a standing tree, a bed, a hive, a unit or
+    building anchor, the gate), so it can never drop an anchor the sim would take. It is
+    skipped for a rung with no footprint - `spare` is inside the house and the sim answers
+    ok for it anywhere, by design.
+    When no anchor anywhere is legal the honest answer is the yard tile marked
+    `legal: false` with the sim's own sentence in `why`: the caller says what is missing
+    instead of pretending a site exists. Never charge on that tile without the sim's say-so,
+    and never invent a reason the sim did not give. */
+function autoAccomSite(kind) {
+  const p = h && h.plot;
+  if (!p || !p.ground) return { x: 1, y: 1, legal: false, why: 'this plot has no ground to build on' };
+  const [fw, fh] = accomFootprint(kind);
+  const w = Math.max(1, fw), ht = Math.max(1, fh);
+  const sited = fw * fh > 0;
+  const from = p.clearing || p.gate || { x: Math.floor(p.w / 2), y: Math.floor(p.h / 2) };
+  // the anchor whose FOOTPRINT sits centred on the yard, so a 4x3 camp is not pushed a
+  // whole site-width east of the clearing just because its top-left tile was measured
+  const bx = Math.round(from.x - (w - 1) / 2), by = Math.round(from.y - (ht - 1) / 2);
+  const blocked = new Set();
+  if (sited) {
+    for (const t of p.trees || []) blocked.add(t.x + ',' + t.y);
+    for (const b of h.beds || []) blocked.add(b.x + ',' + b.y);
+    for (const v of h.hives || []) blocked.add(v.x + ',' + v.y);
+    for (const a of h.accom || []) blocked.add(a.x + ',' + a.y);
+    for (const b of p.buildings || []) blocked.add(b.x + ',' + b.y);
+    if (p.gate) blocked.add(p.gate.x + ',' + p.gate.y);
+    for (let i = 0; i < p.ground.length; i++) {
+      if (p.ground[i] === 'water') blocked.add((i % p.w) + ',' + Math.floor(i / p.w));
     }
   }
-  return [Math.floor(p.w / 2), Math.floor(p.h / 2)];
+  const fits = (x, y) => x >= 0 && y >= 0 && x + w <= p.w && y + ht <= p.h;
+  for (let r = 0; r < Math.max(p.w, p.h); r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = bx + dx, y = by + dy;
+        if (!fits(x, y)) continue;
+        let busy = false;
+        for (let cx = x; cx < x + w && !busy; cx++) {
+          for (let cy = y; cy < y + ht && !busy; cy++) if (blocked.has(cx + ',' + cy)) busy = true;
+        }
+        if (busy) continue;
+        if (canPlaceAccom(h, kind, x, y).ok) return { x, y, legal: true, why: '' };
+      }
+    }
+  }
+  const fx = Math.max(0, Math.min(bx, p.w - w)), fy = Math.max(0, Math.min(by, p.h - ht));
+  const ans = canPlaceAccom(h, kind, fx, fy);
+  return { x: fx, y: fy, legal: false, why: ans.ok ? '' : (ans.msg || 'the ground will not hold it') };
+}
+
+/** One door for the surfaces that quote the automatic site - the WHAT NOW goal text, the
+    Build caption, and the refusal a rung gets when there is nowhere to put it - because they
+    must not disagree, and every one of them must name the tile `autoAccomSite` actually
+    chose, not a tile it could have chosen. `where` speaks when the sim accepts the site,
+    `bad` when nothing on the plot will hold the footprint; at most one of them is ever set.
+    The `bad` sentence adds no advice of its own: the sim's message already names the remedy
+    ("flatten it first", "fell it first"), and the 11-14 pass is why this page stopped
+    promising a fix before checking the verb could deliver it. A rung with no footprint
+    (`spare` is a room inside the house) has no site to name, so both stay empty and only the
+    bill speaks. */
+function autoSiteSummary(kind) {
+  const site = autoAccomSite(kind);
+  const [fw, fh] = accomFootprint(kind);
+  const w = Math.max(1, fw), ht = Math.max(1, fh);
+  const sited = fw * fh > 0;
+  const bill = siteBill(kind, site.x, site.y);
+  return {
+    site,
+    bill,
+    /* What the row and the goal card QUOTE. A fallback site is not a place the player can
+       build, so naming a price with a drive on top of it would put a number in front of him
+       for ground the sim refuses; an unsited rung quotes the sim's base cost and the sentence
+       below carries the news. */
+    price: sited && !site.legal ? ACCOM[kind].cost : bill.price,
+    where: sited && site.legal ? `tile ${site.x},${site.y}` : '',
+    bad: sited && !site.legal
+      ? `No ground on this plot will hold a ${w}x${ht} yet - ${site.why || 'the ground refuses every tile'}.`
+      : '',
+  };
 }
 
 /* FIND-A (the 10-28 fresh-player pass, replayed on the placement build): "the refusals are
@@ -1430,19 +1621,122 @@ function paintLogDot() {
   d.style.display = n ? 'inline-block' : 'none';
   d.textContent = n > 9 ? '9+' : String(n || '');
 }
+/* BUG-011 (PLAYTEST-2026-11-14-PLACEMENT-GHOST.md, `e1114/11` + `14`) - the tray was write-only.
+   Every 'bad' line was appended and nothing ever removed it except one `Dismiss` for the whole
+   stack, so a day-1 "water tank cannot stand at 18,19" was still on screen on day 7 October -
+   37 days later - beside a FULL tank and a goal panel that said "Water available.", with the
+   stack grown to eight lines. A new player
+   looking up mid-task cannot tell which refusals are still true, and `max-height: 16vh` meant the
+   LIVE one was the line he had to scroll to find. Three rules, all page-side, none of them a sim
+   change - and nothing is destroyed: the Log keeps every line, the tray only keeps the news.
+     1. EXPIRE. A refusal is news about the action you just took. It dies 75 s after it was
+        spoken, or the moment the day it was spoken in ends - whichever comes first. The day is
+        the game's own clock, so a fast-forward clears the tray too, and a timer covers the
+        player who reads for a minute and never clicks again.
+     2. NEWEST FIRST, ONE COPY EACH. The tray is keyed on the sentence, so the same refusal
+        restarts its clock at the top instead of stacking; the newest complaint sits where it can
+        be read without scrolling. At most `NOTICE_KEEP` lines show, oldest dropped - the record
+        is the Log, and the Log button already counts what is in it.
+     3. SUPERSEDE. A success clears the refusals about the same thing, named by the sim's own
+        label tables (`ACCOM`, `FACILITY`, `PLACEMENTS`), so a rung that goes up takes its own
+        dead ends off the screen the moment it goes up. A banner naming nothing recognizable is
+        not matched - the clock gets it. */
+const NOTICE_KEEP = 4;
+const NOTICE_SECONDS = 75;
+const noticeBox = () => $('notice-messages');
+
+/** Is this banner stale? Read off the stamps the tray wrote when it spoke: the day it was
+    refused in has ended, or a minute and a quarter has gone by. */
+function noticeStale(row, day, now) {
+  const stamp = Number(row.dataset.day);
+  if (Number.isFinite(stamp) && day > stamp) return true;
+  return now - Number(row.dataset.at || 0) > NOTICE_SECONDS * 1000;
+}
+
+/** Drop what has expired and put the tray away when nothing is left. Idempotent, and it runs
+    from `refresh()` (so every click and every day tick cleans) and from a slow timer (so a
+    player who does nothing at all still sees the line go away). */
+function pruneNotice() {
+  const box = noticeBox();
+  if (!box) return 0;
+  const day = h && h.day ? h.day : 0;
+  const now = Date.now();
+  let dropped = 0;
+  for (const row of Array.from(box.children)) {
+    if (noticeStale(row, day, now)) { row.remove(); dropped++; }
+  }
+  if (!box.children.length) $('notice').hidden = true;
+  return dropped;
+}
+
+/** Show one refusal: refresh its clock and move it to the top if the tray is already saying
+    this exact sentence, otherwise open a new line above the older ones. `topic` is the sim's own
+    key for the thing that was refused (`'tank'`, `'camp'`, `'ablution'`) and only the seam that
+    knows it can pass it - it is what lets a later SUCCESS find this line again. A refusal routed
+    through a generic seam carries no topic and is cleared by the clock, never by guesswork. */
+function noticeSay(text, topic) {
+  const box = noticeBox();
+  if (!box) return;
+  const key = String(text);
+  let row = null;
+  for (const el of Array.from(box.children)) if (el.dataset.text === key) { row = el; break; }
+  if (!row) {
+    row = document.createElement('div');
+    row.dataset.text = key;
+    row.textContent = key;
+  }
+  if (topic) row.dataset.topic = String(topic);
+  row.dataset.day = String(h && h.day ? h.day : 0);
+  row.dataset.at = String(Date.now());
+  box.prepend(row);
+  while (box.children.length > NOTICE_KEEP) box.lastElementChild.remove();
+  $('notice').hidden = false;
+  // No `scrollIntoView` here any more: the newest line is at the top of the box by construction,
+  // and a scroll request from a banner is one more way for a refusal to move the page under a
+  // finger that was aiming at the map.
+}
+
+/** Every name the sim gives the thing at `kind`, lowercased - the words a refusal could have
+    used for it. Read out of the sim's own tables (`ACCOM`, `FACILITY`) and the page's placement
+    table, so a label that moves there moves the match here with it and no prose is duplicated. */
+function thingLabels(kind) {
+  if (!kind) return [];
+  const out = [];
+  if (PLACEMENTS[kind]) out.push(PLACEMENTS[kind].label);
+  if (ACCOM[kind]) out.push(ACCOM[kind].label);
+  if (FACILITY[kind]) out.push(FACILITY[kind].label);
+  return out.map((s) => String(s).toLowerCase()).filter((s) => s.length > 2);
+}
+
+/** The thing at `kind` just succeeded. Take its own dead ends off the screen.
+    Two ways a banner can be about it: the seam that wrote it knew the sim's key, or the sim's
+    own words for the thing (`ACCOM`/`FACILITY`/`PLACEMENTS` labels) appear in the sentence.
+    A banner that matches neither stays up until it expires - the tray never clears a refusal
+    it cannot prove the success answered. */
+function noticeSucceeded(kind) {
+  if (!kind) return 0;
+  const box = noticeBox();
+  if (!box) return 0;
+  const words = thingLabels(kind);
+  let cleared = 0;
+  for (const row of Array.from(box.children)) {
+    const mine = row.dataset.topic === String(kind)
+      || words.some((w) => String(row.dataset.text || '').toLowerCase().includes(w));
+    if (mine) { row.remove(); cleared++; }
+  }
+  if (!box.children.length) $('notice').hidden = true;
+  return cleared;
+}
+
 let replayingLog = true;
-function log(text, cls = '') {
+function log(text, cls = '', topic = '') {
   // Preserve the sim's camp warning, correcting its old menu route on this UI only.
   if (String(text).startsWith('No ablution block yet')) {
-    text = text.replace('under Farm', 'under Windows → Guests → Bookings');
+    text = text.replace('under Farm', `under ${ROUTE.yard}`);
   }
   if (cls === 'bad' && !replayingLog) {
     sfx('error');
-    $('notice').hidden = false;
-    const message = document.createElement('div');
-    message.textContent = text;
-    $('notice-messages').appendChild(message);
-    message.scrollIntoView({ block: 'nearest' });
+    noticeSay(text, topic);
   }
   const el = document.createElement('div');
   if (cls) el.className = cls;
@@ -1452,9 +1746,17 @@ function log(text, cls = '') {
   if (!$('win-log').classList.contains('show')) { logUnread++; paintLogDot(); }
 }
 $('notice-dismiss').onclick = () => {
+  // The manual door stays exactly as it was - `Dismiss` still clears the whole tray in one tap.
+  // What BUG-011 took away is the idea that a human tap is the ONLY thing that ever can.
   $('notice').hidden = true;
   $('notice-messages').replaceChildren();
 };
+/* The page has no idle tick: `refresh()` runs on a click, a day change, or a window open, so a
+   player who refuses a tile and then reads for two minutes would keep the line until he touched
+   something. One quiet sweep every five seconds costs nothing (it returns straight away when the
+   tray is already empty) and is what makes the expiry a fact the player can SEE rather than a
+   rule in a file. */
+setInterval(pruneNotice, 5000);
 
 function save() { try { localStorage.setItem(SAVE, toJSON(h)); } catch { /* private mode */ } }
 function load() {
@@ -1582,32 +1884,13 @@ function commitFlat(rect) {
   save(); refresh();
 }
 
-/** First free AREA for a new building, spiralling out from the middle. w×h default
-    to the rung's ACCOM footprint (verdict 5) — a 4×3 camp needs 12 clear tiles. */
-function freeCell(kind) {
-  const [fw, fh] = (kind && ACCOM[kind] && ACCOM[kind].footprint) || [1, 1];
-  const w = Math.max(1, fw), ht = Math.max(1, fh);
-  const used = new Set([...(h.beds || []), ...(h.hives || []), ...(h.accom || [])].map((o) => o.x + ',' + o.y));
-  const treeAt = (x, y) => h.plot.trees.some((t) => t.x === x && t.y === y);
-  const bldAt = (x, y) => (h.plot.buildings || []).some((b) => b.x === x && b.y === y);
-  for (let r = 2; r < Math.max(h.plot.w, h.plot.h); r++) {
-    for (let dx = -r; dx <= r; dx++) {
-      for (const dy of [-r, r]) {
-        const x = Math.floor(h.plot.w / 2) + dx, y = Math.floor(h.plot.h / 2) + dy;
-        if (x < 1 || y < 1 || x + w > h.plot.w - 1 || y + ht > h.plot.h - 1) continue;
-        let clear = true;
-        for (let cx = x; cx < x + w && clear; cx++) {
-          for (let cy = y; cy < y + ht && clear; cy++) {
-            if (used.has(cx + ',' + cy) || treeAt(cx, cy) || bldAt(cx, cy)
-              || h.plot.ground[cy * h.plot.w + cx] === 'water') clear = false;
-          }
-        }
-        if (clear) return [x, y];
-      }
-    }
-  }
-  return [1, 1];
-}
+/* `freeCell()` is gone. It was the page's own site chooser for every rung the Build menu
+   places by itself, and it asked one question - is this ground CLEAR - while the sim asks
+   two (clear AND flat). The 11-14 cold-start pass followed the consequence: the guided
+   hosting verb opened on a scrub tile 30 tiles from the gate, the sim refused it, and the
+   player was told to flatten ground the blade will not take on this plot. Every automatic
+   accom site now asks the sim through `autoAccomSite(kind)` above, which is the same
+   predicate the ghost is painted with and the verb runs before it charges. */
 
 /* The guests card — the review scoreboard, the open switch, the yard, listings, repairs. */
 function renderYard() {
@@ -1752,7 +2035,7 @@ function renderAttention() {
           // PR-placement: the row arms a ghost now, so the advice names the second half of the
           // click. The size is the sim's FACILITY_SITE, not a number typed here.
           + `The row puts a ${FACILITY_SITE.ablution[0]}x${FACILITY_SITE.ablution[1]} ghost under the cursor - click the tiles it stands on.`)
-      + '</p>' + guideButton('[data-act="facility"][data-kind="ablution"]', 'Windows → Guests → Bookings → Ablution block');
+      + '</p>' + guideButton('[data-act="facility"][data-kind="ablution"]', ROUTE.ablution);
   }
   $('attention').hidden = !html;
   if (html !== renderAttention._html) {
@@ -1777,8 +2060,8 @@ function goalGuide(id, s) {
   const cropRoute = `Farm → Plant ${crop.label.toLowerCase()}`;
   const cash = (cost) => `${money(cost)}${h.cash < cost ? ` (need ${money(cost - h.cash)} more)` : ' available'}`;
   const water = waterOk(h) ? 'Water available.' : h.water.tank
-    ? `Tank empty: Farm → Buy water, ${cash(WATER.deliveryCost)} for ${WATER.deliveryL} L.`
-    : `No water: Farm → Build a water tank, ${cash(tankBill())}, filled.`;
+    ? `Tank empty: ${ROUTE.buyWater}, ${cash(WATER.deliveryCost)} for ${WATER.deliveryL} L.`
+    : `No water: ${ROUTE.tank}, ${cash(tankBill())}, filled.`;
   const crops = Object.values(CROPS).map((c) => `${c.label}: ${money(c.cost)}, ${c.growDays}d`).join(' · ');
   const budget = `${money(s.billTotal)} bills in ${s.daysToBill}d; living ${money(LIVING_PER_DAY)}/day, plus ${money(FOOD.eatKg * FOOD.shopPerKg)}/day when buying food. Weather and facilities can add costs.`;
   const unit = ACCOM[unitKind()];
@@ -1799,13 +2082,13 @@ function goalGuide(id, s) {
       why: `Without water, the run ends after ${WATER.deathDays} dry days. A stream or tank completes this step.`,
       how: `Use Farm - Build a water tank arms a ghost, and the stand goes where you click it.${h.water.tank ? '' : ' Nothing is spent until the tile accepts it.'} Later buy a delivery when it runs low.`,
       needs: `${water} Tank: ${money(TANK.cost)} + ${money(TANK.delivery)} delivery before any mill-lumber saving; today ${cash(tankBill())}.`,
-      links: [[h.water.tank ? '#btn-water' : '#btn-tank', h.water.tank ? 'Farm → Buy water' : 'Farm → Build a water tank']],
+      links: [[h.water.tank ? '#btn-water' : '#btn-tank', h.water.tank ? ROUTE.buyWater : ROUTE.tank]],
     };
     case 'bed': return {
       why: `Home-grown food avoids the shop's ${money(FOOD.eatKg * FOOD.shopPerKg)}/day; surplus can be sold.`,
       how: 'Choose a crop under Farm - the suitable ground turns green - then click a green tile. Harvest when ready.',
       needs: `${crops}. ${water} Cash now ${money(h.cash)}; selected ${crop.label} needs ${cash(crop.cost)}. Ground must be flat and clear, not rock, water, mud or occupied.`,
-      links: [[cropTarget, cropRoute], [h.water.tank ? '#btn-water' : '#btn-tank', h.water.tank ? 'Farm → Buy water' : 'Farm → Build a water tank']],
+      links: [[cropTarget, cropRoute], [h.water.tank ? '#btn-water' : '#btn-tank', h.water.tank ? ROUTE.buyWater : ROUTE.tank]],
       ground: true,
     };
     case 'sale': return {
@@ -1831,12 +2114,11 @@ function goalGuide(id, s) {
       links: [['#bankcard', 'Windows → Money'], ['#endday', 'Status bar → End the day']],
     };
     case 'unit': {
-      const [x, y] = freeCell(unitKind());
-      const bill = siteBill(unitKind(), x, y);
+      const s = autoSiteSummary(unitKind());
       return {
         why: 'A letting unit can earn nightly income beyond crops. Your own house never takes bookings.',
         how: `Build a ${unit.label.toLowerCase()}, then advance days until finished. The Build menu picks a site automatically. Any finished accommodation build ticks this step, including a house — but a house cannot earn bookings.`,
-        needs: `${unit.label}: ${money(unit.cost)} base, ${unit.buildDays}d; ready day ${h.day + unit.buildDays} if started now. Today's automatic site: ${cash(bill.price)} including drive and any lumber saving. Needs clear, flat ground${unit.only ? '; only for ' + unit.only : ''}.`,
+        needs: `${unit.label}: ${money(unit.cost)} base, ${unit.buildDays}d; ready day ${h.day + unit.buildDays} if started now. ${s.where ? `Today's automatic site: ${s.where} - ` : 'No automatic site on this plot yet - '}${cash(s.price)}${s.where ? ' including drive and any lumber saving' : ' base'}.${s.bad ? ' ' + s.bad : ''} Needs clear, flat ground${unit.only ? '; only for ' + unit.only : ''}.`,
         links: [['#btn-unit', `Build → Build a ${unit.label.toLowerCase()}`], ['#yardcard', 'Windows → Guests → Bookings']],
       };
     }
@@ -2080,6 +2362,9 @@ function renderCompany() {
 }
 
 function refresh() {
+  // BUG-011: the tray is pruned with everything else that reads the day, so a refusal cannot
+  // outlive the action it was about - or the day it was spoken in - on a screen nobody touched.
+  pruneNotice();
   const s = summary(h);
   $('v-cash').textContent = money(s.cash);
   $('v-date').textContent = `${s.date} · ${s.tourism.weekday}${s.tourism.schoolHoliday ? ' · school holidays' : ''}`;
@@ -2135,9 +2420,9 @@ function refresh() {
       : Math.max(0, WATER.deathDays - (h.water.thirst || 0));
     alarms.push(`<button type="button" class="alarm hot" data-reveal="${h.water.tank ? '#btn-water' : '#btn-tank'}"><b>no water</b> ${
       left > 1 ? `${left} days` : left === 1 ? '1 day' : 'final day'
-    } · Show: Farm → ${h.water.tank ? 'Buy water' : 'Build a water tank'}</button>`);
+    } · Show: ${h.water.tank ? ROUTE.buyWater : ROUTE.tank}</button>`);
   } else if (h.water.tank && !h.water.stream && s.tank && s.tank.pct <= 20) {
-    alarms.push(`<button type="button" class="alarm warn" data-reveal="#btn-water"><b>tank</b> ${s.tank.pct}% · Show: Farm → Buy water</button>`);
+    alarms.push(`<button type="button" class="alarm warn" data-reveal="#btn-water"><b>tank</b> ${s.tank.pct}% · Show: ${ROUTE.buyWater}</button>`);
   }
   if (s.arrears > 0) {
     alarms.push(`<span class="alarm hot"><b>arrears</b> ${s.arrears} month${s.arrears === 1 ? '' : 's'}</span>`);
@@ -2219,11 +2504,26 @@ function refresh() {
   caption('btn-cabin', `Build a ${ACCOM.cabin.label.toLowerCase()}`);
   caption('btn-camp', `Open a ${ACCOM.camp.label.toLowerCase()}`);
   caption('btn-caravan', `Open a ${ACCOM.caravan.label.toLowerCase()}`);
-  const unitBill = siteBill(unitKind, ...freeCell(unitKind));
-  $('lbl-unit').textContent = `${money(unitBill.price)} at the automatic site, incl. drive and any lumber saving · ${ACCOM[unitKind].buildDays} days · ${money(ACCOM[unitKind].rate)}/night`
-    + (h.cash < unitBill.price ? ` · need ${money(unitBill.price - h.cash)} more` : '');
+  // the caption quotes the site the row will actually build on, and now names that tile:
+  // the 11-14 pass found a player reading "at the automatic site" and never learning where
+  // the money went, because the site was chosen by a rule the caption did not share. With no
+  // site to name the caption drops the phrase entirely - "at the automatic site" over ground
+  // the sim refuses was the same lie one level down.
+  const unitSite = autoSiteSummary(unitKind);
+  $('lbl-unit').textContent = (unitSite.where
+    ? `${money(unitSite.price)} at the automatic site (${unitSite.where}), incl. drive and any lumber saving`
+    : `${money(unitSite.price)} base`)
+    + ` · ${ACCOM[unitKind].buildDays} days · ${money(ACCOM[unitKind].rate)}/night`
+    + (h.cash < unitSite.price ? ` · need ${money(unitSite.price - h.cash)} more` : '')
+    + (unitSite.bad ? ` · ${unitSite.bad}` : '');
   $('lbl-cabin').textContent = `${money(ACCOM.cabin.cost)} · ${ACCOM.cabin.buildDays} days · ${money(ACCOM.cabin.rate)}/night`;
-  $('lbl-camp').textContent = `${money(ACCOM.camp.cost)} · ${ACCOM.camp.buildDays} days · ${money(ACCOM.camp.rate)}/pitch${h.facilities && h.facilities.ablution ? '' : ' · needs an ablution block'}`;
+  /* ITEM 4 (Round D): this caption told the player WHAT the camp waits on and had no way to say
+     WHERE the verb lives. The only route the page spells is the attention card's guide button,
+     and `renderAttention` draws that paragraph only once a camp already stands - so the guidance
+     arrived after the decision it was meant to inform. The row now carries the same string the
+     guide button carries, from one constant. The condition is untouched: this line reports the
+     SIM's `facilities`, which is the same flag the camp's own `needs` gate reads. */
+  $('lbl-camp').textContent = `${money(ACCOM.camp.cost)} · ${ACCOM.camp.buildDays} days · ${money(ACCOM.camp.rate)}/pitch${h.facilities && h.facilities.ablution ? '' : ` · needs an ablution block (${ROUTE.ablution})`}`;
   $('lbl-caravan').textContent = `${money(ACCOM.caravan.cost)} · ${ACCOM.caravan.buildDays} days · ${money(ACCOM.caravan.rate)}/stand${h.facilities && h.facilities.driveway ? '' : ' · needs a driveway'}`;
   // U8 — the roof. The reason a disabled row is disabled sits where the price sits: a dead
   // button with no sentence is the silent refusal the fence round and the gravel row both
@@ -2272,7 +2572,7 @@ function refresh() {
   $('btn-water').disabled = !!s.ended || h.water.stream || !h.water.tank || s.cash < WATER.deliveryCost;
   $('btn-hire').disabled = !!s.ended || s.cash < LABOUR.wagePerDay;
   $('btn-house').disabled = !!s.ended || hasHouse() || s.cash < ACCOM.house.cost;
-  $('btn-unit').disabled = !!s.ended || s.cash < unitBill.price;
+  $('btn-unit').disabled = !!s.ended || s.cash < unitSite.price;
   $('btn-cabin').disabled = !!s.ended || s.cash < ACCOM.cabin.cost;
   $('btn-camp').disabled = !!s.ended || s.cash < ACCOM.camp.cost;
   $('btn-caravan').disabled = !!s.ended || s.cash < ACCOM.caravan.cost;
@@ -2306,13 +2606,16 @@ function refresh() {
   caption('btn-suitable', `${r.overlay === 'plant' ? 'Hide' : 'Show'} suitable ground`);
   if (r.ghost) ghostHint(r.ghost);       // a live placement outranks the mode hint
   else if (r._paint) { /* the drag hint owns the line while the finger is down */ }
-  else $('hint').textContent = s.ended ? 'The run is over.'
-    : mode === 'drag' ? dragModeHint()
+  else if (s.ended) $('hint').textContent = 'The run is over.';
+  // BUG-012: the crop tool paints its own line, because the tile under the pointer is the
+  // half of the sentence the player needs before the click. Everything else still reads
+  // from the mode.
+  else if (mode === 'bed') bedHint(true);
+  else $('hint').textContent = mode === 'drag' ? dragModeHint()
     : mode === 'fell' ? 'Fell mode — click a tree.'
-      : mode === 'bed' ? `Click a green tile to plant ${CROPS[bedCrop].label.toLowerCase()} — ${CROPS[bedCrop].growDays} days, ${money(CROPS[bedCrop].cost)} in.`
-        : mode === 'hive' ? 'Click a cell to place a hive.'
-          : r._openPopup ? 'Click any tile to see what you can do there.'
-            : 'Click a tree to inspect it.';
+      : mode === 'hive' ? 'Click a cell to place a hive.'
+        : r._openPopup ? 'Click any tile to see what you can do there.'
+          : 'Click a tree to inspect it.';
 
   if (s.ended) {
     $('over').classList.add('show');
@@ -2441,10 +2744,15 @@ function startedLine(kind) {
   return `${d.label} started — ${tail}.`;
 }
 function buildRung(kind) {
-  const [x, y] = freeCell(kind);
+  // the site is the sim's answer, not the page's opinion: `autoAccomSite` asks
+  // `canPlaceAccom` for the whole footprint, so the tile built here is a tile that takes it.
+  const s = autoSiteSummary(kind);
   const simFrom = h.log.length;
-  const res = buildAccom(h, kind, x, y);
-  if (!res.ok) return log(res.msg, 'bad');
+  const res = buildAccom(h, kind, s.site.x, s.site.y);
+  // `s.bad` is the sentence for the case the 11-14 pass hit: nothing on the plot will hold
+  // the footprint, so a refusal about ONE tile would send the player hunting tile by tile.
+  if (!res.ok) return log(s.bad || res.msg, 'bad', kind);
+  noticeSucceeded(kind);   // BUG-011: the rung is going up, so its own dead ends come off the tray
   sfx(VERB_SOUND.accom);   // the same sound as the popup's build verb (A11)
   echoSimLog(simFrom);
   log(startedLine(kind));
@@ -2454,19 +2762,20 @@ $('btn-unit').onclick = () => buildRung(unitKind());
 $('btn-cabin').onclick = () => buildRung('cabin');
 $('btn-camp').onclick = () => buildRung('camp');
 $('btn-caravan').onclick = () => buildRung('caravan');
-/* U8 — the roof is armed, not placed. `freeCell()` building it silently would decide the
-   player's first real decision FOR them; this puts the same 2×2 ghost the cabin uses under
-   the cursor, quoting the live bill for the site it is standing on. */
+/* U8 — the roof is armed, not placed. Building it silently would decide the
+   player's first real decision FOR them; this puts the same 2x2 ghost the cabin uses under
+   the cursor, quoting the live bill for the site it is standing on. The site comes from
+   `autoAccomSite('house')` - the same door every other rung now uses, and the one that
+   asks the sim instead of looking for clear ground. */
 $('btn-house').onclick = () => {
-  if (hasHouse()) return log('You already have a house on this plot — one home per life.', 'bad');
+  if (hasHouse()) return log('You already have a house on this plot — one home per life.', 'bad', 'house');
   if (h.cash < ACCOM.house.cost) {
-    return log(`A house is ${money(ACCOM.house.cost)} before the drive — you have ${money(h.cash)}.`, 'bad');
+    return log(`A house is ${money(ACCOM.house.cost)} before the drive — you have ${money(h.cash)}.`, 'bad', 'house');
   }
-  const [x, y] = freeRoofSite();
-  const site = canPlaceAccom(h, 'house', x, y);
-  if (!site.ok) log(`No ground on this plot will hold a 2×2 yet — ${site.msg.split(' — ')[1] || 'the blade first'}.`);
+  const s = autoSiteSummary('house');
+  if (!s.site.legal) log(s.bad || 'No ground on this plot will hold a 2x2 yet.');
   setMode('inspect');
-  r._setGhost('house', x, y);
+  r._setGhost('house', s.site.x, s.site.y);
 };
 $('yardcard').onclick = (e) => {
   const b = e.target.closest('button[data-act]');
@@ -2489,8 +2798,13 @@ $('yardcard').onclick = (e) => {
     const k = b.dataset.kind;
     res = setRate(h, k, ((h.rates && h.rates[k]) || 1) + Number(b.dataset.step));
   }
+  // BUG-011: only a FACILITY purchase names a thing on the ground. `act === 'rate'` reuses the
+  // same `data-kind` attribute for a listing, and moving a nightly rate answers no refusal, so
+  // the topic stays empty there and the tray's clock does the work.
+  const topic = act === 'facility' ? b.dataset.kind : '';
   if (!res) return;
-  if (!res.ok) return log(res.msg, 'bad');
+  if (!res.ok) return log(res.msg, 'bad', topic);
+  noticeSucceeded(topic);
   if (act === 'facility' || act === 'repair') echoSimLog(simFrom);
   else log(act === 'open' ? (h.open ? 'Open for bookings.' : 'Closed for bookings — no lets, no reviews.')
     : act === 'list' ? 'Listed for bookings.' : 'Rate changed — the booking sites update overnight.');
@@ -3044,11 +3358,12 @@ if (buildKind && ACCOM[buildKind]) {
   // U8 found this hook was a coin flip for any 2x2 rung: freeCell() looks for CLEAR ground
   // and never asks whether it is FLAT, so the build could be refused by the corner gate and
   // the shot came out empty — and the tree layer rolls a fresh bush on every new game, so
-  // the refusal moved between runs. A house asks the sim's own site rule, like the menu row.
-  const [bx, by] = buildKind === 'house' ? freeRoofSite() : freeCell(buildKind);
-  const res = buildAccom(h, buildKind, bx, by);
+  // the refusal moved between runs. Every rung now asks the sim's own site rule, through
+  // the same door the menu row uses, so a shot of ?build=camp is a shot of a real site.
+  const site = autoAccomSite(buildKind);
+  const res = buildAccom(h, buildKind, site.x, site.y);
   if (res.ok) save();
-  else console.warn('QA ?build=' + buildKind + ' refused at ' + bx + ',' + by + ': ' + res.msg);
+  else console.warn('QA ?build=' + buildKind + ' refused at ' + site.x + ',' + site.y + ': ' + res.msg);
 }
 if (params.get('sold') === '1') acceptOffer(h);   // QA hook for screenshots
 if (params.get('pile')) h.produce = Number(params.get('pile')) || 0;
@@ -3153,8 +3468,10 @@ if (paintQ && r && h && h.plot) {
 }
 const armQ = params.get('arm');
 if (armQ && ACCOM[armQ] && r && h && h.plot) {
-  const [ax, ay] = armQ === 'house' ? freeRoofSite() : freeCell(armQ);
-  r._setGhost(armQ, ax, ay);
+  // the tile the Build menu would build on, so a shot of `?arm=camp` is a shot of the
+  // automatic site and not of a second search the page keeps for the camera.
+  const site = autoAccomSite(armQ);
+  r._setGhost(armQ, site.x, site.y);
 }
 /* PR-placement QA: the page's own placements arm through the row's own door (`armPlacement`, so
    the cash and already-built guards and the active row are the real ones), and the @x,y form

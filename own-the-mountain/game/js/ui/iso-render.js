@@ -2379,6 +2379,12 @@ export class IsoPlotRenderer {
        damp soil and shingle for a few centimetres and then veld, so the tile takes the tone
        of the ground AROUND it and the damp is painted in as a band. The rule itself is
        untouched: this is paint, and `bank` still refuses a bed and a building. */
+    /* A stream tile's quad is the BED, not the surface: half water, half the earth it
+       runs over. Where the burn bends, its tile column steps a whole tile sideways while
+       the ribbon curves smoothly, and any tile the ribbon leaves bare must read as wet
+       riverbed — not as one of VIS-01's isolated blue diamonds. */
+    const bedTone = [0, 1, 2].map((i2) => Math.round(T.water[i2] * 0.5 + T.bank[i2] * 0.5));
+
     const bankBase = (ax, ay) => {
       const acc = [0, 0, 0];
       let n = 0;
@@ -2438,7 +2444,6 @@ export class IsoPlotRenderer {
 
     const contourSegs = [];   // stroked after the tile pass — see the ramp block below
     const waterlineSegs = []; // dam waterlines — stroked after the tile pass too
-    const waterEdgeSegs = []; // VIS-01: the water/land boundary, once, after the quads
     let waterlines = 0;
 
     /* Shared corner levels (the MAX of touching tiles — same rule as _cornerL):
@@ -2753,8 +2758,11 @@ export class IsoPlotRenderer {
              diamonds with seam lines". The per-tile jitter (±5%) is what made the
              alternation, and the tile seam stroke drew a lattice across the water. A
              water body has ONE level and one tone — it is the only surface in the game
-             that does, because it is the only one the sim keeps flat. */
-          shade = 1.0;
+             that does, because it is the only one the sim keeps flat.
+             Owner 11-04: the ribbon below is now the ONLY visible water shape. This
+             quad is its bed, dark and half earth, so a bend that steps the tile column
+             out from under the curve leaves wet soil, never a blue gem. */
+          shade = 0.78;
         } else {
           // tilt-shade: a slope that rises toward the camera (its near corner
           // (x+1,y+1) above the tile's level) catches +14%; a slope rising away
@@ -2786,7 +2794,8 @@ export class IsoPlotRenderer {
         }
         // a bank tile is NOT painted bank: it takes the ground it stands in and the damp
         // goes on top of that, tight against the water (see bankBase above)
-        const baseTone = kind === 'bank' ? bankBase(x, y) : (T[col] || T.grass);
+        const baseTone = kind === 'bank' ? bankBase(x, y)
+          : kind === 'water' ? bedTone : (T[col] || T.grass);
         g.fillStyle = rgb(baseTone, shade);
         quad(
           project(x, y, zc[0], bake),
@@ -2881,41 +2890,32 @@ export class IsoPlotRenderer {
         }
 
         /* ---- the bank is HALF a tile (owner 10-22: "river bank is half bank and
-           other half nearest water also be water"). A bank tile that touches the
-           stream paints its water-facing half as water, so the damp strip is half the
-           tile wide instead of a full tan diamond that read as a dirt road along the
-           stream (playtest 10-25 crop).
+           other half nearest water also be water"). The water-facing half is now painted
+           by the ribbon, in ONE smooth curve, instead of a per-tile blue half-diamond
+           (owner 11-04). This block paints the LAND half only: it takes the tone of the
+           veld it stands in (bankBase, above) and carries a narrow DAMP BAND with shingle
+           tight against the water line, gone before the far edge.
 
-           OWNER 11-02 finished the thought: "the brown border around the stream doesnt
-           make sense". Making the water half wet left the OTHER half a flat tan band one
-           tile wide on both sides, which is what a dirt road is. So the ground half now
-           takes the tone of the veld it stands in (bankBase, above) and carries a DAMP
-           BAND: wet soil and shingle tight against the water line, gone by the far edge.
-           `bank` is still a ground rule - nothing is built or planted on it - only the
-           paint moved. */
+           OWNER 11-02: "the brown border around the stream doesnt make sense". Neither a
+           flat tan band nor a 0.92-alpha dark-tan gradient is a stream bank. `bank` is
+           still a ground rule - nothing is built or planted on it - only the paint moved. */
         if (kind === 'bank') {
           const sides2 = [
-            [1, 0, [[0.5, 0], [1, 0], [1, 1], [0.5, 1]], [[0, 0], [0.5, 0], [0.5, 1], [0, 1]]],
-            [-1, 0, [[0, 0], [0.5, 0], [0.5, 1], [0, 1]], [[0.5, 0], [1, 0], [1, 1], [0.5, 1]]],
-            [0, 1, [[0, 0.5], [1, 0.5], [1, 1], [0, 1]], [[0, 0], [1, 0], [1, 0.5], [0, 0.5]]],
-            [0, -1, [[0, 0], [1, 0], [1, 0.5], [0, 0.5]], [[0, 0.5], [1, 0.5], [1, 1], [0, 1]]],
+            [1, 0, [[0, 0], [0.5, 0], [0.5, 1], [0, 1]]],
+            [-1, 0, [[0.5, 0], [1, 0], [1, 1], [0.5, 1]]],
+            [0, 1, [[0, 0], [1, 0], [1, 0.5], [0, 0.5]]],
+            [0, -1, [[0, 0.5], [1, 0.5], [1, 1], [0, 1]]],
           ];
           const zMid = (zc[0] + zc[1] + zc[2] + zc[3]) / 4;
           const stone = T.rock || [150, 148, 140];
-          for (const [dx, dy, hq, dry] of sides2) {
+          for (const [dx, dy, dry] of sides2) {
             const nx = x + dx, ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= p.w || ny >= p.h) continue;
             if (p.ground[ny * p.w + nx] !== 'water') continue;
-            g.save();
-            g.globalAlpha = 0.62;
-            g.fillStyle = rgb(T.water, 1.0);
-            quad(
-              project(x + hq[0][0], y + hq[0][1], zc[0], bake),
-              project(x + hq[1][0], y + hq[1][1], zc[1], bake),
-              project(x + hq[2][0], y + hq[2][1], zc[2], bake),
-              project(x + hq[3][0], y + hq[3][1], zc[3], bake),
-            );
-            g.restore();
+            /* No water-faced half quad any more. The ribbon after the tile loop is ONE
+               smooth 0.90 TW body and covers this half; painting it per tile left a
+               staircase of blue half-diamonds wherever the burn bends. The bank tile
+               keeps its veld tone, its damp and its shingle — all outside that body. */
 
             /* the damp: a gradient along the axis from the water line (the tile's centre
                line) to the far edge, so the wettest soil is where the water is and the
@@ -2924,14 +2924,16 @@ export class IsoPlotRenderer {
             const wet = project(x + 0.5, y + 0.5, zMid, bake);
             const far = project(x + 0.5 - dx * 0.5, y + 0.5 - dy * 0.5, zMid, bake);
             const grd = g.createLinearGradient(wet[0], wet[1], far[0], far[1]);
-            /* The stops are tight on purpose. The first cut ran the tint to the far edge
-               (0.18 alpha at 62% across) and the bank tile still showed as a band with a
-               straight line down it - the same complaint one shade lighter. Damp is where
-               the water is: soaked at the line, gone by the middle of the ground half. */
-            grd.addColorStop(0, rgba(T.bank, 0.66, 0.92));    // soaked, dark, at the water
-            grd.addColorStop(0.20, rgba(T.bank, 0.78, 0.58));
-            grd.addColorStop(0.42, rgba(T.bank, 0.90, 0.16));
-            grd.addColorStop(0.66, rgba(T.bank, 1, 0));       // gone: veld from here
+            /* Owner 11-04: even the "tight" 0.92-alpha dark-tan stop still read as a
+               brown BORDER once the ribbon took over the water — it was the dark band
+               in _shots/river-after-crop.png. A real mountain burn has a few centimetres
+               of damp and then veld, so the tint is now a subtle warm darkening (0.38)
+               that is gone by the middle of the ground half. The shore line itself is
+               the ribbon's thin rim; this is only the soil behind it. */
+            grd.addColorStop(0, rgba(T.bank, 0.86, 0.38));    // damp, not a paint stripe
+            grd.addColorStop(0.16, rgba(T.bank, 0.90, 0.24));
+            grd.addColorStop(0.36, rgba(T.bank, 0.95, 0.07));
+            grd.addColorStop(0.52, rgba(T.bank, 1, 0));       // gone: veld from here
             g.fillStyle = grd;
             quad(
               project(x + dry[0][0], y + dry[0][1], zc[0], bake),
@@ -2943,9 +2945,11 @@ export class IsoPlotRenderer {
             /* shingle: the burn drops its stones where the water slows, so the pebbles
                are a band against the water line, not a scatter over the tile. Six per
                side from the cell's own jitter, so a re-bake puts them back in the same
-               place and the bank does not boil between zooms. */
+               place and the bank does not boil between zooms. 11-04: pushed outward —
+               the ribbon now carries the water out to the tile's centre line, so stones
+               in the inner 0.12 would be underwater. */
             for (let s = 0; s < 6; s++) {
-              const inIn = 0.05 + jitter(x, y, 180 + s) * 0.30;
+              const inIn = 0.12 + jitter(x, y, 180 + s) * 0.28;
               const along = (jitter(x, y, 186 + s) - 0.5) * 0.62;
               const [pxp, pyp] = project(x + 0.5 - dx * inIn + dy * along,
                 y + 0.5 - dy * inIn + dx * along, zMid, bake);
@@ -2966,22 +2970,13 @@ export class IsoPlotRenderer {
           }
         }
 
-        /* ---- the water/land boundary (VIS-01): with the per-tile seams gone the
-           shore has to be drawn deliberately, or the body just stops. One soft bank
-           line per edge that faces land. ---- */
-        if (kind === 'water') {
-          const isW = (nx, ny) => (nx >= 0 && ny >= 0 && nx < p.w && ny < p.h)
-            && p.ground[ny * p.w + nx] === 'water';
-          const e = [
-            [x, y, x + 1, y, zc[0], zc[1], !isW(x, y - 1)],       // back-right edge
-            [x, y, x, y + 1, zc[0], zc[3], !isW(x - 1, y)],       // back-left edge
-            [x + 1, y, x + 1, y + 1, zc[1], zc[2], !isW(x + 1, y)], // front-right
-            [x, y + 1, x + 1, y + 1, zc[3], zc[2], !isW(x, y + 1)], // front-left
-          ];
-          for (const [ax, ay, bx, by, za, zb, edge] of e) {
-            if (edge) waterEdgeSegs.push({ a: project(ax, ay, za, bake), b: project(bx, by, zb, bake) });
-          }
-        }
+        /* ---- the water/land boundary is NO LONGER stroked here. It used to collect
+           one segment per water tile edge facing land: along a straight stretch that
+           made two shore lines, but at every wobble step the "neighbour above/below"
+           stopped being water and the CROSS-stream edges got stroked too — the short
+           straight dark lines cutting across the blue in _shots/river-before-crop.png.
+           Owner 11-04: the ribbon's own edge is the shore now (see below), a curve with
+           no corners by construction. ---- */
 
         /* ---- the tile seam: a whisper of an edge on every cell, so the tile being
            worked is always readable (owner ask). Subtle enough to keep TT's flat
@@ -3054,18 +3049,41 @@ export class IsoPlotRenderer {
         /* ---- crest + base contour lines (the terrace reader): a ramp's high
            edges (both corners above its level) stroke the lit top of the slope;
            its level edges stroke the foot. Collected — inline strokes are
-           overpainted by the front tiles' quads. ---- */
+           overpainted by the front tiles' quads.
+           OWNER 11-03, on the live build: "graphic has a giant line on it before
+           the tracks are placed." It is this pair, and `tools/contour-chain-probe
+           .mjs` measures it on a fresh Homesteader with nothing laid: 1,953 foot
+           segments, every one of them on a drop of ONE level (2.5 m), joining into
+           125 straight runs of 4 or more segments - the longest 27 segments, 966
+           bake px in one unbroken line. A ramp tile strokes BOTH of them: its crest
+           (the lit lip) and its foot (a dark line) ten px apart, parallel, running
+           the length of the field. Two parallel lines down a hillside is the exact
+           signature of a dirt road, which is why he called it a track before any
+           track existed. So (a) the foot is no longer mud - the same brown the
+           drives are painted in, which is what made the pairing read as a road - it
+           is the ground's own shade, and (b) it is a function of the drop, so the
+           one-level step that makes up every foot on this plot is a whisper rather
+           than a stroke, and (c) it is broken at the seams: each mark pulls back
+           from both corners by its own tile jitter, so a terrace edge is a run of
+           contact marks along the contour instead of one continuous line. The crest
+           is untouched - VIS-05 settled that it is the terrace reader, and grade
+           still has to be legible from the picture. ---- */
         if (ramp) {
           const corners = [[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]];
+          const drop = Math.max(cL[0], cL[1], cL[2], cL[3]) - L;
           for (const [a, b2] of [[0, 1], [1, 2], [2, 3], [3, 0]]) {
             const hi = cL[a] > L && cL[b2] > L;
             const lo = cL[a] === L && cL[b2] === L;
             if (!hi && !lo) continue;
-            contourSegs.push({
-              a: project(corners[a][0], corners[a][1], zc[a], bake),
-              b: project(corners[b2][0], corners[b2][1], zc[b2], bake),
-              hi, kind,
-            });
+            const P = project(corners[a][0], corners[a][1], zc[a], bake);
+            const Q = project(corners[b2][0], corners[b2][1], zc[b2], bake);
+            let A = P, B = Q;
+            if (!hi) {
+              const lerp = (t) => [P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t];
+              A = lerp(0.14 + jitter(x, y, 300 + a) * 0.20);
+              B = lerp(1 - (0.14 + jitter(x, y, 304 + a) * 0.20));
+            }
+            contourSegs.push({ a: A, b: B, hi, kind, drop });
             if (hi) crestLines++;
           }
         }
@@ -3074,18 +3092,40 @@ export class IsoPlotRenderer {
     this._skirts = skirts;
     this._ramps = ramps;
 
-    /* ---- the river as a CURVE (owner: "water never forms sharp corners, it is
-       always around bends"): a continuous textured ribbon through the stream tile
-       centres, smoothed through midpoints — the tile-level water fills stay beneath
-       it for the sim, but the visible water edge is a flowing curve, never a corner.
-       A wider muddy shoulder is stroked underneath so the bank meets the water
-       without a hard step. ---- */
+    /* ---- the river as ONE CURVE (owner 11-04: "fix the river and riverbank tiles").
+       This ribbon is now the ONLY visible water shape. It used to be a narrow 0.46 TW
+       stroke laid over a 0.89 TW body made of per-tile quads (the water tile plus the
+       water-facing half of each bank tile). At every bend the tile column steps a whole
+       tile sideways while the stroke curves, so the OUTER half of the stream was a
+       staircase of blue half-diamonds, and the per-tile shore pass drew straight dark
+       lines across the blue at each step. The tile loop now paints only the bed; this
+       pass paints all the water at its full width.
+
+       Geometry: one tile band in 2:1 iso is 0.447 TW across (perpendicular distance
+       between adjacent grid lines). 0.447 (water tile) + 2 × 0.224 (half a bank tile
+       each side) = 0.895 TW — exactly the two-band shape the sim models. The old
+       2.9–3.7 TW canal flooded three tiles; this does not.
+
+       The shore is a RIM, not a chain of edges: stroke the SAME path twice, 0.93 TW
+       in wet soil then 0.90 TW in water, and the 0.015 TW left exposed on each side
+       is a dark shore line that follows the curve exactly, with no corner anywhere. ---- */
     if (p.stream) {
       const vert = !!p.stream.vertical;
       const count = vert ? p.h : p.w;
+      /* THE PHASE MUST BE THE SIM'S PHASE, THE ROUNDING MUST NOT.
+         plotmap.js:631 lays the water tiles at `at + round(sin(i*0.35 + phase)*1.2)` —
+         phase is a per-plot RNG draw. The ribbon used to drop the phase entirely, so on
+         the pinned plots it was a whole tile out of register in 38 of 56 rows: blue water
+         diamonds sat beside the painted river and the bank ring framed the wrong ground.
+         That is the real "river and riverbank tiles" defect (owner 11-04).
+         The sim has to quantise to whole tiles; the paint does not. An unrounded wobble
+         glides across a step over several rows, and because the body is 0.90 TW wide
+         (two tile bands) it still covers BOTH tile columns during the shift — no sharp
+         corner, and no water tile left bare. Old saves without a phase fall back to 0. */
+      const phase = Number.isFinite(p.stream.phase) ? p.stream.phase : 0;
       const pts = [];
       for (let n = 0; n < count; n++) {
-        const wob = Math.round(Math.sin(n * 0.35) * 1.2);
+        const wob = Math.sin(n * 0.35 + phase) * 1.2;   // continuous, unlike the sim's round()
         const c = p.stream.at + wob + 0.5;
         const q = vert ? [c, n + 0.5] : [n + 0.5, c];
         /* VIS-01 (playtest 10-25): the ribbon was projected at z = 0 — the FLAT plane
@@ -3093,10 +3133,13 @@ export class IsoPlotRenderer {
            cover. What the player saw was the raw per-tile water diamonds underneath:
            "a mosaic of alternating light/dark diamonds with seam lines". The ribbon
            now rides the water tiles' own level, like every other ground feature. */
-        const tl = vert ? lvlAt(p.stream.at + wob, n) : lvlAt(n, p.stream.at + wob);
+        // lvlAt indexes p.level/p.height by an INTEGER cell; a continuous wobble must be
+        // floored before the lookup or the array read is undefined and drops to level 0.
+        const tl = vert ? lvlAt(Math.floor(p.stream.at + wob), n)
+          : lvlAt(n, Math.floor(p.stream.at + wob));
         pts.push(project(q[0], q[1], this._zL(tl), bake));
       }
-      const strokePath = (colour, width, pattern) => {
+      const strokePath = (colour, width) => {
         g.beginPath();
         g.moveTo(pts[0][0], pts[0][1]);
         for (let i = 1; i < pts.length - 1; i++) {
@@ -3111,30 +3154,30 @@ export class IsoPlotRenderer {
         g.lineWidth = width;
         g.stroke();
       };
-      /* VIS-01 (playtest 10-25), measured off the crop: the ribbon was stroked at
-         2.9 and 3.7 TILE WIDTHS — a 3-tile-wide canal across a 1-tile stream, which
-         flooded the land either side so that trees standing legally on the bank read
-         as "trees standing in the water". A one-tile band in 2:1 iso is 0.447 × TW
-         across (the perpendicular distance between two adjacent grid lines), so the
-         body is 0.46 and the muddy shoulder 0.62 — the stream now occupies exactly
-         its own tile, and the bank sits inside the neighbour's edge. */
-      /* The shoulder is a CONTACT line, not the bank: it is 0.08 tile widths of stroke
-         either side of the water body, and the damp itself is painted on the bank tiles
-         now (see the half-bank block). At the old k 0.92 it was the brightest tan on the
-         map and it drew over that damp work, so the band the owner objected to partly
-         came from here too. Wet soil, not dry sand. */
-      strokePath(rgb(T.bank, 0.74), TW * bz * 0.62);         // muddy shoulder
-      strokePath(rgb(T.water, 0.97), TW * bz * 0.46);        // the water body
+      const W = TW * bz;
+      /* damp halo: three whisper strokes, widest/weakest first. This replaces the hard
+         tan 0.62 TW shoulder that ran the length of the burn (owner 11-02: "the brown
+         border around the stream doesnt make sense"). The per-tile damp gradient under
+         it does the rest; the halo only feathers its outer edge into the veld. */
+      strokePath(rgba(T.bank, 0.62, 0.035), W * 1.30);
+      strokePath(rgba(T.bank, 0.62, 0.045), W * 1.12);
+      strokePath(rgba(T.bank, 0.58, 0.060), W * 0.98);
+      strokePath(rgb(T.bank, 0.58), W * 0.93);          // the shore rim (wet soil)
+      strokePath(rgb(T.water, 0.97), W * 0.90);         // ALL the visible water
+      /* depth: two low-alpha inner strokes, so the middle reads deeper without the
+         hard-edged band that a single inner stroke would put on the water. */
+      strokePath(rgba(T.water, 0.70, 0.10), W * 0.70);
+      strokePath(rgba(T.water, 0.74, 0.10), W * 0.46);
       if (groundTexState === 'ready' && groundTex.water) {
         const wpat = this._groundPattern(g, 'water', bz);
         if (wpat) {
           g.save();
           g.globalCompositeOperation = 'overlay';
-          /* 0.55 read as a woven plaid on a 1-tile stream (the watercolour source is a
-             wide calm sheet; at stream scale its strokes become a lattice). 0.25 keeps
-             the painted hint without the weave. */
-          g.globalAlpha = 0.25;
-          strokePath(wpat, TW * bz * 0.46);
+          /* 0.55 read as a woven plaid on a narrow stream (the watercolour source is a
+             wide calm sheet; at stream scale its strokes become a lattice). 0.20 keeps
+             the painted hint without the weave now that the body is twice as wide. */
+          g.globalAlpha = 0.20;
+          strokePath(wpat, W * 0.90);
           g.restore();
         }
       }
@@ -3151,8 +3194,23 @@ export class IsoPlotRenderer {
          lines: stroked at 1.38× the ground colour they were the BRIGHTEST thing in the
          field, so every terrace edge read as a lattice over the land. A crest is a
          lightening, not a highlight — 1.12× and thinner. */
-      g.strokeStyle = s.hi ? rgb(T[s.kind] || T.grass, 1.12) : rgb(T.mud, 0.62);
-      g.lineWidth = s.hi ? 1.5 : 1.2;
+      /* 11-03, the same lesson for the other half of the pair (see the block that
+         collects these): the foot was `rgb(T.mud, 0.62)` at 1.2 px - the drives' own
+         brown, at the drives' own weight, ten px under the crest's light lip and running
+         unbroken for hundreds of px. A track and its shade, painted on every terrace
+         before the player buys a track. It is now the ground's own shade rather than
+         dirt, and its weight is a function of the drop: a one-level step - which is
+         every foot on the canonical plots - is a 0.8 px whisper at 22 %, and it only
+         becomes the contact line it was meant to be when the bank it sits against is
+         5 m or more. */
+      if (s.hi) {
+        g.strokeStyle = rgb(T[s.kind] || T.grass, 1.12);
+        g.lineWidth = 1.5;
+      } else {
+        const k = Math.min(1, (Math.max(1, s.drop || 1) - 1) / 2);
+        g.strokeStyle = rgba(T[s.kind] || T.grass, 0.80 + 0.04 * (1 - k), 0.22 + 0.40 * k);
+        g.lineWidth = 0.8 + 0.5 * k;
+      }
       g.stroke();
     }
 
@@ -3167,16 +3225,7 @@ export class IsoPlotRenderer {
     }
     this._waterlines = waterlines;
 
-    /* VIS-01: the shore. One soft dark-bank stroke on every water/land edge — the
-       water body ends on a wet line instead of on a colour change between two tiles. */
-    for (const s of waterEdgeSegs) {
-      g.beginPath();
-      g.moveTo(s.a[0], s.a[1]);
-      g.lineTo(s.b[0], s.b[1]);
-      g.strokeStyle = rgb(T.bank, 0.62);
-      g.lineWidth = 2;
-      g.stroke();
-    }
+    /* The shore is a stroked RIM on the ribbon below, not a chain of tile edges. */
 
     /* Crisp full-resolution detail on top of the upscaled field — the field carries the
        shapes, this carries the texture. Both are deterministic (jitter, not random). */
@@ -3278,10 +3327,10 @@ export class IsoPlotRenderer {
       }
     }
 
-    /* The old stream ribbon (a hand-drawn wobble line over the water tiles) is GONE —
+    /* The old hand-drawn WOBBLE LINE that ran down the middle of the stream is gone —
        owner: "why's there a line running in the stream?" It was a placeholder from
-       before water had a surface; the textured water tiles + the tile seams carry the
-       stream now. Keep the geometry (p.stream) for the sim and the pick. */
+       before water had a surface. The textured ribbon above IS the water now, and
+       p.stream stays as geometry for the sim and the pick. */
 
     this.groundCv = { cv, bake, maxZ };
     this._potholes = potholes;
