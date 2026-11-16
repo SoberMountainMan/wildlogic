@@ -501,10 +501,14 @@ export class MapRenderer {
 
     this._simRoads(ctx);
     this._cableway(ctx);
+    // Label ground is claimed from here down (BUG-022): plot-name plates claim
+    // first and win, road labels and landmark names yield to whatever claimed
+    // before them instead of painting over it.
+    this._labelGrid = new Set();
+    this._labelBoxes = [];
     this._plots(ctx);
     this._industries(ctx);
     this._mist(ctx, W, H);
-    this._labelGrid = new Set();
     this._roadLabels(ctx);
     this._landmarks(ctx);
     this._overlays(ctx, W, H);
@@ -606,18 +610,33 @@ export class MapRenderer {
         ctx.beginPath(); ctx.arc(0, 0, 3.4 * this.dpr, 0, 7); ctx.fill();
       }
       ctx.restore();
-      // plot name: always for the SELECTED plot (VIS-03: "selected plot not
-      // highlighted" — a white hex nobody has named is not a selection), and for
-      // every plot once the zoom makes the text readable
-      if (sel || this.cam.zoom > this.baseZoom * 1.7) {
+    }
+    // Plot names are labels too (BUG-022): each claims its rectangle, and the
+    // road/landmark labels drawn later yield to it. The selected and picked
+    // plots are named first and win their ground (VIS-03: a white hex nobody
+    // has named is not a selection); the rest follow once the zoom makes the
+    // text readable. A name that cannot claim its rectangle yields instead of
+    // overlapping the winner.
+    const winners = new Set();
+    if (this.selected) winners.add(this.selected);
+    if (this.pickedId && this.pickedId !== this.selected) winners.add(this.pickedId);
+    for (const win of [true, false]) {
+      for (const p of this.plots) {
+        if (win !== winners.has(p.id)) continue;
+        if (!win && this.cam.zoom <= this.baseZoom * 1.7) continue;
+        const [x, y] = this.worldToScreen(p.mx, p.my);
+        if (x < -60 || y < -60 || x > this.cv.width + 60 || y > this.cv.height + 60) continue;
+        const sel = this.selected === p.id, picked = this.pickedId === p.id;
         ctx.save();
         const name = p.name || p.id;
-        ctx.font = `${(sel ? 12 : 10.5) * this.dpr}px system-ui, sans-serif`;
+        ctx.font = `${(sel || picked ? 12 : 10.5) * this.dpr}px system-ui, sans-serif`;
         ctx.textAlign = 'center';
         const ty = y + R + 13 * this.dpr;
-        if (sel) {
+        const tw = ctx.measureText(name).width;
+        if (!this._claimBox(x - tw / 2 - 7 * this.dpr, ty - 12 * this.dpr,
+          x + tw / 2 + 7 * this.dpr, ty + 4 * this.dpr)) { ctx.restore(); continue; }
+        if (sel || picked) {
           // a dark plate behind the name so it survives any terrain under it
-          const tw = ctx.measureText(name).width;
           ctx.fillStyle = 'rgba(10,14,11,.82)';
           ctx.fillRect(x - tw / 2 - 5 * this.dpr, ty - 10 * this.dpr, tw + 10 * this.dpr, 14 * this.dpr);
           ctx.strokeStyle = 'rgba(255,255,255,.55)';
@@ -627,7 +646,7 @@ export class MapRenderer {
           ctx.fillStyle = 'rgba(0,0,0,.65)';
           ctx.fillText(name, x + 1, ty + 1);
         }
-        ctx.fillStyle = sel ? '#ffffff' : p.owned ? PAL.gold : PAL.labelDim;
+        ctx.fillStyle = sel ? '#ffffff' : picked ? '#cfe6d2' : p.owned ? PAL.gold : PAL.labelDim;
         ctx.fillText(name, x, ty);
         ctx.restore();
       }
@@ -669,6 +688,18 @@ export class MapRenderer {
     return true;
   }
 
+  /** Rectangle claim, device pixels: false when another label already holds the
+   *  ground, so the caller yields and is not drawn (BUG-022 — the selected
+   *  plate used to sit on the road name because nothing was claimed). */
+  _claimBox(x1, y1, x2, y2) {
+    if (!this._labelBoxes) this._labelBoxes = [];
+    for (const b of this._labelBoxes) {
+      if (!(x2 < b.x1 || x1 > b.x2 || y2 < b.y1 || y1 > b.y2)) return false;
+    }
+    this._labelBoxes.push({ x1, y1, x2, y2 });
+    return true;
+  }
+
   _roadLabels(ctx) {
     const dpr = this.dpr;
     const z = this.cam.zoom / this.baseZoom;
@@ -683,25 +714,48 @@ export class MapRenderer {
       const pts = r.pts || [];
       if (pts.length < 3) continue;
       seen.add(r.name);
-      const mid = pts[Math.floor(pts.length / 2)];
-      const [x, y] = this.worldToScreen(mid[0], mid[1]);
-      if (x < 40 || y < 20 || x > this.cv.width - 40 || y > this.cv.height - 20) continue;
-      if (!this._claimLabel(x, y, 90 * dpr)) continue;
-      ctx.lineWidth = 3.2 * dpr;
-      ctx.strokeStyle = 'rgba(8,12,10,.9)';
-      ctx.strokeText(r.name, x, y);
-      ctx.fillStyle = '#f4f0e2';
-      ctx.fillText(r.name, x, y);
+      // BUG-022: a road name yields to anything that claimed its box first —
+      // but yielding must not ERASE the road. Scan candidate points along the
+      // road until one has free ground, so the name stays ON its road (the
+      // selected plot's plate takes the midpoint at label zoom; the name
+      // prints further along the same line instead of vanishing or colliding).
+      const fracs = [0.5, 0.35, 0.65, 0.2, 0.8, 0.08, 0.92];
+      const tw = ctx.measureText(r.name).width;
+      for (const f of fracs) {
+        const pt = pts[Math.floor(pts.length * f)];
+        const [x, y] = this.worldToScreen(pt[0], pt[1]);
+        if (x < 40 || y < 20 || x > this.cv.width - 40 || y > this.cv.height - 20) {
+          continue;
+        }
+        // box claim first: a failed candidate must not burn a grid cell
+        if (!this._claimBox(x - tw / 2 - 2 * dpr, y - 11 * dpr, x + tw / 2 + 2 * dpr, y + 3 * dpr)) {
+          continue;
+        }
+        if (!this._claimLabel(x, y, 90 * dpr)) {
+          continue;
+        }
+        ctx.lineWidth = 3.2 * dpr;
+        ctx.strokeStyle = 'rgba(8,12,10,.9)';
+        ctx.strokeText(r.name, x, y);
+        ctx.fillStyle = '#f4f0e2';
+        ctx.fillText(r.name, x, y);
+        break;
+      }
     }
     ctx.restore();
   }
 
   _landmarks(ctx) {
     if (!this.landmarks.length) return;
-    const placed = [];
-    const hit = (r) => placed.some((q) => !(r.x2 < q.x1 || r.x1 > q.x2 || r.y2 < q.y1 || r.y1 > q.y2));
+    // A piece of ground is named ONCE (BUG-022): the bake ships its plot anchors
+    // both as plots and as landmarks, so the same place name used to print twice
+    // — the plot's own name AND a landmark label a few dozen px away. The plot
+    // hex is the marker; the landmark entry sharing its name yields.
+    const plotNames = new Set();
+    for (const p of this.plots) if (p.name) plotNames.add(String(p.name).trim().toLowerCase());
     const z = this.cam.zoom / this.baseZoom;
     for (const lm of this.landmarks) {
+      if (plotNames.has(String(lm.name).trim().toLowerCase())) continue;
       const [x, y] = this.worldToScreen(lm.x, lm.y);
       if (x < -80 || y < -40 || x > this.cv.width + 80 || y > this.cv.height + 40) continue;
       const prio = LM_PRIORITY[lm.cat] || 50;
@@ -731,15 +785,15 @@ export class MapRenderer {
       const tw = ctx.measureText(lm.name).width;
       const bx = x + r + 4 * this.dpr, by = y - fs * 0.72;
       const box = { x1: bx - 2, y1: by - 2, x2: bx + tw + 2, y2: by + fs + 1 };
-      if (!hit(box)) {
-        placed.push(box);
-        ctx.textAlign = 'left';
-        ctx.lineWidth = 3 * this.dpr;
-        ctx.strokeStyle = 'rgba(8,12,10,.85)';
-        ctx.strokeText(lm.name, bx, by + fs * 0.78);
-        ctx.fillStyle = isPeak ? '#f6eccd' : isFall ? '#c9ecf6' : isPlace ? '#ffd9a0' : PAL.label;
-        ctx.fillText(lm.name, bx, by + fs * 0.78);
-      }
+      // the name yields to anything that claimed its ground first — plot-name
+      // plates, road names, higher-priority landmarks (BUG-022)
+      if (!this._claimBox(box.x1, box.y1, box.x2, box.y2)) continue;
+      ctx.textAlign = 'left';
+      ctx.lineWidth = 3 * this.dpr;
+      ctx.strokeStyle = 'rgba(8,12,10,.85)';
+      ctx.strokeText(lm.name, bx, by + fs * 0.78);
+      ctx.fillStyle = isPeak ? '#f6eccd' : isFall ? '#c9ecf6' : isPlace ? '#ffd9a0' : PAL.label;
+      ctx.fillText(lm.name, bx, by + fs * 0.78);
       ctx.restore();
     }
   }

@@ -248,7 +248,7 @@ export function unitDemand(h, unit, occupancyChance) {
 export const XP_MAX = 40;
 
 export const SKILLS = {
-  farm:           { at: XP_MAX, name: "the shop's regular", says: 'the alarm names the excess — the bar tells you before the cart does' },
+  farm:           { at: XP_MAX, name: "the shop's regular", says: 'the shop\'s daily take is named — a warning fires before your beds grow past it' },
   host:           { at: XP_MAX, name: "tonight's needs radar", says: 'every listed bed shows what its guests want, before the night falls' },
   forestry:       { at: XP_MAX, name: "the week's quota", says: 'the winter bar draws its six segments and fills down as loads sell' },
   'water-energy': { at: XP_MAX, name: 'a name for the tap', says: 'neighbours ask you first — demand +0.10 (first pass)' },

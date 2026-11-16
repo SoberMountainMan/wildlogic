@@ -52,7 +52,9 @@
   /* VIS-03: 640 px of list sat on top of the only map in the game; 460 leaves the
      valley readable while the list stays open. */
   .vwin { position: absolute; left: 12px; top: 12px; width: 460px; max-width: calc(100% - 24px);
-    max-height: calc(100% - 24px); display: flex; flex-direction: column;
+    /* BUG-023: the cap leaves the stage's bottom band to the hint line — a card at
+       the old 24px cap reached down over it and the vbody scrollbar covered the text. */
+    max-height: calc(100% - 56px); display: flex; flex-direction: column;
     background: rgba(15,22,17,.96); border: 1px solid #2f3f34; border-radius: 12px;
     box-shadow: 0 12px 40px rgba(0,0,0,.6); z-index: 20; overflow: hidden; }
   .vbar { display: flex; align-items: baseline; gap: 10px; padding: 9px 12px 7px;
@@ -61,7 +63,10 @@
   .vbar b { font-size: 12px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: #cfd9cb; }
   .vbar span { font-size: 11px; color: #7f8d7b; margin-left: auto; }
   .vbody { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 4px 6px 8px; }
-  .shead, .srow { display: grid; grid-template-columns: minmax(150px, 1fr) 92px 84px 92px;
+  /* BUG-023: the four tracks plus gaps must fit the vbody's inner width (~411px on
+     desktop with the vertical scrollbar eating its share) — at mins 150+92+84+92 the
+     grid overflowed and the BOND column was cut at the panel edge on every row. */
+  .shead, .srow { display: grid; grid-template-columns: minmax(120px, 1fr) 86px 84px 92px;
     gap: 8px; align-items: baseline; }
   .shead { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: #7f8d7b;
     padding: 7px 9px 3px; position: sticky; top: 0; background: rgba(15,22,17,.98); }
@@ -88,7 +93,11 @@
     .vwin { left: 8px !important; top: auto !important; bottom: calc(8px + env(safe-area-inset-bottom, 0px));
       width: auto; right: 8px; max-height: 60vh; }
     .vbar { padding-top: calc(9px + env(safe-area-inset-top, 0px)); }
-    .srow, .shead { grid-template-columns: minmax(110px, 1fr) 78px 72px 80px; }
+    /* BUG-023 phone: same fit rule — the row's inner width here is ~350px, and the
+       widest bond string (H$10 640/mo, 73px) must sit inside its track, not past it. */
+    .srow, .shead { grid-template-columns: minmax(78px, 1fr) 62px 70px 78px; }
+    /* the sheet owns the stage bottom, so the hint lives in the aside's flow there */
+    aside #hint { position: static; margin: 0 0 8px; background: none; padding: 0; }
     button { min-height: 44px; }
     .srow { min-height: 44px; }
   }
@@ -126,10 +135,19 @@
   <aside>
     <div class="card" id="pick" style="flex:0 0 auto"></div>
     <h2>Your place</h2>
+    <!-- BUG-025: a household with ground but no run keeps the value rows and also
+         gets a words-empty state — bare dashes read as a broken panel. -->
     <div class="card">
-      <div class="row"><span id="c-anchor">—</span><span id="c-ha">—</span></div>
-      <div class="row muted"><span>On the plot</span><span id="c-on">—</span></div>
-      <div class="row muted"><span>To the village</span><span id="c-dist">—</span></div>
+      <div id="place-rows">
+        <div class="row"><span id="c-anchor">—</span><span id="c-ha">—</span></div>
+        <div class="row muted"><span>On the plot</span><span id="c-on">—</span></div>
+        <div class="row muted"><span>To the village</span><span id="c-dist">—</span></div>
+      </div>
+      <div id="place-empty" hidden>
+        <div class="row"><span>No plot is running yet</span></div>
+        <div class="row muted"><span>The household owns ground; its day starts when you run one.</span></div>
+        <button id="btn-show-plots" style="margin-top:6px">Show your plots<small>jumps to your ground on the map and the land list</small></button>
+      </div>
     </div>
     <h2>The valley</h2>
     <div class="card">
@@ -701,14 +719,24 @@ function demandBar(name, d, mini) {
 function skillBar(sk) {
   if (!sk) return '';
   const pct = Math.round(sk.pct * 100);
-  return `<div class="row" style="margin-top:7px"><span>Skill · ${sk.xp}/${sk.at}</span>`
-    + `<span>${sk.unlocked ? esc(sk.name) : pct + '%'}</span></div>`
+  // BUG-024: the row must read as a sentence with the benefit attached — name the
+  // business, show the XP goal, then the perk. The unlock's name and says live in
+  // the sim's SKILLS table (business.js); this page only frames them.
+  const head = `<div class="row" style="margin-top:7px"><span>${esc(BUSINESSES[sk.key] || 'Skill')} skill</span>`
+    + `<span>${sk.xp}/${sk.at} XP</span></div>`
     + `<div style="height:6px;border-radius:99px;background:#22302a;overflow:hidden;margin:2px 0 1px">`
-    + `<i style="display:block;height:100%;width:${pct}%;background:${sk.unlocked ? '#e8b45a' : '#5f9e6d'}"></i></div>`
-    + `<div class="row muted" style="font-size:10.5px"><span>${sk.unlocked ? esc(sk.says) : 'not yet · ' + esc(sk.name) + ': ' + esc(sk.says)}</span></div>`;
+    + `<i style="display:block;height:100%;width:${pct}%;background:${sk.unlocked ? '#e8b45a' : '#5f9e6d'}"></i></div>`;
+  const line = sk.unlocked
+    ? `"` + esc(sk.name) + `" unlocked: ` + esc(sk.says)
+    : `At ${sk.at} XP, "` + esc(sk.name) + `" unlocks: ` + esc(sk.says);
+  return head
+    + `<div class="row muted" style="font-size:10.5px"><span>${line}</span></div>`;
 }
 
 function renderPick() {
+  // the renderer names the picked plot on the map (BUG-022): one name, drawn
+  // by the label system that claims its ground — not a second copy here
+  r.pickedId = picked || null;
   const s = SITE_BY_ID[picked];
   if (!s) {
     $('pick').innerHTML = '<div class="row muted"><span>Pick a piece of ground</span><span>—</span></div>';
@@ -926,8 +954,11 @@ $('pick').onclick = (e) => {
 /** The site under consideration, marked on the map so you can see the ground.
  *  SOLID and subtle (owner, 2026-10-21: "what's the dotted line around the whole
  *  map?"): a dashed ring reads as a debug marquee, so the selection is a plain thin
- *  ring plus the name. The only dashed line left on this map is the road — which is
- *  dashed because it is a condition indicator, not a boundary. */
+ *  ring. The only dashed line left on this map is the road — which is dashed because
+ *  it is a condition indicator, not a boundary.
+ *  BUG-022: the NAME moved into the renderer's label system (r.pickedId) — it
+ *  claims its rectangle there, so road and landmark labels yield to it. The
+ *  second copy that used to live here painted straight over them. */
 function drawPicked() {
   const s = SITE_BY_ID[picked];
   if (!s) return;
@@ -940,13 +971,6 @@ function drawPicked() {
   ctx.strokeStyle = 'rgba(127,196,141,.85)';
   ctx.lineWidth = 1.6 * r.dpr;
   ctx.stroke();
-  ctx.font = `600 ${11 * r.dpr}px system-ui, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.lineWidth = 3 * r.dpr;
-  ctx.strokeStyle = 'rgba(8,12,10,.9)';
-  ctx.strokeText(s.place, px, py - rad - 6 * r.dpr);
-  ctx.fillStyle = '#cfe6d2';
-  ctx.fillText(s.place, px, py - rad - 6 * r.dpr);
   ctx.restore();
 }
 
@@ -987,6 +1011,11 @@ function blankPanels() {
 }
 
 function refresh() {
+  // BUG-025: the YOUR PLACE card swaps to words when a household owns ground but no
+  // plot is running; the value rows come back the moment a run is live.
+  const portfolioEmpty = !!(est && !h);
+  $('place-rows').hidden = portfolioEmpty;
+  $('place-empty').hidden = !portfolioEmpty;
   if (est) {
     // the shared wallet, on top: cash, debt and the size of the portfolio
     $('stat-debt').hidden = false;
@@ -1080,6 +1109,37 @@ window.addEventListener('resize', () => { r.resize(); frameRoad(); });
 renderSites();
 renderPick();
 refresh();
+
+/* BUG-023: on a phone the land sheet owns the stage's bottom, so a stage-anchored
+   hint would draw behind it. Below 980px the hint moves into the aside's flow
+   (static, styled by the media block) and returns to the stage on wider screens. */
+(() => {
+  const mq = matchMedia('(max-width: 980px)');
+  const hint = $('hint');
+  const home = hint.parentElement, next = hint.nextElementSibling;
+  const place = () => {
+    if (mq.matches) document.querySelector('aside').prepend(hint);
+    else if (hint.parentElement !== home) home.insertBefore(hint, next);
+  };
+  if (mq.addEventListener) mq.addEventListener('change', place); else mq.addListener(place);
+  place();
+})();
+
+/* BUG-025: the empty state's way forward — jump to the household's own ground.
+   The click selects it (map plate + pick card with "Run this plot"); the scroll
+   runs after, because renderSites() rebuilds the rows on selection. */
+$('btn-show-plots').addEventListener('click', () => {
+  const first = est && est.owned[0];
+  const row = first && document.querySelector(`#sites .srow[data-site="${first.siteId}"]`);
+  if (row) row.click();
+  const fresh = first && document.querySelector(`#sites .srow[data-site="${first.siteId}"]`);
+  const target = fresh || [...document.querySelectorAll('#sites .sgroup')]
+    .find((g) => g.textContent.startsWith('Workable ground'));
+  if (!target) return;
+  target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  target.style.outline = '1px solid #5f9e6d';
+  setTimeout(() => { target.style.outline = ''; }, 1400);
+});
 
 // QA hook: tools/valley-probe.html asserts the whole ladder through this
 window.__valley = {
