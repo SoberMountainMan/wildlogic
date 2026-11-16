@@ -168,6 +168,7 @@
 </main>
 <script type="module">
 import { MapRenderer } from './js/ui/render.js';
+import { installValleyArt } from './js/ui/valley-art.js';
 import { loadTerrain, setTerrain } from './js/sim/terrain.js';
 import { fromJSON, toJSON, summary, newHomestead, dateLabel } from './js/sim/homestead.js';
 import { patchRoad, patchCost, roadDecay, tourismSummary } from './js/sim/tourism.js';
@@ -176,9 +177,9 @@ import { SITES, SITE_BY_ID, siteSpec, lifeSpec } from './js/sim/sites.js';
 // Slice 1 spine: the household above the plots. With an estate this page is a
 // live portfolio (owned vs for-sale, one shared wallet); without one it is the
 // start-picker it always was -- every estate behaviour below is gated on `est`.
-import { loadEstate, saveEstate, createEstate, buyPlot, ownsPlot, setActive,
+import { loadEstate, saveEstate, buyPlot, ownsPlot, setActive, adoptRun,
   suitedBusinesses, BUSINESSES, syncToEstate } from './js/sim/estate.js';
-import { saveKey } from './js/ui/saves.js';
+import { saveKey, lifeStatus } from './js/ui/saves.js';
 import { initAudio, world, setMuted, isMuted } from './js/ui/audio.js';
 import { seasonOf, SEASON_LABEL } from './js/sim/weather.js';
 // Slice 2: the business identities and their demand bars. The valley needs no
@@ -193,8 +194,6 @@ import { money } from './js/sim/fmt.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const key = params.get('start') || 'incomer';
-const option = START_OPTIONS.find((o) => o.key === key) || START_OPTIONS[0];
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // A game bought off the main map (sites.js): ?site=<id>. One save per life AND site.
@@ -203,17 +202,73 @@ const siteStart = siteQ ? SITE_BY_ID[siteQ] : null;
 // The household meta, if one exists. In portfolio mode the preview household is
 // the ACTIVE plot's run; otherwise it is the picker's own (life, site) run.
 let est = loadEstate();
-let SAVE = saveKey(option.key, est ? (est.active || '') : (siteStart ? siteStart.id : ''));
+
+/* BUG-018 (cold playtest 2026-11-15): opened without ?start=, this page fell back to
+   'incomer', drew that life's day-1 portfolio as if it were the player's, and linked
+   `back to the plot` so one click BOOTED a run nobody had picked. The valley is a view
+   of the life in play, so it ASKS for one instead of inventing one:
+     ?start=            the player named the life -- a choice, it wins
+     estate.life        the household records whose money it holds (BUG-017 adoption)
+     the freshest run   the living save that got furthest is where the player left off
+     nothing            no life is in play: the page shows the market, boots no run,
+                        links to the picker, and will not start a household until a
+                        life is chosen -- a household with no player is the same
+                        defect in a different hat. */
+const inPlay = START_OPTIONS
+  .map((o) => ({ o, s: lifeStatus(o.key) }))
+  .filter((x) => x.s.status === 'living')
+  .sort((a, b) => b.s.day - a.s.day);
+const estateLife = est && est.life ? START_OPTIONS.find((o) => o.key === est.life) : null;
+const option = START_OPTIONS.find((o) => o.key === params.get('start'))
+  || estateLife || (inPlay.length ? inPlay[0].o : null);
+
+let SAVE = saveKey(option ? option.key : 'none',
+  est ? (est.active || '') : (siteStart ? siteStart.id : ''));
+
+/** The run in play for the life this page resolved to, read off ITS OWN SAVE rather
+ *  than off the page's preview household: BUG-019 needs the money the player actually
+ *  has, and BUG-017 needs the ground and the bond that money already bought. Null when
+ *  the life has never been played, or the save cannot be read. */
+function liveRun() {
+  if (!option) return null;
+  const s = lifeStatus(option.key);
+  if (s.status !== 'living' || !s.key) return null;
+  let j = null;
+  try { j = JSON.parse(localStorage.getItem(s.key)); } catch { return null; }
+  if (!j || !Number.isFinite(j.cash)) return null;
+  return {
+    save: s.key, day: s.day, cash: j.cash,
+    siteId: j.site && j.site.id ? j.site.id : null,
+    side: j.site && j.site.side ? j.site.side : null,
+    bond: j.bond && Number.isFinite(j.bond.principal) ? j.bond.principal : 0,
+    monthly: j.bond && Number.isFinite(j.bond.monthly) ? j.bond.monthly : 0,
+    month: j.date && Number.isFinite(j.date.month) ? j.date.month : null,
+  };
+}
+const inHand = liveRun();   // named, not `run`: the click handler below owns that word
+
+/** The purse a purchase is measured against (BUG-019): the household's shared wallet
+ *  when one exists, else the cash the run in play has in hand -- NEVER the picker's
+ *  starting purse. Null says no money is in play at all, which is the only case where a
+ *  life's own start terms may be quoted, and then they are quoted AS that life's terms. */
+function purse() {
+  if (est) return est.cash;
+  return inHand ? inHand.cash : null;
+}
 
 let h = null;
 let autoStarted = false;   // true when THIS visit created the preview run below
-if (!est || est.active) {
+if ((!est || est.active) && option) {
   try { const raw = localStorage.getItem(SAVE); h = raw ? fromJSON(raw) : null; } catch { /* ignore */ }
 }
 
-$('back').href = 'plot.html?start=' + encodeURIComponent(option.key)
-  + (est && est.active ? '&site=' + encodeURIComponent(est.active)
-    : siteStart ? '&site=' + encodeURIComponent(siteStart.id) : '');
+$('back').href = option
+  ? 'plot.html?start=' + encodeURIComponent(option.key)
+    + (est && est.active ? '&site=' + encodeURIComponent(est.active)
+      : siteStart ? '&site=' + encodeURIComponent(siteStart.id) : '')
+  : 'start.html';   // nothing in play: the way to a plot is through choosing a life
+if (!option) $('hint').textContent = 'Nothing is in play yet -- choose a life, and the '
+  + 'road in will show you whose ground you hold.';
 
 // QA hook: ?road=N forces a condition so screenshots can show a worn road
 // Number(null) is 0, so an absent parameter used to zero the road on every load.
@@ -239,6 +294,13 @@ const [mapJson, demBuf] = await Promise.all([
 ]);
 const t = loadTerrain(demBuf, mapJson.meta, mapJson);
 r.setTerrain(t.dem, mapJson.meta, mapJson);
+/* TASK #44 (11-15): the DEM was baked as a colour ramp, so the mountain had no SHAPE —
+   Gaika's Kop was a pale patch and the Amathole escarpment a smudge. Paint the landform
+   into the terrain layer before anything is drawn over it: shoulder/draw, the cliff band
+   with its lip, bare sandstone on the high ground, and the village. It composites into
+   renderer.terrainCv, so it sits UNDER the forest wash, the roads, the markers and this
+   page's UI. ?art=0 skips it (the A/B control), ?artcam=<name> frames a real view. */
+installValleyArt(r);
 setTerrain(t);   // the SIM sees the real ground too: a new game samples real heights
 /* VIS-03 (playtest 10-25: "selected plot not highlighted… you cannot tell two plots
    apart"): this page never called setState, so the renderer had an EMPTY plot list and
@@ -247,7 +309,7 @@ setTerrain(t);   // the SIM sees the real ground too: a new game samples real he
    bake, not in SITES), deduped by id, and select the player's own ground.
    Slice 1: with a household, EVERY owned plot is marked, not just one. */
 function paintOwned() {
-  const mySite = est ? est.active : (siteQ || option.plot.id);
+  const mySite = est ? est.active : (siteQ || (option ? option.plot.id : null));
   const byId = new Map();
   for (const p of (mapJson.plots || [])) {
     byId.set(p.id, { id: p.id, name: p.place || p.id, x: p.x, y: p.y });
@@ -267,7 +329,9 @@ r.fitToMap();
 // is not started and not saved: the picker disables that card, and this is the page's
 // preview household, not a game. Portfolio mode never auto-starts a run: an owned
 // plot's household is created on the plot page, from the household's wallet.
-if (!h && !est) {
+// BUG-018: neither does a page with no life in play. Booting a preview run is booting
+// a game, and nobody chose this one.
+if (!h && !est && option) {
   const spec = siteStart ? lifeSpec(siteStart.id, params.get('side'), option) : option.plot;
   const plan = landPlan(spec, option.mode);
   if (plan.mode === 'none') {
@@ -316,6 +380,7 @@ if (h && h.weather && h.weather.kind) {
 function siteAnchor() {
   const s = (h && h.plot && SITE_BY_ID[h.plot.id]) || siteStart;
   if (s) return { x: s.x, y: s.y };
+  if (!option) return null;   // BUG-018: no life in play, so there is no canonical plot to stand on
   return (mapJson.plots || []).find((p) => p.id === option.plot.id);
 }
 
@@ -335,7 +400,7 @@ function panelInset() {
 // frame the road, not the whole valley: at fit zoom a 0.4 km driveway is ten pixels
 function frameRoad() {
   const pxPerKm = 1000 / mapJson.meta.mPerPx;
-  const km = h ? h.plot.kmFromShop : option.plot.kmFromShop;
+  const km = h ? h.plot.kmFromShop : (option ? option.plot.kmFromShop : 1.6);
   const spanKm = Math.max(1.6, km * 2.4);
   const inset = panelInset();
   const vis = Math.max(160, r.cv.width - inset);
@@ -522,9 +587,14 @@ function landCalc(s, side) {
   const price = plotPrice(base);
   const deposit = Math.round(price * LAND_MORTGAGE.depositFrac);
   const monthly = bondPayment(price - deposit, LAND_MORTGAGE.rate, LAND_MORTGAGE.years);
-  const plan = landPlan(lifeSpec(s.id, side || s.roadSide, option), option.mode);
-  // portfolio mode: affordability is the household's shared purse, not a life's
-  const afford = est ? est.cash >= deposit : plan.mode !== 'none';
+  // BUG-019 (cold playtest): the gate used to read the picker's starting purse, so a
+  // player at H$230 660 was told a H$313 208 deposit was affordable. Affordability is
+  // the money IN PLAY: the household's shared wallet, else the run's cash. Only a page
+  // with no money in play at all falls back on a life's own start terms — and then the
+  // life has to exist to have terms.
+  const p = purse();
+  const plan = option ? landPlan(lifeSpec(s.id, side || s.roadSide, option), option.mode) : null;
+  const afford = p !== null ? p >= deposit : !!(plan && plan.mode !== 'none');
   return { price, deposit, monthly, afford, side: side || s.roadSide };
 }
 
@@ -571,7 +641,8 @@ function renderSites() {
   if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest' });
   $('sitewin-count').textContent = est
     ? `${ownedIds.size} owned · ${SITES.length - ownedIds.size} for sale · the household's money`
-    : `${groups[0][1].length} workable · ${groups[1][1].length} rough · ${option.name}'s money`;
+    : `${groups[0][1].length} workable · ${groups[1][1].length} rough · `
+      + (option ? `${option.name}'s money` : 'no life in play');
   // QA: the probe asserts every one of the 30 is listed, priced and reachable
   VALLEY_ROWS = SITES.map((s) => {
     const c = landCalc(s, null);
@@ -698,7 +769,7 @@ function renderPick() {
   if (est) {
     html += entry
       ? `<button data-run="1">Run this plot<small>${esc(s.place)} · gate ${pickedSide} · ${BUSINESSES[entry.business] || 'pick a business'}</small></button>`
-      : buyButtons(price, deposit, monthly, est.cash, false);
+      : buyButtons(price, deposit, monthly, est.cash, '');
   } else {
     html += '<div style="font-size:11px;color:#7f8d7b;margin:6px 0 4px">Take this ground as…</div>';
     for (const o of START_OPTIONS) {
@@ -706,35 +777,63 @@ function renderPick() {
       // stayed's H$40k — properties of the life, not of the ground. landPlan picks the
       // richest move the life can actually make: cash, else the deposit, else nothing.
       const plan = landPlan(lifeSpec(s.id, pickedSide, o), o.mode);
-      const can = plan.mode !== 'none';
-      const sub = plan.mode === 'family'
-        ? `a share of the ground · ${money(plan.cashLeft)} in hand, no bond`
+      // BUG-019: the life IN PLAY already has money — H$230 660 earned is not H$750 000
+      // inherited. Its line quotes the cash in hand and refuses what the cash cannot
+      // raise. A life NOT in play has no run to read, so its start terms are the truth
+      // about a fresh run, and the line says so rather than wearing the player's purse.
+      const playing = inHand && option && o.key === option.key;
+      const cash = playing ? inHand.cash : plan.cashLeft;
+      const need = plan.mode === 'cash' ? plan.price : plan.deposit;
+      const can = plan.mode !== 'none' && (!playing || cash >= need);
+      const purseNote = playing ? `${money(cash)} in hand` : 'a fresh run';
+      const shortNote = `${money(need - cash)} short`;
+      let sub = plan.mode === 'family'
+        ? `a share of the ground · ${purseNote}, no bond`
         : plan.mode === 'cash'
-          ? `${money(plan.price)} outright · ${money(plan.cashLeft)} left`
+          ? `${money(plan.price)} outright · ${purseNote}`
           : plan.mode === 'mortgage'
-            ? `${money(plan.deposit)} down · ${money(plan.monthly)}/month · ${money(plan.cashLeft)} left`
+            ? `${money(plan.deposit)} down · ${money(plan.monthly)}/month · ${purseNote}`
             : `${money(plan.deposit)} deposit — this life cannot raise it`;
+      if (can && plan.mode === 'cash') sub += ` · ${money(cash - plan.price)} left`;
+      else if (can && plan.mode === 'mortgage') sub += ` · ${money(cash - plan.deposit)} left`;
+      else if (!can && plan.mode !== 'none' && playing) sub += ` — cannot afford, ${shortNote}`;
       html += `<button data-life="${o.key}" ${can ? '' : 'disabled'}>${o.name} <small>${sub}</small></button>`;
     }
     // the portfolio door: the same purchase, but for a household that keeps the
-    // wallet across plots. Bootstraps the estate with the picker's starting purse.
+    // wallet across plots. BUG-017: it does NOT invent a purse — with a run in play it
+    // ADOPTS that run's money (and its ground), and only a player who has earned
+    // nothing yet starts a household at the picker's H$750 000.
+    const door = option
+      ? buyButtons(price, deposit, monthly, inHand ? inHand.cash : START_CASH,
+        inHand ? `adopts ${option.name}'s ${money(inHand.cash)} as the household purse` : '')
+      : buyLocked('choose a life first — the household needs a player');
     html += '<div style="font-size:11px;color:#7f8d7b;margin:9px 0 4px">…or one household, many plots</div>'
-      + buyButtons(price, deposit, monthly, START_CASH, true);
+      + door;
   }
   $('pick').innerHTML = html;
 }
 
 /** The two ways to buy (owner: "maybe a deposit and rest mortgaged? like real life?"),
- *  priced once and refused honestly when the purse cannot raise the money. */
-function buyButtons(price, deposit, monthly, cash, bootstrap) {
+ *  priced once and refused honestly when the purse cannot raise the money.
+ *  `cash` is always the money IN PLAY (BUG-019) and `note` says where it came from,
+ *  so a household door never reads as a purse that materialised out of nowhere. */
+function buyButtons(price, deposit, monthly, cash, note) {
   const canCash = cash >= price;
   const canBond = cash >= deposit;
-  const startNote = bootstrap ? `starts a household with ${money(START_CASH)}` : '';
+  const lead = note ? ` · ${note}` : '';
   return `<button data-buy="cash" ${canCash ? '' : 'disabled'}>Buy outright — ${money(price)}`
-    + `<small>${canCash ? (bootstrap ? startNote : `${money(cash - price)} left in the wallet`) : `${money(price - cash)} short`}</small></button>`
+    + `<small>${canCash ? `${money(cash - price)} left in the wallet${lead}` : `${money(price - cash)} short`}</small></button>`
     + `<button data-buy="bond" ${canBond ? '' : 'disabled'}>Buy with bond — ${money(deposit)} down`
     + `<small>${money(monthly)}/month for ${LAND_MORTGAGE.years} years`
-    + `${canBond ? (bootstrap ? ' · ' + startNote : '') : ` · ${money(deposit - cash)} short`}</small></button>`;
+    + `${canBond ? lead : ` · ${money(deposit - cash)} short`}</small></button>`;
+}
+
+/** The door that cannot be opened yet, and the reason in its own words. Used when no
+ *  life is in play (BUG-018): a household with no player is not a purchase, it is a
+ *  bug wearing a price tag. */
+function buyLocked(why) {
+  return `<button data-buy="cash" disabled>Buy outright<small>${why}</small></button>`
+    + `<button data-buy="bond" disabled>Buy with bond<small>${why}</small></button>`;
 }
 
 $('sites').onclick = (e) => {
@@ -761,8 +860,8 @@ $('pick').onclick = (e) => {
     renderPick();
     return;
   }
-  const run = e.target.closest('button[data-run]');
-  if (run && est && ownsPlot(est, picked)) {
+  const runBtn = e.target.closest('button[data-run]');
+  if (runBtn && est && option && ownsPlot(est, picked)) {
     setActive(est, picked);
     saveEstate(est);
     const entry = est.owned.find((o) => o.siteId === picked);
@@ -773,8 +872,29 @@ $('pick').onclick = (e) => {
   }
   const buy = e.target.closest('button[data-buy]');
   if (buy) {
-    // the first purchase bootstraps the household; every later one spends its wallet
-    if (!est) est = createEstate();
+    if (!option) { $('hint').textContent = 'Choose a life first — a household needs a player.'; return; }
+    // The first purchase bootstraps the household; every later one spends its wallet.
+    // BUG-017: the bootstrap ADOPTS the run already in play instead of replacing it —
+    // its cash becomes the household purse, the ground it stands on becomes the
+    // household's first plot (already paid for, so nothing is charged for it), its bond
+    // becomes the household's debt, and its per-site save is left exactly where it is.
+    if (!est) {
+      est = adoptRun(inHand
+        ? { life: option.key, cash: inHand.cash, siteId: inHand.siteId, side: inHand.side,
+          bond: inHand.bond, monthly: inHand.monthly, month: inHand.month }
+        : { life: option.key, cash: START_CASH });
+      saveEstate(est);
+    }
+    if (ownsPlot(est, picked)) {
+      // the household was just created out of the run standing on THIS ground: the
+      // purchase already happened, at the life's own terms, last month
+      est.active = picked;
+      saveEstate(est);
+      paintOwned(); renderSites(); renderPick(); refresh();
+      $('hint').textContent = `${SITE_BY_ID[picked].place} is the ground you already run — `
+        + 'the household holds it. Run it from the card, then buy the next one.';
+      return;
+    }
     const res = buyPlot(est, picked, { mortgage: buy.dataset.buy === 'bond', business: pickedBusiness, side: pickedSide });
     if (!res.ok) { $('hint').textContent = res.msg; return; }
     saveEstate(est);
@@ -886,7 +1006,7 @@ function refresh() {
   const s = summary(h);
   const ts = tourismSummary(h);
   if (!est) {
-    $('title').textContent = `${option.name} — the road in`;
+    $('title').textContent = (option ? `${option.name} — the road in` : 'The road in');
     $('v-cash').textContent = money(s.cash);
   }
   $('v-date').textContent = s.date;
@@ -917,7 +1037,7 @@ function refresh() {
      the fallback exists for. */
   const groundSite = SITE_BY_ID[p.id] || siteStart;
   $('c-anchor').textContent = groundSite ? groundSite.place
-    : (h.groundLabel || option.groundLabel || 'this ground');
+    : (h.groundLabel || (option && option.groundLabel) || 'this ground');
   $('c-ha').textContent = p.ha + ' ha';
   $('c-on').textContent = `${(h.beds || []).length} beds · ${(h.accom || []).filter((a) => a.built).length} units`;
   $('c-dist').textContent = p.kmFromShop + ' km';
@@ -967,7 +1087,7 @@ window.__valley = {
   get picked() { return picked; },
   get side() { return pickedSide; },
   landCalc,
-  life: option.key,
+  life: option ? option.key : null,
   // Slice 1: the portfolio state, so a probe can buy and run without a mouse
   get estate() { return est; },
   businesses: BUSINESSES,

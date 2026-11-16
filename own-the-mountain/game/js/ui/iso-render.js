@@ -278,6 +278,13 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
     one of these steps; between steps the bake is blit-scaled, a transient softness that
     costs nothing and sharpens on the next step. */
 const ZOOM_STEPS = [0.35, 0.44, 0.55, 0.7, 0.9, 1.1, 1.4, 1.8, 2.2, 2.8, 3.2];
+/* PERF (owner 11-15: "feels heavy", "ground so delayed feels broken"): the vector ground
+   bake cost grows with zoom^2 - at 2.8-3.2 it measured 2-4 s, so deep zoom froze for
+   seconds (or, deferred, showed stale ground). Cap the bake resolution: above the cap the
+   camera blit-scales the capped bake (instant, mild photo-zoom softness) and never re-bakes,
+   bounding the worst bake to the cap's cost. Below the cap the two-tier interactive bake
+   (_deferBake) keeps geometry current during a gesture. */
+const GROUND_BAKE_CAP = 1.4;
 function bakeStep(zoom) {
   let best = ZOOM_STEPS[0];
   for (const s of ZOOM_STEPS) {
@@ -983,16 +990,17 @@ export class IsoPlotRenderer {
 
   frame() { this._draw(); }
 
-  /* PERF (owner 11-15: "feels very heavy in the browser"): a zoom bucket crossing used
-     to re-bake all ~4k tiles synchronously (~225 ms measured) on EVERY wheel tick, so a
-     zoom gesture read as a run of quarter-second freezes. The ground already blit-scales
-     between bake steps (k = cam.zoom / bakeZoom in _draw), so during an active gesture we
-     keep the last bake and scale it, then re-bake ONCE ~150 ms after the gesture settles.
-     _ensureGround honours _bakeDeferUntil; the trailing timer clears it and redraws. */
+  /* PERF (owner 11-15: "feels very heavy", then "ground so delayed feels broken"): a
+     zoom-step crossing re-bakes all ~4k tiles. The full-detail bake (watercolour texture
+     + prop scatter per tile) is ~225 ms, so doing it per wheel tick froze, and deferring
+     it left the geometry stale. Two-tier instead: DURING a gesture (_interactiveZoom) the
+     bake skips the per-tile texture + props (fast, geometry/colour current and crisp);
+     ~160 ms after the gesture settles the timer clears the flag and re-bakes full detail.
+     The ground shape never lags the camera; only fine texture refines after you stop. */
   _deferBake() {
-    this._bakeDeferUntil = Date.now() + 150;
+    this._interactiveZoom = true;
     clearTimeout(this._bakeTimer);
-    this._bakeTimer = setTimeout(() => { this._bakeDeferUntil = 0; this._draw(); }, 160);
+    this._bakeTimer = setTimeout(() => { this._interactiveZoom = false; this._draw(); }, 160);
   }
 
   /** The buildability ground map: 'build' or null. Tints every tile by what the
@@ -2314,8 +2322,9 @@ export class IsoPlotRenderer {
      the laid track, exactly the contract the old pixel bake had. */
   _ensureGround() {
     const p = this.p, cam = this.cam;
-    // bake at a quantised step of the live zoom — see bakeStep()
-    const bz = bakeStep(cam.zoom);
+    // bake at a quantised step of the live zoom, capped so deep zoom blit-scales instead
+    // of re-baking at zoom^2 cost (see GROUND_BAKE_CAP) — see bakeStep()
+    const bz = Math.min(bakeStep(cam.zoom), GROUND_BAKE_CAP);
     this.bakeZoom = bz;
     // the in-sim season re-tints the field (artist2's table); a flatten moves the
     // height hash; a new track tile rides the surface — any of them re-bakes
@@ -2354,10 +2363,8 @@ export class IsoPlotRenderer {
     // BUCKETED into five steps. An unbucketed read would re-bake the whole world on any
     // night a guest count changed, for a change in a line 0.05 alpha wide.
     const trafficBucket = Math.round(clamp(((this.h && this.h.lastNights) || 0) / 8, 0, 1) * 4);
-    const key = `${p.w}x${p.h}:${bz.toFixed(2)}:${tint.season}:${hh}:${trackLen}:${gravelLen}:${mudLen}:${damList.length}:${damFill}:${surfKey}:${roadSideKey}:${roadBucket}:${trafficBucket}`;
-    // PERF: during an active zoom gesture keep the last bake and blit-scale it (see
-    // _deferBake); the trailing timer re-bakes once the gesture settles.
-    if (this.groundCv && Date.now() < (this._bakeDeferUntil || 0)) return;
+    const interactive = !!this._interactiveZoom;
+    const key = `${p.w}x${p.h}:${bz.toFixed(2)}:${tint.season}:${hh}:${trackLen}:${gravelLen}:${mudLen}:${damList.length}:${damFill}:${surfKey}:${roadSideKey}:${roadBucket}:${trafficBucket}:${interactive ? 1 : 0}`;
     if (this._groundKey === key && this.groundCv) return;
     this._groundKey = key;
     const bakeT0 = (typeof performance !== 'undefined') ? performance.now() : 0;
@@ -2926,7 +2933,7 @@ export class IsoPlotRenderer {
            palette's, detail comes from the generated watercolour source. The pattern
            matrix is the iso projection itself, so the texture follows the ground
            across tile boundaries — no per-tile crops, no patchwork. ---- */
-        if (groundTexState === 'ready') {
+        if (groundTexState === 'ready' && !interactive) {
           const texName = natMud ? null : GROUND_TEX_KIND[col];
           /* water tiles take their texture from the RIBBON only (VIS-01: a per-tile
              overlay on top of the ribbon's own overlay produced a plaid — two pattern
@@ -3413,7 +3420,7 @@ export class IsoPlotRenderer {
        them"): the log piles were pure decoration, NOT felling output — cutting a tree
        never created one and the wood economy is numeric. They read as dumped timber, so
        the logs scatter is removed; rocks/flowers/grass stay. */
-    if (SPRITES.grassTuft || SPRITES.rocks || SPRITES.flowerPatch) {
+    if ((SPRITES.grassTuft || SPRITES.rocks || SPRITES.flowerPatch) && !interactive) {
       const used = new Set();
       const nearTree = new Set();
       for (const t of p.trees || []) {

@@ -56,6 +56,23 @@ const GAIN = [
   { id: 'review', text: 'A guest told the whole of East London about you. ★ +0.15', rating: 0.15 },
 ];
 
+/** The COST rotation, minus any incident the player paid to have fixed for good.
+ *
+ *  Slice 3 (storyteller.js, owner GO 11-15): the level note's complaint about this file is
+ *  that a hit lands every 9-21 days, takes the money, and says "nothing to do". The
+ *  auto-settle stays (it is the bible's first allowed shape, and the goldens are built on
+ *  it), but the tradesman can now be offered the permanent job - and a household that buys
+ *  it stops drawing that row. Nothing else changes: with no repairs bought this IS `COST`,
+ *  the same array in the same order, so the same roll picks the same event and the golden
+ *  traces cannot tell that the seam exists (tests/57 pins the identity).
+ */
+export function costPool(h) {
+  const bought = h && h.story && h.story.repairs;
+  if (!bought || !Object.keys(bought).length) return COST;
+  const left = COST.filter((r) => !bought[r.id]);
+  return left.length ? left : COST;      // the pine across the road is never for sale
+}
+
 const FLAVOUR = [
   'A porcupine took up residence under the stoep.',
   'Three days of mist. The valley disappeared.',
@@ -83,15 +100,27 @@ export function tickDirector(h) {
 
   const p = pressure(h);
   const roll = rnd(h);
+  const costs = costPool(h);
   let pool;
-  if (p === 'comfortable') pool = roll < 0.62 ? COST : roll < 0.82 ? GAIN : FLAVOUR;
-  else if (p === 'tight') pool = roll < 0.2 ? COST : roll < 0.8 ? GAIN : FLAVOUR;
-  else pool = roll < 0.45 ? COST : roll < 0.75 ? GAIN : FLAVOUR;
+  let kind;
+  if (p === 'comfortable') {
+    if (roll < 0.62) { pool = costs; kind = 'cost'; }
+    else if (roll < 0.82) { pool = GAIN; kind = 'gain'; }
+    else { pool = FLAVOUR; kind = 'flavour'; }
+  } else if (p === 'tight') {
+    if (roll < 0.2) { pool = costs; kind = 'cost'; }
+    else if (roll < 0.8) { pool = GAIN; kind = 'gain'; }
+    else { pool = FLAVOUR; kind = 'flavour'; }
+  } else {
+    if (roll < 0.45) { pool = costs; kind = 'cost'; }
+    else if (roll < 0.75) { pool = GAIN; kind = 'gain'; }
+    else { pool = FLAVOUR; kind = 'flavour'; }
+  }
 
   const ev = pool[Math.floor(rnd(h) * pool.length) % pool.length];
   let out = typeof ev === 'string'
     ? { id: 'flavour', kind: 'flavour', text: ev }
-    : { ...ev, kind: pool === COST ? 'cost' : 'gain' };
+    : { ...ev, kind };
   // the narrative seat's line takes the flavour slot, if one is registered. The draw
   // above already happened, so the director's rhythm is untouched either way.
   if (pool === FLAVOUR && FLAVOUR_HOOK) {

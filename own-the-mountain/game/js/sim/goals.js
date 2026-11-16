@@ -6,6 +6,18 @@
 //
 // Goals are checks over the household, not flags you have to set. That means a player
 // who works it out on their own still gets the tick.
+//
+// BUG-020 (cold playtest 2026-11-15) drew the line the list had never stated: a check
+// that is true of the GROUND is not something the player DID. A stream plot used to
+// open on `1 of 14 done` with `✓ Get water onto the plot` in the log of a run that had
+// not taken a day, and a plot with no pine on it opened having already `decided about
+// the trees`. So the goals that the land hands you at run creation are recorded as
+// BORN: they leave the nagging list (you have water, you are not going to be told to go
+// and get it) and they leave the scoreboard, which now counts what you earned.
+//
+// Golden note: snap() hashes `h.goals.done`, so the born set STAYS in `done` — the
+// array a trace compares against is untouched. Only the log line and the reported
+// numbers move, and neither of those is in the snapshot.
 
 export const GOALS = [
   {
@@ -122,7 +134,27 @@ export const GOALS = [
 
 export function initGoals(h) {
   h.goals = h.goals || { done: [] };
+  // a run saved before BUG-020 has no born list; the ground it started on is unknown
+  // now, so it keeps counting what its log already said. New runs record theirs.
+  h.goals.born = Array.isArray(h.goals.born) ? h.goals.born : [];
   return h;
+}
+
+/** The goals the GROUND already satisfies at run creation: done, but not earned.
+ *  No log line — a tick the player did not work for is not news — and no place on
+ *  the scoreboard. Idempotent, and the only place a born goal enters `done`. */
+export function bornGoals(h) {
+  initGoals(h);
+  for (const g of GOALS) {
+    if (h.goals.done.includes(g.id)) continue;
+    let ok = false;
+    try { ok = !!g.check(h); } catch { ok = false; }
+    if (ok) {
+      h.goals.done.push(g.id);
+      h.goals.born.push(g.id);
+    }
+  }
+  return h.goals.born.slice();
 }
 
 /** Mark anything newly complete. Returns the goals that just ticked. */
@@ -150,9 +182,15 @@ export function nextGoals(h, n = 3) {
 
 export function goalSummary(h) {
   initGoals(h);
+  // the scoreboard counts what the player did (BUG-020): `born` is the ground's doing,
+  // not the run's, so it is off BOTH sides of the fraction. `earned` is the same number
+  // spelled out, so a reader of the summary cannot mistake it for a lost tick.
+  const born = h.goals.born.filter((id) => h.goals.done.includes(id)).length;
   return {
-    done: h.goals.done.length,
-    total: GOALS.length,
+    done: h.goals.done.length - born,
+    earned: h.goals.done.length - born,
+    born,
+    total: GOALS.length - born,
     next: nextGoals(h, 3).map((g) => ({ id: g.id, text: g.text, hint: g.hint })),
   };
 }

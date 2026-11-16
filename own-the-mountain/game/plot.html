@@ -416,6 +416,22 @@
   </div>
   <p id="offer-consequence" class="muted" style="margin:6px 0 0"></p>
 </details>
+<!-- Slice 3: the obstacle engine asks the same kind of question, so it gets the same kind of
+     card. Both can be open at once; the mountain does not wait for an answer to the other one. -->
+<details id="story" hidden open>
+  <summary id="story-title">Something is being asked</summary>
+  <div id="storybody"></div>
+  <div class="row" style="gap:8px;margin-top:8px">
+    <button id="story-accept" type="button"></button>
+    <button id="story-decline" type="button"></button>
+  </div>
+  <p id="story-consequence" class="muted" style="margin:6px 0 0"></p>
+  <p id="story-due" class="muted" style="margin:6px 0 0"></p>
+</details>
+<details id="planb">
+  <summary id="planb-title">Plan A, plan B</summary>
+  <div id="planbbody"></div>
+</details>
 <main>
   <div id="stage">
     <canvas id="map"></canvas>
@@ -509,7 +525,7 @@ import { IDENTITIES, demandFor, unitDemand, skillLine, levelUnlocked, guestNeeds
 import {
   newHomestead, summary, endDay, plantBed, buyHive, harvest, sellAll, fell, buildTank, buyWater, hireCasual,
   waterOk, toJSON, fromJSON, BED, CROPS, DEFAULT_CROP, HIVE, TANK, WATER, FOOD, LABOUR, LIVING_PER_DAY, FUEL_PER_TRIP, bedSlots,
-  NATIVE_FINE, yardSiteRefuse, answerOffer,
+  NATIVE_FINE, yardSiteRefuse, answerOffer, answerStory,
 } from './js/sim/homestead.js';
 import { sellFirewood, sellPoles, inFirewoodSeason, FIREWOOD, lumberOff, firewoodWeekLeft } from './js/sim/firewood.js';
 import { ACCOM, buildAccom, patchRoad, patchCost, getCleaner, PATCH_COST, tourismSummary,
@@ -605,7 +621,16 @@ $('btn-mute').onclick = (e) => {
 };
 
 const params = new URLSearchParams(location.search);
+// Slice 1: the household meta, if one exists. It is read BEFORE the life is resolved,
+// because of BUG-018 (cold playtest 2026-11-15): opened with no ?start= this page fell
+// back to the picker's first row — the Homesteader — and, once a household existed,
+// handed that unchosen life the household's wallet. With a household, the life it
+// records is the life in play.
+const estate = loadEstate();
 let optionIndex = START_OPTIONS.findIndex((o) => o.key === params.get('start'));
+if (optionIndex < 0 && estate && estate.life) {
+  optionIndex = START_OPTIONS.findIndex((o) => o.key === estate.life);
+}
 if (optionIndex < 0) optionIndex = 0;
 const option = START_OPTIONS[optionIndex];
 
@@ -614,17 +639,35 @@ const option = START_OPTIONS[optionIndex];
 // the catalog measured. No ?site → the canonical three, unchanged.
 const site = SITE_BY_ID[params.get('site')] || null;
 const sideParam = params.get('side');
-// Slice 1: the household meta, if one exists. The effective ground is the URL's
-// site, else the estate's active plot; the wallet is the estate's. With no estate
-// every line below behaves exactly as it always has (the canonical three and the
-// picker's single-plot buys never load an estate).
-const estate = loadEstate();
-const estateSiteId = site ? site.id : (estate ? estate.active : null);
-const estateMode = !!(estate && estateSiteId && ownedPlots(estate).some((o) => o.siteId === estateSiteId));
-// Ground the household does not own is bought on the valley map, not here: a
-// hand-typed URL for unowned land goes to the market, so no run ever starts with
-// a wallet that never paid for it.
-if (estate && site && !estateMode) {
+// The life's OWN canonical ground. A living run saved under saveKey(life,'') is a plot
+// the player is standing on, not a hole in the portfolio: BUG-017's stranded day-13 run
+// is exactly this save, and a link without ?site= used to find the household's newest
+// purchase instead of it. So the home run wins when it is alive, and the estate's
+// active plot is what you land on when the life never had ground of its own.
+const HOME_SAVE = saveKey(option.key, '');
+const homeRun = (() => {
+  try { return fromJSON(localStorage.getItem(HOME_SAVE) || ''); } catch { return null; }
+})();
+const homeAlive = !!(homeRun && !homeRun.ended);
+// The household belongs to ONE life (estate.life, recorded when it was adopted or
+// bootstrapped). Its ground, its wallet and its links are that life's. An estate
+// written before the field was born carries null and behaves exactly as it always did.
+const estateMine = !estate || estate.life === null || estate.life === option.key;
+// Slice 1: the effective ground is the URL's site, else the estate's active plot; the
+// wallet is the estate's. With no estate every line below behaves as it always has (the
+// canonical three and the picker's single-plot buys never load an estate).
+const estateSiteId = site ? site.id
+  : (estate && estateMine && !homeAlive ? estate.active : null);
+const estateMode = !!(estate && estateMine && estateSiteId
+  && ownedPlots(estate).some((o) => o.siteId === estateSiteId));
+// The purse is the household's even on ground the land catalog does not list: the three
+// canonical start plots are not buyable sites, so a run there cannot be an `owned`
+// entry — but it is still the same player's money (BUG-017: one wallet, both plots).
+const estateWallet = !!(estate && estate.life === option.key && !estateMode);
+// Ground a household THIS life owns, and that the household does not own, is bought on
+// the valley map, not here: a hand-typed URL for unowned land goes to the market, so no
+// run ever starts with a wallet that never paid for it.
+if (estate && estateMine && site && !estateMode) {
   location.replace('valley.html?site=' + encodeURIComponent(site.id) + '&start=' + encodeURIComponent(option.key));
   await new Promise(() => {});   // the navigation is the rest of this boot
 }
@@ -639,7 +682,7 @@ const plotSpec = effSite
   : option.plot;
 // One save per life AND per site: buying different ground is a different run. The formula
 // lives in js/ui/saves.js so the picker can ask the same question about a life.
-const SAVE = saveKey(option.key, effSite ? effSite.id : '');
+const SAVE = effSite ? saveKey(option.key, effSite.id) : HOME_SAVE;
 
 /* ---- Slice 2: the life this ground runs -----------------------------------------
    The business identity and its XP ride the ESTATE entry (the household's), never the
@@ -1924,7 +1967,7 @@ function save() {
   try { localStorage.setItem(SAVE, toJSON(h)); } catch { /* private mode */ }
   // Slice 1: the wallet is the household's. Every save writes the cash back to the
   // estate, so switching plots carries the purse. No estate → no extra write.
-  if (estateMode) { syncToEstate(h, estate); saveEstate(estate); }
+  if (estateMode || estateWallet) { syncToEstate(h, estate); saveEstate(estate); }
 }
 function load() {
   try {
@@ -2228,6 +2271,65 @@ function renderOffer() {
 }
 $('offer-accept').onclick = () => { const r = answerOffer(h, true); if (!r.ok) log(r.msg, 'bad', 'offer'); save(); refresh(); };
 $('offer-decline').onclick = () => { answerOffer(h, false); save(); refresh(); };
+
+/* Slice 3 (obstacle engine): the storyteller's pending question is the same shape as an
+   offer - a title, a body, two answers and a stated consequence - so it is rendered the same
+   way and answered through the sim's single mutation path (answerStory). The due date is on
+   the card because an unanswered question EXPIRES, and expiry is the worse of the two answers. */
+function renderStory() {
+  const p = h.story && h.story.pending;
+  const card = $('story');
+  card.hidden = !p;
+  if (!p) return;
+  $('story-title').textContent = p.title;
+  $('storybody').textContent = p.body;
+  $('story-accept').textContent = p.accept;
+  $('story-decline').textContent = p.decline;
+  $('story-consequence').textContent = p.consequence;
+  const left = Math.max(0, (p.dueDay || h.day) - h.day);
+  $('story-due').textContent = left > 0
+    ? `Decide by day ${p.dueDay} - ${left} day${left === 1 ? '' : 's'} left. Let it run out and the mountain answers for you.`
+    : 'Today is the last day it will wait.';
+  // An answer the wallet cannot cover is refused by the sim, so say so on the button rather
+  // than letting the player discover it by pressing it.
+  const need = p.amount && p.id === 'outage' ? p.amount : p.cost;
+  $('story-accept').disabled = Number.isFinite(need) && h.cash < need;
+  $('story-accept').title = $('story-accept').disabled
+    ? `${money(Math.round(need))} and you have ${money(Math.round(h.cash))}` : '';
+}
+$('story-accept').onclick = () => { const r = answerStory(h, true); if (!r.ok) log(r.msg, 'bad', 'story'); save(); refresh(); };
+$('story-decline').onclick = () => { const r = answerStory(h, false); if (!r.ok) log(r.msg, 'bad', 'story'); save(); refresh(); };
+
+/* The hedge read (brief: "a plan-A/B status read so the hedge is visible"). One row per
+   thing the household leans on: what it runs on by default, what it falls back to, which
+   one it actually has, and what the last season of going without cost. All of it is the
+   sim's own storyStatus(h) - this is a print of it, not a second opinion. */
+function renderPlanB(s) {
+  const rows = (s.story && s.story.sources) || [];
+  const card = $('planb');
+  card.hidden = !rows.length;
+  if (!rows.length) return;
+  const risk = rows.filter((r) => r.atRisk).length;
+  $('planb-title').textContent = risk
+    ? `Plan A, plan B - ${risk} of ${rows.length} exposed today`
+    : 'Plan A, plan B';
+  card.open = risk > 0;
+  let html = '';
+  for (const r of rows) {
+    const have = r.have === 'none' ? 'NOTHING' : r.have.toUpperCase();
+    html += `<div class="row"><span><strong>${r.label}</strong> <small class="muted">${have}</small></span>`
+      + `<span>${r.read}</span></div>`;
+    html += `<div class="row"><span class="muted">A</span><span class="muted">${r.planA}</span></div>`;
+    html += `<div class="row"><span class="muted">B</span><span class="muted">${r.planB}</span></div>`;
+  }
+  const d = s.story && s.story.damage;
+  if (d && d.nights) {
+    html += `<p class="muted" style="margin:6px 0 0">Exposed nights this year: ${d.nights}, `
+      + `${money(d.value)} of letting with nobody behind it - about ${money(s.story.damageRate)} a year. `
+      + 'That is the number a hedge is being measured against.</p>';
+  }
+  $('planbbody').innerHTML = html;
+}
 
 function renderAttention() {
   const jobs = h.repairs || [];
@@ -2872,6 +2974,8 @@ function refresh() {
   renderYard();
   renderAttention();
   renderOffer();
+  renderStory();
+  renderPlanB(s);
   renderLegacy();
   renderVillage();
   renderBank();
@@ -3565,10 +3669,15 @@ h = load();
 // so a plot opened after another always starts with the purse that plot left.
 // Running a plot also makes it the active one, so the valley previews the ground
 // the player was last on -- whether the run was loaded or just created.
+// BUG-017: the home plot is not in `owned` (the land catalog does not list it), but it
+// is the same household's money, so it syncs too -- without it the day-13 purse and the
+// valley header are two different wallets, which is the fork the playtest filed.
 if (h && estateMode) {
   syncFromEstate(h, estate);
   setActive(estate, estateSiteId);
   saveEstate(estate);
+} else if (h && estateWallet) {
+  syncFromEstate(h, estate);
 }
 if (!h) {
   try { await bootTerrain(); } catch { /* no bake here — the fallback slope model plays */ }
@@ -3621,6 +3730,12 @@ if (!h) {
     }
     // the starter stub (plotmap.STUB_NOTE): log-only, day one, never in snap()
     h.log.push({ day: h.day, text: STUB_NOTE });
+  } else if (estateWallet) {
+    // The life's own canonical ground, now standing under a household. The catalog does
+    // not list it, so there is no `owned` entry to make and no second purchase to book
+    // -- but the purse is the household's, and a run created here must open on that
+    // money rather than on a fresh start purse (BUG-017: one wallet, both plots).
+    syncFromEstate(h, estate);
   }
   if (shortfall) h.log.push({ day: h.day, text: shortfall });
   save();
@@ -3676,6 +3791,32 @@ function paintTitle() {
 paintTitle();
 $('valley-link').href = 'valley.html?start=' + encodeURIComponent(option.key)
   + (h.site ? '&site=' + encodeURIComponent(h.site.id) : '');
+/* BUG-017 (cold playtest 2026-11-15): after the valley bought a second plot there was
+   `no control that returns you to the day-13 plot` -- `?site=` on a hand-typed URL was
+   ignored and nothing on the page listed the household's ground. Every plot the
+   household holds is now one click from the Game menu, each link addressed to the
+   per-site save it belongs to (the same start+side pair the valley's `Run this plot`
+   uses), and the life's own canonical ground -- which the land catalog does not list,
+   so it has no ?site= to carry -- is linked as the life with no site. Built once at
+   boot: this page cannot change ground without navigating, so it never re-renders. */
+(function plotSwitcher() {
+  if (!estate || !estateMine) return;
+  const enc = encodeURIComponent;
+  const here = effSite ? effSite.id : '';
+  const rows = [];
+  for (const o of ownedPlots(estate)) {
+    const s = SITE_BY_ID[o.siteId];
+    if (!s || o.siteId === here) continue;
+    rows.push('<a class="dlink" href="plot.html?start=' + enc(option.key)
+      + '&site=' + enc(s.id) + (o.side ? '&side=' + enc(o.side) : '')
+      + '">Go to ' + esc(s.place) + '</a>');
+  }
+  if (here !== '' && homeRun) {
+    rows.push('<a class="dlink" href="plot.html?start=' + enc(option.key)
+      + '">Back to ' + esc(option.groundLabel || 'the home plot') + '</a>');
+  }
+  if (rows.length) $('valley-link').insertAdjacentHTML('afterend', rows.join(''));
+})();
 /* U9 — day one is an opening, and an opening is read from the top.
    `log()` prepends, because news belongs at the top of a running log — so replaying the
    saved lines in order landed the newest first and the identity line LAST, and `slice(-6)`
@@ -3821,6 +3962,11 @@ window.__home = {
   // probe can assert the shared wallet without poking localStorage itself
   get estate() { return estate; },
   get estateMode() { return estateMode; },
+  // BUG-017: the probe asserts the ONE wallet from either address -- a household plot
+  // (estateMode) or the life's own canonical ground under a household (estateWallet) --
+  // and reads which save this page is writing.
+  get estateWallet() { return estateWallet; },
+  get save() { return SAVE; },
   /* Slice 2: the life this ground runs, its bar and its ladder, readable by a probe
      without a mouse. `demand` is the same demandFor the card draws; `needs` runs the
      same pure preview, so a test can assert the board against tourism's own penalties

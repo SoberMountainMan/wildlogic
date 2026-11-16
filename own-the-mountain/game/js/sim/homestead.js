@@ -7,7 +7,8 @@
 // the 133-test gate; this is the new game growing beside it until it replaces it.
 
 import { makePlot, startPlan, PRICES, fellTree, tileFlat } from './plotmap.js';
-import { initTourism, tickTourism, tourismSummary, flushFuel, FACILITY, hasHouse, HOUSE } from './tourism.js';
+import { initTourism, tickTourism, tourismSummary, flushFuel, FACILITY, hasHouse, HOUSE,
+  buildFacility } from './tourism.js';
 import { initCompany, companySummary, tickCompany, maybeOfferContract, noteFelled } from './company.js';
 import { quote, appetite, SHOP } from './market.js';
 import { rollWeather, livingExtra, cropMult, weatherLine } from './weather.js';
@@ -15,11 +16,14 @@ import { initSubsidy, maybeOffer, tickSubsidy, settleSubsidy, subsidySummary } f
 import { initBank, bankSummary, restructure } from './bank.js';
 import { initDirector, tickDirector, directorSummary } from './director.js';
 import { initOffers, tickOffers, answerOffer as answerOfferPure } from './offers.js';
+// Slice 3 (owner GO 11-15): the obstacle engine. Same shape and same golden contract as
+// offers.js - the tick only ever sets a pending question, answering is the only mutation.
+import { initStory, tickStory, answerStory as answerStoryPure, storyStatus } from './storyteller.js';
 import { tickWildlife } from './wildlife.js';
 import { tickGrapevine } from './grapevine.js';
 import { initHolding, holdingSummary, expand } from './holding.js';
 import { initLegacy, tickLegacy, legacySummary } from './legacy.js';
-import { initGoals, tickGoals, goalSummary } from './goals.js';
+import { initGoals, bornGoals, tickGoals, goalSummary } from './goals.js';
 import { addFirewood, burnFirewood, firewoodPrice, inFirewoodSeason, FIREWOOD, firewoodReserve,
   firewoodWeekLeft, POLES, polesNet, lumberOff } from './firewood.js';
 import { maybeFamilyNote } from './familyVoice.js';
@@ -165,6 +169,7 @@ export function newHomestead(option, plan = null, gameSeed = null) {
   initBank(h);
   initDirector(h);
   initOffers(h);
+  initStory(h);
   initHolding(h);
   initLegacy(h);
   initGoals(h);
@@ -177,7 +182,9 @@ export function newHomestead(option, plan = null, gameSeed = null) {
   pushArrivalNotes(h, monthlyBills(h));
   if (h.bond.monthly) note(h, `The bond is ${money(h.bond.monthly)} on the 1st of every month.`);
   if (!h.services.water) note(h, 'No municipal water here. You last three days without it — build a tank first.');
-  tickGoals(h);   // a plot with a stream already has water; do not tell the player otherwise
+  bornGoals(h);  // water the ground already gives, and a bush with no pine in it, are
+                 // the land's doing, not the player's (BUG-020): done, but not a tick
+                 // in the log and not a point on the scoreboard
   return h;
 }
 
@@ -635,6 +642,13 @@ export function endDay(h) {
   // golden-safe: it only sets a pending question, never a snap() field.
   const asked = tickOffers(h, offerCtx(h));
   if (asked) note(h, `${asked.title} ${asked.body}`);
+  // #2 (owner GO 11-15): the obstacle engine, aimed at the source this household leans on.
+  // Ordered with its eyes open: the director has already settled its hit, tickTourism has
+  // already spent tonight's weather on the bookings (h.lastNights is tonight's guest count),
+  // and the fridge and the tank have already run - so the outage ask is the morning after and
+  // the pre-storm ask is the evening before. Log line only; `story.pending` is the question.
+  const setback = tickStory(h, storyCtx(h));
+  if (setback) note(h, `${setback.title} ${setback.body}`);
   tickGoals(h);
   tickCompany(h);
   tickLegacy(h);
@@ -730,8 +744,32 @@ export function answerOffer(h, accept) {
   return r;
 }
 
-export function toJSON(h) { return JSON.stringify(h); }
-export function fromJSON(str) {
+/** The prices and the verbs the storyteller is allowed to offer (Slice 3, owner GO 11-15).
+    Injected for the same reason as offerCtx: storyteller.js must not import this file, and
+    every number it quotes has to come from the place that already owns it. `water` carries
+    the refill table so the forecast can be read WITHOUT a second copy of it living in the
+    storyteller - if a field is missing there, the ask stands down rather than guessing. */
+export function storyCtx(h) {
+  return {
+    wage: LABOUR.wagePerDay,
+    water: { ...WATER, tankCost: TANK.cost + TANK.delivery },
+    buyWater: () => buyWater(h),
+    // the hedge the pre-storm ask can offer: 'generator' (one day to fit, fuel forever) or
+    // 'power' (solar, a week to fit, silent). One verb, the shipped build rule and price.
+    buildPower: (kind) => buildFacility(h, kind === 'power' ? 'power' : 'generator'),
+    restructure: () => restructure(h),
+  };
+}
+
+/** The player's answer to a pending mountain question. The only mutation path in the
+    obstacle engine; the page calls this from the decision card's two buttons. */
+export function answerStory(h, accept) {
+  const r = answerStoryPure(h, accept, storyCtx(h));
+  if (r.ok) { note(h, r.msg); }
+  return r;
+}
+
+export function toJSON(h) { return JSON.stringify(h); }export function fromJSON(str) {
   const h = JSON.parse(str);
   if (!h) return null;
   if (h.version === 1) {
@@ -797,6 +835,7 @@ export function summary(h) {
     subsidy: subsidySummary(h),
     bank: bankSummary(h),
     director: directorSummary(h),
+    story: storyStatus(h, storyCtx(h)),
     holding: holdingSummary(h),
     legacy: legacySummary(h),
     goals: goalSummary(h),

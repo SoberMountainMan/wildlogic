@@ -47,9 +47,11 @@ function storeOf(store) {
 /** A fresh household: the picker's starting purse, no ground, no debt.
  *  Slice 2 adds the world clock (month): every canonical life begins on 1
  *  September, so the valley's demand bars read 9 until a plot save carries
- *  the real month over (syncToEstate). */
-export function createEstate(cash = START_CASH) {
-  return { cash, debt: 0, rep: 0, owned: [], active: null, month: 9 };
+ *  the real month over (syncToEstate).
+ *  BUG-017/018 add the LIFE: the household belongs to one life, and the pages
+ *  read that to find their way back to it without a ?start= in the URL. */
+export function createEstate(cash = START_CASH, life = null) {
+  return { cash, debt: 0, rep: 0, owned: [], active: null, month: 9, life: life || null };
 }
 
 /**
@@ -89,7 +91,10 @@ export function loadEstate(store) {
   const active = typeof j.active === 'string' && owned.some((o) => o.siteId === j.active)
     ? j.active : null;
   const month = Number.isFinite(j.month) && j.month >= 1 && j.month <= 12 ? Math.round(j.month) : 9;
-  return { cash: j.cash, debt: j.debt, rep: Number.isFinite(j.rep) ? j.rep : 0, owned, active, month };
+  // the life the household belongs to. An estate written before BUG-017 has none, and
+  // null means what it always meant: no page may infer a life from it.
+  const life = typeof j.life === 'string' && j.life ? j.life : null;
+  return { cash: j.cash, debt: j.debt, rep: Number.isFinite(j.rep) ? j.rep : 0, owned, active, month, life };
 }
 
 /** Write the household. Returns false when there is no store (node, private mode). */
@@ -152,6 +157,49 @@ export function buyPlot(e, siteId, { mortgage = false, business = null, side = n
       : `${money(price)} paid outright`,
     price, deposit: mortgage ? deposit : price, bond: mortgage ? bond : 0, monthly: mortgage ? monthly : 0,
   };
+}
+
+/**
+ * The household a run ALREADY IMPLIES (BUG-017, cold playtest 2026-11-15: buying a
+ * second plot off the valley map replaced the money the player had earned with the
+ * picker's starting purse, and stranded the run they were on).
+ *
+ * The valley bootstraps an estate the first time you buy as a household. When a
+ * single-life save is already in play, the estate is NOT a fresh H$750 000 -- it is
+ * that run's purse, and the ground it stands on joins `owned` for free, because the
+ * life already paid for it at its own terms. The bond the run took becomes the
+ * household's debt, so the header's debt stays true, and the per-site save is left
+ * exactly where it is: the run does not restart, it just gains a household above it.
+ *
+ * Ground the land catalog does not know -- the three canonical start plots -- cannot
+ * be an owned entry (loadEstate refuses an estate naming unknown ground). Such a run
+ * contributes its purse and its life, and stays reachable as the life's own save:
+ * `plot.html?start=<life>` with no `?site=`, which is what the switcher links to.
+ *
+ * Pure: builds a state, writes nothing. The caller saves it, then buys on it.
+ * @param {{life?:string|null, cash?:number, siteId?:string|null, side?:string|null,
+ *          business?:string|null, bond?:number, monthly?:number, month?:number}} run
+ */
+export function adoptRun(run = {}) {
+  const cash = Number.isFinite(run.cash) ? Math.round(run.cash) : START_CASH;
+  const e = createEstate(cash, typeof run.life === 'string' ? run.life : null);
+  if (Number.isFinite(run.month) && run.month >= 1 && run.month <= 12) e.month = Math.round(run.month);
+  const site = run.siteId ? SITE_BY_ID[run.siteId] : null;
+  if (!site) return e;                       // the purse is the household's; the ground has its own save
+  const bond = Number.isFinite(run.bond) && run.bond > 0 ? Math.round(run.bond) : 0;
+  const monthly = Number.isFinite(run.monthly) && run.monthly > 0 ? Math.round(run.monthly) : 0;
+  e.debt = bond;
+  e.owned.push({
+    siteId: site.id,
+    business: typeof run.business === 'string' ? run.business : suitedBusinesses(site)[0],
+    mortgage: bond > 0,
+    bond,
+    monthly,
+    side: typeof run.side === 'string' ? run.side : site.roadSide,
+    xp: 0,
+  });
+  e.active = site.id;
+  return e;
 }
 
 /** Switch the active plot. Refuses ground the household does not own. */

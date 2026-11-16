@@ -51,10 +51,15 @@ export function tickWildlife(h) {
   const w = h.wildlife || (h.wildlife = { baboon: 0, samango: 0, snake: 0, wetland: false });
   const p = h.plot || {};
   const fenced = Array.isArray(p.fence) && p.fence.length > 0;
+  // Slice 3 (storyteller.js): the other answer to a troop is a boy with two dogs by the
+  // beds, which is a decision the player is ASKED about rather than charged for. The flag
+  // only ever exists because an answer set it, so a household that never answers an ask -
+  // the canonical three goldens - is watched by nobody and raids exactly as it always did.
+  const guarded = !!(h.story && h.story.guardUntil > h.day);
   const out = [];
 
   // --- baboons: the garden, when the crop is worth taking and the ground is open ---
-  if (!fenced && (h.produce || 0) >= WILDLIFE.baboonMinKg
+  if (!fenced && !guarded && (h.produce || 0) >= WILDLIFE.baboonMinKg
     && h.day - (w.baboon || 0) >= WILDLIFE.baboonEvery) {
     const took = Math.min(WILDLIFE.baboonMaxKg, round1(h.produce * WILDLIFE.baboonTake));
     h.produce = round1(h.produce - took);
