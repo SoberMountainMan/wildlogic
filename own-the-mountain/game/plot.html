@@ -111,8 +111,10 @@
      390x844) but a sentence cut at the bottom edge read as the end of the text, with no cue
      that more was below. Pure-CSS scroll shadows: the two `local` layers scroll WITH the
      content and cover the two `scroll` layers, so the fade exists only while there is more to
-     read - no JS, no height or position change. The solid stops are the card's own #17211b. */
-  #goalcard {
+     read - no JS, no height or position change. The solid stops are the card's own #17211b.
+     Slice 4 extends the same treatment to .hh-body, the scrolling part of the household card
+     (the card itself does not scroll: its verb is pinned below the flick). */
+  #goalcard, .hh-body {
     max-height: 48vh; overflow-y: auto; overscroll-behavior: contain;
     background:
       linear-gradient(#17211b 30%, rgba(23, 33, 27, 0)) top / 100% 14px no-repeat local,
@@ -138,7 +140,7 @@
   #goalpanel { position: absolute; right: 12px; top: 12px; width: 252px; z-index: 25;
     background: rgba(19,27,22,.94); border: 1px solid #2f3f34; border-radius: 9px;
     max-height: calc(100% - 24px); display: flex; flex-direction: column; overflow: hidden; }
-  #goalcard { min-height: 0; }
+  #goalcard, #householdcard { min-height: 0; }
   #goalhead { flex: none; }
   #goalhead { display: flex; justify-content: space-between; align-items: center;
     padding: 6px 11px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
@@ -146,7 +148,48 @@
   #goalhead:hover { color: #c7cfc4; }
   #goalpanel .card { margin: 0; border: none; border-top: 1px solid #243026;
     border-radius: 0; }
-  #goalpanel.closed .card { display: none; }
+  #goalpanel.closed .card, #goalpanel.closed .subhead { display: none; }
+
+  /* ---------- F2 · the household card (Slice 4) ----------
+     The four visible needs the life-sim reframe asks for, and the family choice with its
+     readiness gates, in the SAME pinned panel as "What now": one collapse, one phone width,
+     one W-13 sheet folding - the panel already does all three, and a second copy of that
+     behaviour is the thing this seat keeps being asked to remove. Nothing here can be
+     clipped by the panel edge, because each card scrolls inside the panel's own height cap
+     (the bug the land table just had on the valley screen). The subhead is a label, not a
+     second toggle: the head above it is the only door.
+     The card is a column with TWO parts: .hh-body (meters, then the checklist or the family
+     rows) scrolls, and .hh-foot (the verb and its blocked reason) does not. That split is
+     the answer to a measurement, not a style choice: at 390x844 with one scroll area for the
+     whole card, the "Start a family" button laid out at y 819-891 inside a card whose box
+     ended at 691 - reachable only by flicking inside a 202px window, i.e. a choice the
+     player has to hunt for. A verb you have to scroll to find is the soft-refusal pattern
+     wearing a different hat, so the verb is on screen the moment the card is. */
+  #householdcard { flex: none; max-height: 46vh; display: flex; flex-direction: column; }
+  .hh-body { flex: 1 1 auto; min-height: 0; overscroll-behavior: contain; }
+  .hh-foot { flex: none; border-top: 1px solid #243026; margin-top: 7px; padding-top: 7px; }
+  #goalcard { max-height: 34vh; }
+  .subhead { flex: none; display: flex; justify-content: space-between; align-items: baseline;
+    gap: 6px; padding: 5px 11px 4px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .08em; color: #7f8d7b; user-select: none; }
+  .subhead em { font-style: normal; text-transform: none; letter-spacing: .02em;
+    color: #b9c4b3; font-size: 11px; }
+  /* one needs row: label, the shared bar() helper, then the sim's own detail line under it */
+  .need { display: grid; grid-template-columns: 48px 1fr; gap: 0 6px; align-items: center; }
+  .need .nl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: #9aa795; }
+  .need .nd { grid-column: 1 / -1; font-size: 11px; margin-top: -4px; line-height: 1.3; }
+  .hh-sec { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #93a08f;
+    margin: 7px 0 1px; }
+  /* the readiness checklist: the mark is decoration only - the state is in the words */
+  .gate { display: flex; gap: 6px; font-size: 11.5px; line-height: 1.35; padding: 1px 0; }
+  .gate .gm { flex: none; width: 11px; text-align: center; }
+  .gate.ok .gm { color: #9fd0a8; }
+  .gate.no .gm, .gate.no .gd { color: #e08a6a; }
+  .gate .gd { color: #9aa795; }
+  /* the blocked reason sits OUTSIDE the button, at full strength: a disabled control paints
+     its own text at .38 opacity, and a reason a player has to squint for is a soft refusal.
+     This is the shape the build rows already use - the verb, then the sentence why not. */
+  .hh-why { font-size: 11px; color: #e08a6a; line-height: 1.35; margin-top: 4px; }
 
   /* ---------- E · floating domain windows ---------- */
   .win { position: absolute; width: 340px; background: #131b16;
@@ -254,6 +297,36 @@
     #rail { display: none; }
     /* the goal card stays reachable one-handed: small, top-right, still collapsible */
     #goalpanel { display: flex; width: 188px; right: 8px; top: 8px; }
+    /* Slice 4 · the phone panel is sized from the STAGE, not from the viewport.
+       The panel's containing block is #stage, and the stage is not a fixed height: 584px on a
+       day-1 plot, 352px once the household exists and the report blocks above it grow. #toolhint
+       owns the bottom 57px of it and paints ABOVE the panel (z 35 over z 25). A vh cap larger
+       than the stage let the panel escape its own box: at 56vh the panel measured 473px in the
+       352px stage, its bottom sat 102px below the viewport at scroll 0, and the render showed
+       "Mouths to feed" cut mid-word behind the hint bar. min(100% - 73px, 56vh) keeps the whole
+       panel inside the stage and clear of the hint in both states (473px at day 1, 279px in the
+       family phase).
+       What that budget buys, measured on the shipping build: the household card wants 306-353px
+       of content (four meters with their sentences, the checklist or the family rows, the verb,
+       and the blocked reason). At day 1 it gets 214px of window plus a pinned verb and all four
+       meters are on screen. In the family phase the panel is 279px, the fixed chrome (head 22 +
+       subhead 18 + verb 77, plus 15-45 more when a blocked reason is showing) leaves 69px of
+       window, and two of the
+       four meters are on screen with the rest behind the flick. Three variants were measured
+       against that: giving the meters a floor starved the goals card to 30px or clipped the verb
+       inside the panel, and letting the panel itself scroll put the verb 1300px down. None of
+       them is a win, so the rule shipped is the one that never clips the choice: the verb and
+       its reason are always on screen, the goals card keeps its 6vh window, and the meters
+       flick with the PR-06 shadows doing the telling.
+       ON THE RECORD, with the numbers above: two cards do not fit in a 279px phone panel. The
+       fix is a shape change, not a CSS value - the household in its own bottom sheet on phones,
+       or the panel anchored to the viewport instead of the stage. That is the lead's and the
+       owner's call, so it is reported rather than made. */
+    #goalpanel { max-height: min(calc(100% - 73px), 56vh); }
+    #goalcard { flex: 0 1 auto; max-height: 6vh; }
+    #householdcard { flex: 1 1 auto; max-height: none; }
+    .need .nd { font-size: 10.5px; line-height: 1.25; }
+    .hh-foot button small { font-size: 10px; line-height: 1.2; }
     #toolhint { left: 8px; right: 8px; max-width: calc(100% - 16px); font-size: 11px;
       bottom: calc(30px + env(safe-area-inset-bottom, 0px));
       /* W-01: two held-tool buttons plus the caption must wrap, not run off the right edge */
@@ -465,6 +538,10 @@
   <div id="goalpanel">
     <div id="goalhead"><span>What now</span><span id="goaltoggle">▾</span></div>
     <div class="card" id="goalcard"></div>
+    <!-- F2 · Slice 4: the household rides the same panel (see the F2 CSS block). The head is
+         a label; the state word on its right is the one-line answer when the card is folded. -->
+    <div class="subhead" id="householdhead" hidden><span>Household</span><em id="household-state"></em></div>
+    <div class="card" id="householdcard" hidden></div>
   </div>
   <!-- E · domain windows. The cards keep their IDs; the render functions never knew. -->
   <div class="win" id="win-plot">
@@ -526,6 +603,10 @@ import {
   newHomestead, summary, endDay, plantBed, buyHive, harvest, sellAll, fell, buildTank, buyWater, hireCasual,
   waterOk, toJSON, fromJSON, BED, CROPS, DEFAULT_CROP, HIVE, TANK, WATER, FOOD, LABOUR, LIVING_PER_DAY, FUEL_PER_TRIP, bedSlots,
   NATIVE_FINE, yardSiteRefuse, answerOffer, answerStory,
+  // Slice 4: the two family verbs the card offers, and the table they read their numbers
+  // from. Both are the sim's own (homestead.js wraps family.js); the page imports, never
+  // re-implements, so a gate the sim changes is a gate the card shows changed the same day.
+  startFamily, haveChild, FAMILY,
 } from './js/sim/homestead.js';
 import { sellFirewood, sellPoles, inFirewoodSeason, FIREWOOD, lumberOff, firewoodWeekLeft } from './js/sim/firewood.js';
 import { ACCOM, buildAccom, patchRoad, patchCost, getCleaner, PATCH_COST, tourismSummary,
@@ -2519,6 +2600,75 @@ function renderGoals() {
   $('goalcard').innerHTML = html;
 }
 
+/* Slice 4 · the household card. Every word below is a READ of `summary(h).family` — the four
+   needs meters, the readiness checklist, and once started the mouths, the nightly cost and the
+   hands the grown children give back. Nothing here decides anything: the sim computes `ok`, the
+   sim refuses the two verbs, and the card repeats the sim's own sentences. Colour follows the
+   page's existing ok/needs pair (renderVoices uses #9fd0a8 / #e08a6a for exactly this), because
+   a meter that cannot be read at a glance is decoration. */
+function renderHousehold() {
+  const card = $('householdcard'), head = $('householdhead');
+  const fam = summary(h).family;
+  if (!fam) { card.hidden = true; head.hidden = true; return; }
+  head.hidden = false; card.hidden = false;
+  $('household-state').textContent = fam.started
+    ? `${fam.mouths} mouth${fam.mouths === 1 ? '' : 's'}`
+    : fam.ready ? 'ready' : 'not yet';
+  const needs = fam.needs.map((n) => {
+    const col = n.ok ? '#9fd0a8' : '#e08a6a';
+    return `<div class="need" data-need="${esc(n.key)}"><span class="nl">${esc(n.label)}</span>`
+      + bar(Math.round(n.value * 100), col)
+      + `<span class="nd" style="color:${col}">${esc(n.detail)}</span></div>`;
+  }).join('');
+  const fail = fam.gates.filter((g) => !g.ok);
+  /* `open` is the page's reading of the same contract the sim applies, and `why` is the
+     blocked reason OUTSIDE the button at full strength: a disabled control paints its own
+     text at .38 opacity, and a reason a player has to squint for is a soft refusal. The
+     button remains the sim's - a state that moved between paint and tap is answered by the
+     sim's own sentence in the tray, never by a silent no. */
+  const full = fam.children.length >= FAMILY.maxChildren;
+  const open = fam.ready && !h.ended && (!fam.started || !full);
+  const why = h.ended ? 'The run is over.'
+    : fam.started && full ? `The house is full (${FAMILY.maxChildren} children).`
+    : 'Not yet: ' + esc(fail.map((g) => g.label).join(', ')) + '.';
+  const whyLine = open ? '' : `<div class="hh-why">${why}</div>`;
+  if (fam.started) {
+    /* 3 · started: what the choice costs and what it gives back. `costPerDay` is the sim's own
+       nightly figure for the extra mouths; `labourBeds` is the harvest capacity the grown
+       children release on beds the household already owns (a cap, never a wage - the balance
+       note says why). The cap on children is the sim's `FAMILY.maxChildren`, not a number this
+       file invented, and a row with nothing to report still gets a sentence rather than a dash:
+       the YOUR PLACE lesson from #50 is that an empty row reads as a broken panel. */
+    return card.innerHTML = `<div class="hh-body">` + needs + '<div class="hh-sec">The family</div>'
+      + `<div class="row"><span>Mouths to feed</span><span>${fam.mouths}</span></div>`
+      + `<div class="row muted"><span>Dependents</span><span>${fam.dependents}</span></div>`
+      + `<div class="row"><span>Their cost</span><span>+${money(fam.costPerDay)} a day</span></div>`
+      + `<div class="row muted"><span>Your partner</span><span>${fam.partner ? 'at home' : 'none'}</span></div>`
+      + (fam.children.length
+        ? fam.children.map((c) => `<div class="row muted"><span>A child</span>`
+          + `<span>${c.ageDays} days${c.grown ? ' · grown, and working' : ''}</span></div>`).join('')
+        : '<div class="row muted"><span>Children</span><span>none yet</span></div>')
+      + `<div class="row muted"><span>Grown hands</span><span>${fam.labourBeds
+        ? `${fam.labourBeds} extra bed slots from grown children` : 'none grown yet'}</span></div>`
+      + `</div><div class="hh-foot">`
+      + `<button type="button" data-act="child"${open ? '' : ' disabled'}>Have a child`
+      + `<small>another mouth now; a pair of hands in ${FAMILY.childGrowDays} days</small></button>`
+      + whyLine + '</div>';
+  }
+  /* 2 · not started: the readiness checklist in the sim's own words. The cross is
+     `aria-hidden` because the STATE is in the words - a screen reader hears "A built home -
+     build a house or a room first", not a shape - and the list carries each gate's detail
+     while the pinned line under the verb carries the short form the sim refuses with. */
+  card.innerHTML = `<div class="hh-body">` + needs
+    + `<div class="hh-sec">${fail.length ? 'Not ready yet, because' : 'Ready, when you want to be'}</div>`
+    + fam.gates.map((g) => `<div class="gate ${g.ok ? 'ok' : 'no'}" data-gate="${esc(g.key)}">`
+      + `<span class="gm" aria-hidden="true">${g.ok ? '✓' : '✕'}</span>`
+      + `<span>${esc(g.label)} <span class="gd">${esc(g.detail)}</span></span></div>`).join('')
+    + `</div><div class="hh-foot">`
+    + `<button type="button" data-act="family"${open ? '' : ' disabled'}>Start a family`
+      + `<small>two mouths now, and a reason to build</small></button>` + whyLine + '</div>';
+}
+
 function bar(pct, col) {
   return `<div style="height:4px;border-radius:9px;background:#22302a;margin:3px 0 6px;overflow:hidden">`
     + `<i style="display:block;height:100%;width:${Math.max(0, Math.min(100, pct))}%;background:${col}"></i></div>`;
@@ -2971,6 +3121,7 @@ function refresh() {
   renderCompany();
   renderVoices();
   renderGoals();
+  renderHousehold();
   renderYard();
   renderAttention();
   renderOffer();
@@ -3153,6 +3304,22 @@ $('yardcard').onclick = (e) => {
   if (act === 'facility' || act === 'repair') echoSimLog(simFrom);
   else log(act === 'open' ? (h.open ? 'Open for bookings.' : 'Closed for bookings — no lets, no reviews.')
     : act === 'list' ? 'Listed for bookings.' : 'Rate changed — the booking sites update overnight.');
+  save(); refresh();
+};
+/* Slice 4 · the two family verbs. The card is rebuilt on every refresh, so the tap is caught by
+   delegation on the card itself, exactly like the yard rows. A refusal is the SIM'S sentence,
+   logged as a bad line under the topic the sim writes for it ('family'), so the tray can clear
+   it the day the gate passes instead of guessing from the clock. The page never paraphrases the
+   reason, and never decides readiness: `startFamily` and `haveChild` are the only authority on
+   whether the choice is open, whatever the button looked like when the finger landed. */
+$('householdcard').onclick = (e) => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const simFrom = h.log.length;
+  const res = b.dataset.act === 'child' ? haveChild(h) : startFamily(h);
+  if (!res.ok) return log(res.msg, 'bad', 'family');
+  noticeSucceeded('family');
+  echoSimLog(simFrom);
   save(); refresh();
 };
 $('btn-expand').onclick = () => {

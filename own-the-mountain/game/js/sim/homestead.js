@@ -27,6 +27,9 @@ import { initGoals, bornGoals, tickGoals, goalSummary } from './goals.js';
 import { addFirewood, burnFirewood, firewoodPrice, inFirewoodSeason, FIREWOOD, firewoodReserve,
   firewoodWeekLeft, POLES, polesNet, lumberOff } from './firewood.js';
 import { maybeFamilyNote } from './familyVoice.js';
+import { initFamily, familyNight, tickFamily, familyLabour, readiness as familyReadinessPure,
+  needs as familyNeedsPure, familySummary as familySummaryPure, startFamily as startFamilyPure,
+  haveChild as haveChildPure, FAMILY } from './family.js';
 import { pushArrivalNotes, tickArrival, coldHouseLine } from './arrivalVoice.js';   // bible §18 — the day-one opening, §20 — the roof and the first week
 // bible §16.4 — the village's voice. Imported for its registration: the module installs
 // itself on the director's flavour seam (L9) once, at import, so the hook is live for every
@@ -107,7 +110,7 @@ export function monthlyBills(h) {
   if (h.facilities && h.facilities.wifi) {
     items.push({ key: 'wifi', label: 'Wifi line', zar: FACILITY.wifi.monthly });
   }
-  if (h.bond.monthly > 0) items.push({ key: 'bond', label: 'Bond', zar: h.bond.monthly });
+  if ((h.bond ? h.bond.monthly : 0) > 0) items.push({ key: 'bond', label: 'Bond', zar: h.bond.monthly });
   return { items, total: items.reduce((a, b) => a + b.zar, 0) };
 }
 
@@ -173,6 +176,7 @@ export function newHomestead(option, plan = null, gameSeed = null) {
   initHolding(h);
   initLegacy(h);
   initGoals(h);
+  initFamily(h);
   rollWeather(h);
   // the first sentence of the game. It printed `H$243520` while start.html printed
   // `H$243 520` — two money styles in one minute of play (fmt.js, lead 10-23).
@@ -330,7 +334,7 @@ export function buyWater(h) {
 }
 
 /** Beds that can come in TODAY: twelve on your own, six more per casual hired today. */
-export function bedSlots(h) { return LABOUR.bedSlots + (h.labourToday || 0); }
+export function bedSlots(h) { return LABOUR.bedSlots + (h.labourToday || 0) + familyLabour(h); }
 
 export function plantBed(h, x, y, crop = DEFAULT_CROP) {
   const c = CROPS[crop];
@@ -585,13 +589,26 @@ export function endDay(h) {
     food = FOOD.eatKg * FOOD.shopPerKg;
   }
 
+  // Slice 4: the dependents eat from what is left, or the shop feeds them too, and each
+  // adds a living share. familyNight returns zeros while there is no family, so the
+  // golden (no-family) path is byte-identical.
+  const fam = familyNight(h, { eatKg: FOOD.eatKg, shopPerKg: FOOD.shopPerKg, livingPerDay: LIVING_PER_DAY });
+  if (fam.homeKg > 0) { h.produce -= fam.homeKg; ateHome = true; }
+  food += fam.extraFood;
+
   // the casuals went home — labour is bought per day, on the days you work.
   // #2 (owner go 11-15): a built house is a settled home — it cuts the daily living bill
   // (no rent/paraffin elsewhere). The golden script never builds a house, so this is
   // invisible to the traces.
-  living = LIVING_PER_DAY + food + livingExtra(h) - (hasHouse(h) ? HOUSE.livingSave : 0);
+  living = LIVING_PER_DAY + food + livingExtra(h) - (hasHouse(h) ? HOUSE.livingSave : 0) + fam.extraLiving;
   h.labourToday = 0;
   h.cash -= living;
+  // Slice 4: age the children and sample the month's surplus for the readiness gate.
+  // Mutates only h.family (outside snap()), so no golden moves.
+  tickFamily(h, { billTotal: monthlyBills(h).total });
+  if (fam.extraLiving > 0 && h.family && h.family.dependents > 0) {
+    note(h, `The household feeds ${h.family.dependents} dependent${h.family.dependents === 1 ? '' : 's'}: −${money(fam.extraFood + fam.extraLiving)} today.`);
+  }
 
   for (const b of h.beds) if (h.day === b.ready) note(h, `A bed is ready to harvest.`);
   if (inHoneySeason(h.date)) h.honey += h.hives.length * HIVE.honeyPerDay;
@@ -784,6 +801,9 @@ export function toJSON(h) { return JSON.stringify(h); }export function fromJSON(
     };
   }
   if (h.version !== 2) return null;
+  // Slice 4: old saves predate the family. Give them an empty one so the readiness
+  // card and the choice work on a loaded run; it adds no economic effect until used.
+  if (!h.family) initFamily(h);
   return h;
 }
 
@@ -839,5 +859,35 @@ export function summary(h) {
     holding: holdingSummary(h),
     legacy: legacySummary(h),
     goals: goalSummary(h),
+    family: familySummaryOf(h),
   };
 }
+
+/* ---- Slice 4: the family/needs public surface. family.js is a leaf; these wrappers
+   build the homestead-side context so there is no import cycle. ---- */
+function familyCtx(h) {
+  return {
+    eatKg: FOOD.eatKg,
+    shopPerKg: FOOD.shopPerKg,
+    livingPerDay: LIVING_PER_DAY,
+    billTotal: monthlyBills(h).total,
+    waterSafe: waterOk(h),
+    home: hasHouse(h) || (h.accom || []).some((a) => a.kind === 'room' && a.built),
+    firewoodSeason: inFirewoodSeason(h.date),
+    firewoodReserveDays: (h.firewood || 0) / FIREWOOD.householdBurn,
+  };
+}
+export function familyReadiness(h) { return familyReadinessPure(h, familyCtx(h)); }
+export function familyNeeds(h) { return familyNeedsPure(h, familyCtx(h)); }
+export function familySummaryOf(h) { return familySummaryPure(h, familyCtx(h)); }
+export function startFamily(h) {
+  const r = startFamilyPure(h, familyCtx(h));
+  if (r.ok) note(h, r.msg, 'family');
+  return r;
+}
+export function haveChild(h) {
+  const r = haveChildPure(h, familyCtx(h));
+  if (r.ok) note(h, r.msg, 'family');
+  return r;
+}
+export { FAMILY };
