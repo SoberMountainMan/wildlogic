@@ -2676,7 +2676,7 @@ function tickDay(w) {
       continue;
     }
     if (t.stage !== 3) continue;
-    if (Math.random() < SNAG_RATE) { t.dead = true; t.snagDays = 0; t.hollow = false; died++; GROUND = null; }
+    if (Math.random() < SNAG_RATE) { t.dead = true; t.snagDays = 0; t.hollow = false; died++; invalidateGround(); }
   }
   if (died) line.push(died + ' tree' + (died === 1 ? '' : 's') + ' died and ' +
                       (died === 1 ? 'is' : 'are') + ' standing dead.');
@@ -2697,7 +2697,7 @@ function tickDay(w) {
       t.sp = null; t.stage = 0; t.age = 0; lost++; continue;
     }
     t.age += Math.max(0, g);
-    if (t.age >= (sd.slow ? 7 : 4)) { t.stage = 3; t.age = 0; GROUND = null; }
+    if (t.age >= (sd.slow ? 7 : 4)) { t.stage = 3; t.age = 0; invalidateGround(); }
     else if (t.age >= (sd.slow ? 3 : 2)) t.stage = 2;
     if (g > 0) grew++;
   }
@@ -3984,7 +3984,7 @@ function plantAt(c, r, spKey) {
      bank is spent here, which is what the tile's own rule already meant. */
   t.seeds = 0;
   t.alien = null;
-  t.sp = spKey; t.stage = 1; t.age = 0; GROUND = null;
+  t.sp = spKey; t.stage = 1; t.age = 0; invalidateGround();
   state.planted++;
   SFX('plant', { c: c, r: r });
 
@@ -5820,6 +5820,60 @@ function drawShore() {
 var groundMs = 0;
 var groundRetimer = 0;   /* pending re-bake after a zoom settles — see the draw loop */
 
+/* BUG-016 — OLD PHONES: the live ground pass is the frame's single biggest cost (measured
+   headless: 7 fps full, ~40 fps with the ground walk skipped). T9 v4 turned the old world-sized
+   bake off for sharpness. This cache keeps the SHARPNESS: it is built at DEVICE resolution in
+   VIEW space and blitted 1:1, so it is the same pixels the live pass would have painted. Unlike
+   the old world bake it needs no world->screen resample and no camera-offset maths, which is what
+   broke props under rotation. It is rebuilt only when the image would be wrong: camera, zoom,
+   rotation, viewport, pixel ratio or terrain changed. Sitting still — normal play — costs one
+   drawImage instead of ~1,600 quads. */
+var GCANVAS = null, GCTX = null;
+var SCANVAS = null, SCTX = null;   /* ping-pong buffer for camera pans */
+var gcW = 0, gcH = 0, gcDpr = 0, gcX = NaN, gcY = NaN, gcZoom = NaN, gcRot = -1;
+var gcHit = 0, gcMiss = 0, gcScrolls = 0;
+/* A viewport cache is skipped above 12M device pixels (4K / huge desktop windows): those boxes
+   have GPU headroom and a second 48 MB backing store buys nothing. */
+function groundCacheBudget() { return W * H * dpr * dpr <= 12000000; }
+function invalidateGround() { GROUND = null; gcW = 0; }
+/* A pure camera PAN does not invalidate the bitmap -- it is scrolled and only the newly exposed
+   strip is repainted (see frame()). So freshness covers zoom / rotation / size / terrain but NOT
+   translation; translation is handled by gcX/gcY below. */
+function groundCacheFresh() {
+  return !!GCTX && gcW === W && gcH === H && gcDpr === dpr &&
+         gcZoom === zoom && gcRot === VIEW_ROT && groundCacheBudget();
+}
+function getGroundCache() {
+  if (!ctx || !groundCacheBudget()) return null;
+  if (!GCANVAS) {
+    GCANVAS = document.createElement('canvas');
+    GCTX = GCANVAS.getContext ? GCANVAS.getContext('2d') : null;
+    if (!GCTX) return null;
+  }
+  return GCTX;
+}
+
+/* Device pixel ratio is a fill-rate multiplier: 3x is NINE times the pixels of 1x. Old phones
+   report 3x while having neither the GPU nor the RAM for it. Cap at 1.5 there, and let the
+   frame-time governor below drop to 1x if the cache alone is not enough. Desktops and the shot
+   harness stay at the existing cap — a gate must not silently change the thing it measures. */
+function dprCapFor(mem, cores) {
+  mem = +mem || 0; cores = +cores || 0;
+  return (mem > 0 && mem <= 4) || (cores > 0 && cores <= 4) ? 1.5 : 3;
+}
+var LOW_END = typeof navigator === 'object' && !!navigator &&
+  dprCapFor(navigator.deviceMemory, navigator.hardwareConcurrency) === 1.5;
+var perfScale = 1, perfDrops = 0, perfFrames = 0, perfMs = 0;
+function perfTick(dt) {
+  if (!LOW_END) return;
+  perfFrames++; perfMs += dt;
+  if (perfFrames < 120) return;
+  var avg = perfMs / perfFrames;
+  perfFrames = 0; perfMs = 0;
+  if (avg > 28 && perfScale > 0.75) { perfScale = 0.75; perfDrops++; resize(); invalidateGround(); }
+  else if (avg < 16 && perfScale < 1) { perfScale = 1; resize(); invalidateGround(); }
+}
+
 /* HOW MANY CACHE PIXELS PER WORLD PIXEL — and it was 1, which is the bug the owner saw as "the
    last 3 tiles of the river are clear sprites but the rest isnt and grass is also blurry tiles".
    The cache was baked at WORLD_W x WORLD_H and then blitted INTO project() space, which the world
@@ -7561,17 +7615,73 @@ function frame(ts) {
      right x and not one of its pixels reached the canvas. */
   ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
 
-  /* T9 v4 -- THE GROUND IS DRAWN LIVE, own-the-mountain's architecture. The bake was a flat-world
-     optimisation that cost sharpness twice: it capped at 1.5x zoom and stretched past that, and it
-     resampled the watercolour once more on the way to the screen. Drawing the visible tiles every
-     frame samples the texture at SCREEN resolution at every zoom -- always sharp, and terrain
-     changes (the wet tool, the shade spreading) appear the frame they happen instead of after a
-     re-bake. The bake machinery below is DORMANT (buildGround/blitGround, kept for one cycle as
-     the pattern-unavailable fallback's reference); the sprite and code-art paths still serve any
-     tile the texture path declines. */
-  /* THE RIM CLIFF STILL RUNS EVERY FRAME: it is the backdrop the island's silhouette sits in --
-     with the bake dormant it would simply vanish and the rim would show sky under the tile faces
-     (the page gate caught exactly that hole). ~38 fills, cheap. */
+  /* BUG-016 -- CACHE THE GROUND IN VIEW SPACE, NOT WORLD SPACE. The old bake failed under
+     rotation because it cached WORLD pixels and blitted them through a VIEW transform; this one
+     caches the exact SCREEN pixels the live walk would paint, then copies them back 1:1. No
+     resample, no sharpness loss, no camera maths to get wrong. A still frame is one drawImage;
+     a PAN scrolls the old bitmap and repaints only the strip the camera just exposed -- dragging
+     around a 40x40 map must not fall back to ~1,600 quads per frame. Zoom, rotation, resize and
+     terrain changes still force a full rebuild. */
+  var _cw = Math.round(W * dpr), _ch = Math.round(H * dpr);
+  var _cached = groundCacheFresh() && !!getGroundCache();
+  var _dx = camX - gcX, _dy = camY - gcY;
+  var _scroll = _cached && (Math.abs(_dx) > 1e-9 || Math.abs(_dy) > 1e-9);
+  var _bake = !_cached && !!getGroundCache();
+  if (_bake) {
+    if (GCANVAS.width !== _cw || GCANVAS.height !== _ch) {
+      GCANVAS.width = _cw; GCANVAS.height = _ch;
+    }
+    if ('imageSmoothingQuality' in GCTX) GCTX.imageSmoothingQuality = 'high';
+    GCTX.setTransform(1, 0, 0, 1, 0, 0);
+    GCTX.clearRect(0, 0, _cw, _ch);
+    GCTX.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
+    gcW = W; gcH = H; gcDpr = dpr; gcZoom = zoom; gcRot = VIEW_ROT;
+    gcX = camX; gcY = camY;
+    gcMiss++;
+  } else if (_scroll) {
+    if (!SCANVAS) {
+      SCANVAS = document.createElement('canvas');
+      SCTX = SCANVAS.getContext ? SCANVAS.getContext('2d') : null;
+    }
+    if (!SCTX) {
+      /* No scratch context: fall back to a full bake instead of leaving a stale bitmap on screen. */
+      _scroll = false; _bake = true;
+      GCANVAS.width = _cw; GCANVAS.height = _ch;
+      GCTX.setTransform(1, 0, 0, 1, 0, 0);
+      GCTX.clearRect(0, 0, _cw, _ch);
+      GCTX.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
+      gcW = W; gcH = H; gcDpr = dpr; gcZoom = zoom; gcRot = VIEW_ROT;
+      gcX = camX; gcY = camY; gcMiss++;
+    } else {
+      if (SCANVAS.width !== _cw || SCANVAS.height !== _ch) {
+        SCANVAS.width = _cw; SCANVAS.height = _ch;
+      }
+      var ix = Math.round(-_dx * dpr * zoom), iy = Math.round(-_dy * dpr * zoom);
+      SCTX.setTransform(1, 0, 0, 1, 0, 0);
+      SCTX.clearRect(0, 0, _cw, _ch);
+      SCTX.drawImage(GCANVAS, ix, iy);
+      /* Repaint only the band the old bitmap cannot cover. Both bands go in ONE clip path:
+         a corner uncovered by an x AND a y move must not be left as sky. */
+      SCTX.save();
+      SCTX.beginPath();
+      if (ix > 0) SCTX.rect(0, 0, ix, _ch);
+      else if (ix < 0) SCTX.rect(_cw + ix, 0, -ix, _ch);
+      if (iy > 0) SCTX.rect(0, 0, _cw, iy);
+      else if (iy < 0) SCTX.rect(0, _ch + iy, _cw, -iy);
+      SCTX.clip();
+      if ('imageSmoothingQuality' in SCTX) SCTX.imageSmoothingQuality = 'high';
+      SCTX.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
+      var _oldCanvas = GCANVAS, _oldCtx = GCTX;
+      GCANVAS = SCANVAS; GCTX = SCTX;
+      SCANVAS = _oldCanvas; SCTX = _oldCtx;
+      gcX = camX; gcY = camY; gcScrolls++;
+    }
+  }
+  var _paintedCtx = ctx;
+  if (_bake || _scroll) ctx = GCTX;
+  if (_bake || _scroll || (!GCANVAS && !_cached)) {
+  /* THE RIM CLIFF STILL RUNS ON A CACHE REBUILD: it is the backdrop the island's silhouette sits
+     in -- without it the rim would show sky under the tile faces (the page gate caught that hole). */
   drawCliff();
   MB_CONTOURS.length = 0;
   MB_SHORE.length = 0;
@@ -7586,6 +7696,17 @@ function frame(ts) {
   }
   /* AFTER the terrace contours and AFTER every ground quad, but before the props. */
   drawShore();
+  }
+  if (_scroll && GCTX.restore) GCTX.restore();
+  ctx = _paintedCtx;
+  if (GCANVAS && groundCacheFresh()) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(GCANVAS, 0, 0);
+    gcHit++;
+  }
+  /* Back to the one world transform every prop's project() result expects. Keep this the LAST
+     setTransform in the frame: the gate reads it to prove the camera is applied only in project(). */
+  ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
 
   drawWorld();
   /* ON TOP OF THE WORLD, DELIBERATELY. A tile with a tree on it is still the tile the tap will act on,
@@ -7615,6 +7736,7 @@ function frame(ts) {
     ctx.fillStyle = 'rgba(255,244,200,' + Math.max(0, binFlash / 700 * 0.20) + ')';
     ctx.fillRect(0, 0, W, H);
   }
+  perfTick(dt);
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(frame);
 }
 
@@ -9549,7 +9671,12 @@ function resize() {
      The cost is real: a 3x backing store on a large window is about 2.25x the fill rate of 2x, which
      is why this was capped in the first place. It is worth it — detail the player can see beats fill
      rate they cannot — and `groundScale()` follows dpr, so the ground bake sharpens with it. */
-  dpr = Math.min(3, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1);
+  var rawDpr = (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1;
+  dpr = Math.max(1, Math.min(dprCapFor(navigator && navigator.deviceMemory,
+                                       navigator && navigator.hardwareConcurrency), rawDpr) * perfScale);
+  /* The cache is a device-resolution bitmap sized to the viewport, so a resolution change is a
+     cache invalidation as surely as a camera move. */
+  gcW = 0;
   if (cv) {
     if (cv.setAttribute) {
       cv.setAttribute('width', Math.round(W * dpr));
@@ -9878,7 +10005,7 @@ function boot() {
      The ground cache carries the shade, and the shade is a function of where the mature trees are --
      so a cache built before the save was applied would draw the shade of an empty hillside and keep
      it. Dropping it here costs one re-bake on boot and cannot go wrong. */
-  GROUND = null;
+  invalidateGround();
   /* THE CATCH-UP, and it is the whole reason the hourly rate needed a stored timestamp: the game
      only runs while the tab is open, so the points earned overnight exist nowhere until something
      measures the gap. This is that measurement, and it is the same apAccrue() the live timer calls —
@@ -10197,7 +10324,7 @@ function boot() {
        see the note on primeState() for why this was the restart button's whole bug. */
     state = newState();
     primeState();
-    GROUND = null;                      /* the baked ground belongs to the old hillside */
+    invalidateGround();                      /* the baked ground belongs to the old hillside */
     if (els.notes) els.notes.textContent = '';
     if (els.codeIn) els.codeIn.value = '';
     saveLocal(); renderHud(); renderBoard(); renderShop();
@@ -10474,7 +10601,7 @@ function boot() {
         }
         state = sv2;
         primeState();
-        GROUND = null;
+        invalidateGround();
         saveLocal(); renderHud(); renderBoard(); renderShop(); renderOlder();
         hideModal(els.mNotes);
         note('Loaded day ' + (sv2.day || 1) + ' from an older copy.', 'good');
@@ -10554,6 +10681,11 @@ var API = {
   zoomMin: zoomMin, ZOOM_MAX: ZOOM_MAX, resize: resize,
   view: function (c, r) { return project(c, r, groundZ(c, r)); },
   groundMs: function () { return groundMs; },
+  dprCapFor: dprCapFor, invalidateGround: invalidateGround,
+  perf: function () {
+    return { lowEnd: LOW_END, dpr: dpr, scale: perfScale, drops: perfDrops,
+             cacheHits: gcHit, cacheMisses: gcMiss, cacheScrolls: gcScrolls, cached: groundCacheFresh() };
+  },
   encodeTiles: encodeTiles, decodeTiles: decodeTiles,
   ALIENS: ALIENS, SPECIES: SPECIES, DECOR: DECOR, TOKENS: TOKENS,
   ALIEN_KEYS: ALIEN_KEYS, SP_KEYS: SP_KEYS, SP_BY_TIER: SP_BY_TIER, DECOR_KEYS: DECOR_KEYS,
@@ -12048,7 +12180,7 @@ var SPR = (function () {
     ready = true;
     status = 'ready ' + nGot + '/' + nWant + (failed.length ? ' (' + failed.length + ' failed)' : '');
     retone();                   /* re-measure the grout from the pack; clears the bake itself */
-    if (on) GROUND = null;      /* the bake was made with the code art; rebuild it painted */
+    if (on) invalidateGround();      /* the bake was made with the code art; rebuild it painted */
     if (typeof console !== 'undefined' && console.log) console.log('mistbelt pack: ' + status);
   }
 
@@ -12106,7 +12238,7 @@ var SPR = (function () {
       var r = Math.round(s[0] / n * k), g = Math.round(s[1] / n * k), b = Math.round(s[2] / n * k);
       TILE_ART[f].edge = 'rgb(' + r + ',' + g + ',' + b + ')';
     }
-    GROUND = null;                          /* the bake carries the old grout */
+    invalidateGround();                          /* the bake carries the old grout */
   }
 
   /* IS THE PACK'S WATER ACTUALLY WATER?
@@ -12417,7 +12549,7 @@ var SPR = (function () {
     set: function (v) {
       var was = on;
       on = !!v;
-      if (was !== on) GROUND = null;
+      if (was !== on) invalidateGround();
       return on;
     },
     /* The parrot is NOT drawn through drawCritter — it has its own flight, with an arc, a bob and a
